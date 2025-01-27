@@ -2,13 +2,15 @@ import labels from "./labels.js";
 import Queue from "./Queue.js";
 import Robot from "./Robot.js";
 
-window.addEventListener("resize", resizeCanvas);
-
 // Elements
 let canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("canvas"));
 let ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
 let time = /**@type {HTMLElement} */ (document.getElementById("time-value"));
 let message = /**@type {HTMLElement} */ (document.getElementById("message"));
+let controls_ui = /**@type {HTMLElement} */ (document.getElementsByClassName('controls-ui-container')[0]);
+
+window.addEventListener("load", resizeCanvas);
+window.addEventListener("resize", resizeCanvas);
 
 /** @type {RobotMap}*/
 let robots = {};
@@ -115,8 +117,6 @@ const configOptions = {
 
 let lastSentConfigOptions = { ...configOptions };
 
-resizeCanvas();
-
 /**
  * Draws a Robot on the canvas
  * @param {Robot} robot
@@ -195,7 +195,12 @@ const gui = setupOptions(configOptions);
 
 function setupOptions(configOptions) {
   //@ts-ignore
-  const gui = new dat.GUI();
+
+  //autoPlace prevents the dat.GUI object from auto attaching to the canvas
+  const gui = new dat.GUI({autoPlace: false});
+  
+  //Since gui isn't attached, manually assign it to a container
+  controls_ui.append(gui.domElement);
 
   const numRobotsController = gui.add(configOptions, "num_of_robots", 1, 50, 1);
   gui
@@ -342,9 +347,14 @@ function resizeCanvas() {
   // This function resets the canvas
   console.log("Resized Canvas");
 
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-
+  // Do not need to rescale the canvas as it is automatic (via flex-growth)
+  // canvas.width = canvas_parent_rect.width
+  // canvas.height = canvas_parent_rect.height
+  const canvas_parent_rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = canvas_parent_rect.width;
+  canvas.height = canvas_parent_rect.height;
+  
+  // But Context2D does need to be rescaled since it is not resizing to the canvas size
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
