@@ -11,51 +11,43 @@ class Robot {
   };
 
   /**
-   * Represents a robot
+   * Represents a robot.
    * @constructor
-   * @param {number} x - X position
-   * @param {number} y - Y position
-   * @param {string} id - Robot's id
-   * @param {string} color - Robot's color
-   * @param {number} speed - Robot's speed
-   * @param {number} multiplicity - # of Robots at position
-   * @param {boolean} isCanvasCoordinates - flag to decide if coordinates are HTMLCanvas coordinates
+   * @param {number} x - X position.
+   * @param {number} y - Y position.
+   * @param {string} id - Robot's id.
+   * @param {string} color - Robot's color (light).
+   * @param {number} speed - Robot's speed.
+   * @param {number} multiplicity - # of Robots at position.
+   * @param {boolean} isCanvasCoordinates - flag to decide if coordinates are HTMLCanvas coordinates.
    */
   constructor(x, y, id, color, speed, multiplicity = 1, isCanvasCoordinates = false) {
-    /** @type {number} */ this.x = x;
-    /** @type {number} */ this.y = y;
-    /** @type {string} */ this.id = id;
-    /** @type {string} */ this.color = color;
-    /** @type {number} */ this.speed = speed;
-    /** @type {number} */ this.multiplicity = multiplicity;
-
-    /** @type {boolean} */ this.isCanvasCoordinates = isCanvasCoordinates;
-
-    /** @type {string} */ this.state = "INACTIVE";
+    this.x = x;
+    this.y = y;
+    this.id = id;
+    this.color = color; // this holds the current light color
+    this.speed = speed;
+    this.multiplicity = multiplicity;
+    this.isCanvasCoordinates = isCanvasCoordinates;
+    this.state = "INACTIVE";
   }
 
-  /**
-   * @param {number} x
-   * @param {number} y
-   */
   setPosition(x, y) {
     this.x = x;
     this.y = y;
   }
 
   getCanvasPosition() {
-    if (this.isCanvasCoordinates == true) {
+    if (this.isCanvasCoordinates === true) {
       return [this.x, this.y];
     }
-
     return [this.x * Robot.ROBOT_X_POS_FACTOR, this.y * Robot.ROBOT_Y_POS_FACTOR];
   }
 
   getPosition() {
-    if (this.isCanvasCoordinates == true) {
+    if (this.isCanvasCoordinates === true) {
       return [this.x / Robot.ROBOT_X_POS_FACTOR, this.y / Robot.ROBOT_Y_POS_FACTOR];
     }
-
     return [this.x, this.y];
   }
 
@@ -63,8 +55,17 @@ class Robot {
     this.state = state;
   }
 
+  /**
+   * Sets the robot's color (light).
+   * @param {string} newColor
+   */
+  setColor(newColor) {
+    this.color = newColor;
+  }
+
   getColor() {
-    return Robot.STATE_COLOR_MAP[this.state];
+    // Return the current color if set; otherwise, fall back on the default mapping.
+    return this.color || Robot.STATE_COLOR_MAP[this.state];
   }
 
   static setRobotSize(size) {
