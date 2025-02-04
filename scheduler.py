@@ -6,9 +6,7 @@ import heapq
 import math
 import logging
 
-
 class Scheduler:
-
     _logger: logging.Logger | None = None
 
     def __init__(
@@ -69,25 +67,25 @@ class Scheduler:
         self.initialize_queue_exponential()
         Robot._generator = self.generator
 
-    def get_snapshot(
-        self, time: float, visualization_snapshot: bool = False
-    ) -> dict[int, SnapshotDetails]:
+    def get_snapshot(self, time: float, visualization_snapshot: bool = False) -> dict[int, SnapshotDetails]:
         snapshot = {}
         for robot in self.robots:
             snapshot[robot.id] = SnapshotDetails(
-                robot.get_position(time), robot.state, robot.frozen, robot.terminated, 1
+                robot.get_position(time),
+                robot.state,
+                robot.frozen,
+                robot.terminated,
+                1,
+                robot.current_light  # Include current light in the snapshot
             )
-
         self._detect_multiplicity(snapshot)  # in-place
         if visualization_snapshot:
             self.visualization_snapshots.append((time, snapshot))
         else:
             self.snapshot_history.append((time, snapshot))
-
         return snapshot
 
     def generate_event(self, current_event: Event) -> None:
-        # Visualization events
         if current_event.state == None and len(self.priority_queue) > 0:
             new_event_time = current_event.time + self.sampling_rate
             new_event = Event(new_event_time, -1, None)
@@ -97,41 +95,30 @@ class Scheduler:
         new_event_time = 0.0
         robot = self.robots[current_event.id]
 
-        # Robot will definitely reach calculated position
         if current_event.state == RobotState.MOVE:
             distance = 0.0
-            if self.rigid_movement == True:
+            if self.rigid_movement:
                 distance = math.dist(robot.calculated_position, robot.start_position)
             else:
-                percentage = 1 - self.generator.uniform()  # range of values is (0,1]
+                percentage = 1 - self.generator.uniform()
                 Scheduler._logger.info(f"percentage of journey: {percentage}")
-                distance = percentage * math.dist(
-                    robot.calculated_position, robot.start_position
-                )
+                distance = percentage * math.dist(robot.calculated_position, robot.start_position)
             new_event_time = current_event.time + (distance / robot.speed)
         else:
-            new_event_time = current_event.time + self.generator.exponential(
-                scale=1 / self.lambda_rate
-            )
+            new_event_time = current_event.time + self.generator.exponential(scale=1 / self.lambda_rate)
 
         new_event_state = robot.state.next_state()
 
         priority_event = Event(new_event_time, current_event.id, new_event_state)
-
         heapq.heappush(self.priority_queue, priority_event)
 
     def handle_event(self) -> int:
         exit_code = -1
-
         if len(self.priority_queue) == 0:
             return exit_code
-
         current_event = heapq.heappop(self.priority_queue)
-
         event_state = current_event.state
-
         time = current_event.time
-
         if event_state == None:
             self.get_snapshot(time, visualization_snapshot=True)
             exit_code = 0
@@ -140,9 +127,7 @@ class Scheduler:
             if event_state == RobotState.LOOK:
                 robot.state = RobotState.LOOK
                 robot.look(self.get_snapshot(time), time)
-
-                # Removes robot from simulation
-                if robot.terminated == True:
+                if robot.terminated:
                     return 4
                 exit_code = 1
             elif event_state == RobotState.MOVE:
@@ -151,92 +136,61 @@ class Scheduler:
             elif event_state == RobotState.WAIT:
                 robot.wait(time)
                 exit_code = 3
-
         self.generate_event(current_event)
         return exit_code
 
     def initialize_queue(self) -> None:
-        # Set the lambda parameter (average rate of occurrences)
-        lambda_value = 5  # 5 occurrences per interval
-
-        # Generate Poisson-distributed random numbers
+        lambda_value = 5
         generator = np.random.default_rng()
-        num_samples = 2  # Total number of samples to generate
+        num_samples = 2
         poisson_numbers = generator.poisson(lambda_value, num_samples)
-
-        # Display the generated numbers
         Scheduler._logger.info(poisson_numbers)
 
     def initialize_queue_exponential(self) -> None:
         Scheduler._logger.info(f"Seed used: {self.seed}")
-
-        # Generate time intervals for n events
         self.generator = np.random.default_rng(seed=self.seed)
         num_of_events = len(self.robots)
-        time_intervals = self.generator.exponential(
-            scale=1 / self.lambda_rate, size=num_of_events
-        )
+        time_intervals = self.generator.exponential(scale=1 / self.lambda_rate, size=num_of_events)
         Scheduler._logger.info(f"Time intervals between events: {time_intervals}")
-
-        initial_event = Event(0.0, -1, None)  # initial event for visualization
+        initial_event = Event(0.0, -1, None)
         self.priority_queue: list[Event] = [initial_event]
-
         for robot in self.robots:
             time = time_intervals[robot.id]
             event = Event(time, robot.id, robot.state.next_state())
             self.priority_queue.append(event)
-
         heapq.heapify(self.priority_queue)
 
     def _all_robots_reached(self) -> bool:
         for robot in self.robots:
-            if robot.frozen == False:
+            if not robot.frozen:
                 return False
         return True
 
-    # Can be improved when it comes to precision/detection
     def _detect_multiplicity(self, snapshot: dict[int, SnapshotDetails]):
         positions = [(v.pos, k) for k, v in snapshot.items()]
-
         positions.sort()
-
         i = 0
         multiplicity = 1
         while i < len(positions):
-            multiplicity_group = [positions[i][1]]  # Start a new group
-            rounded_coordinates1 = round_coordinates(
-                positions[i][0], self.threshold_precision - 2
-            )
-
-            # Check for close positions
+            multiplicity_group = [positions[i][1]]
+            rounded_coordinates1 = round_coordinates(positions[i][0], self.threshold_precision - 2)
             for j in range(i + 1, len(positions)):
-                rounded_coordinates2 = round_coordinates(
-                    positions[j][0], self.threshold_precision - 2
-                )
-
+                rounded_coordinates2 = round_coordinates(positions[j][0], self.threshold_precision - 2)
                 is_close = all(
-                    abs(rounded_coordinates1[x] - rounded_coordinates2[x])
-                    <= 10**-self.threshold_precision
+                    abs(rounded_coordinates1[x] - rounded_coordinates2[x]) <= 10**-self.threshold_precision
                     for x in range(2)
                 )
-
                 if is_close:
                     multiplicity += 1
                     multiplicity_group.append(positions[j][1])
                 else:
                     break
-
-            # Update multiplicity for all robots in the group
             for robot_id in multiplicity_group:
                 snapshot_details = list(snapshot[robot_id])
                 snapshot_details[4] = multiplicity
                 snapshot[robot_id] = SnapshotDetails(*snapshot_details)
-
-            # Move to the next group
             i += len(multiplicity_group)
             multiplicity = 1
 
-
 def round_coordinates(coord: Coordinates, precision: int):
-
     return Coordinates(round(coord.x, precision), round(coord.y, precision))
