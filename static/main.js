@@ -5,14 +5,13 @@ import Robot from "./Robot.js";
 // Elements
 let canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("canvas"));
 let ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
-let time = /**@type {HTMLElement} */ (document.getElementById("time-value"));
-let message = /**@type {HTMLElement} */ (document.getElementById("message"));
-let controls_ui = /**@type {HTMLElement} */ (document.getElementsByClassName('controls-ui-container')[0]);
+let time = /** @type {HTMLElement} */ (document.getElementById("time-value"));
+let message = /** @type {HTMLElement} */ (document.getElementById("message"));
+let controls_ui = /** @type {HTMLElement} */ (document.getElementsByClassName('controls-ui-container')[0]);
 
 window.addEventListener("load", resizeCanvas);
 window.addEventListener("resize", resizeCanvas);
 
-/** @type {RobotMap}*/
 let robots = {};
 let snapshotQueue = new Queue();
 
@@ -25,7 +24,6 @@ let simulationId = undefined;
 let sec = [];
 let drawingSimulation = false;
 
-//@ts-ignore
 const socket = io(window.location.host);
 
 socket.on("simulation_data", function (data) {
@@ -56,11 +54,8 @@ socket.on("smallest_enclosing_circle", function (data) {
 });
 
 const schedulerTypes = [labels.Async, labels.Sync];
-
 const algorithmOptions = [labels.Gathering, labels.SEC];
-
 const probabilityDistributions = [labels.Exponential];
-
 const initialPositionsOptions = [labels.Random, labels.UserDefined];
 
 const startSimulation = {
@@ -94,7 +89,7 @@ const clearSimulationObj = {
 const configOptions = {
   num_of_robots: 3,
   initialization_method: labels.Random,
-  /** @type {Array}*/ initial_positions: [],
+  initial_positions: [],
   robot_speeds: 1.0,
   robot_size: Robot.ROBOT_SIZE,
   scheduler_type: labels.Async,
@@ -117,25 +112,16 @@ const configOptions = {
 
 let lastSentConfigOptions = { ...configOptions };
 
-/**
- * Draws a Robot on the canvas
- * @param {Robot} robot
- */
 function drawRobot(robot) {
   ctx.beginPath();
-
   const color = robot.getColor();
   const radius = Robot.ROBOT_SIZE;
-
-  // Draw circle
   const [x, y] = robot.getCanvasPosition();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.strokeStyle = color;
   ctx.fill();
   ctx.stroke();
-
-  // // Draw node label
   ctx.beginPath();
   ctx.strokeStyle = "#FFF";
   ctx.strokeText(robot.id, x, y);
@@ -145,9 +131,7 @@ function drawRobot(robot) {
   ctx.fill();
   ctx.stroke();
 
-  // Draw multiplicity detection
   if (configOptions.multiplicity_detection) {
-    // Draw node label
     ctx.beginPath();
     ctx.strokeStyle = "#000";
     ctx.strokeText("" + robot.multiplicity, x + radius + 1, y - radius - 1);
@@ -158,34 +142,24 @@ function drawRobot(robot) {
     ctx.stroke();
   }
 
-  // Draw visibility radius
   if (configOptions.show_visibility) {
     const vis_radius = drawingSimulation
       ? lastSentConfigOptions.visibility_radius
       : configOptions.visibility_radius;
-
     ctx.arc(x, y, vis_radius, 0, Math.PI * 2);
     ctx.strokeStyle = "rgb(169 169 169 / 25%)";
     ctx.stroke();
   }
 }
-/**
- * Draws smallest enclosing circles
- * @param {Circle[]} circles - Smallest Enclosing Circles
- */
-function drawSEC(circles) {
-  if (circles === undefined || circles.length === 0) {
-    return;
-  }
 
+function drawSEC(circles) {
+  if (!circles || circles.length === 0) return;
   for (const circle of circles) {
     const center_x = circle[0][0] * Robot.ROBOT_X_POS_FACTOR;
     const center_y = circle[0][1] * -1 * Robot.ROBOT_X_POS_FACTOR;
     const radius = circle[1] * Robot.ROBOT_X_POS_FACTOR;
     ctx.strokeStyle = "rgb(169 169 169 / 50%)";
-
     ctx.beginPath();
-
     ctx.arc(center_x, center_y, radius, 0, 2 * Math.PI);
     ctx.stroke();
   }
@@ -194,14 +168,8 @@ function drawSEC(circles) {
 const gui = setupOptions(configOptions);
 
 function setupOptions(configOptions) {
-  //@ts-ignore
-
-  //autoPlace prevents the dat.GUI object from auto attaching to the canvas
-  const gui = new dat.GUI({autoPlace: false});
-  
-  //Since gui isn't attached, manually assign it to a container
+  const gui = new dat.GUI({ autoPlace: false });
   controls_ui.append(gui.domElement);
-
   const numRobotsController = gui.add(configOptions, "num_of_robots", 1, 50, 1);
   gui
     .add(configOptions, "initialization_method", initialPositionsOptions)
@@ -225,24 +193,13 @@ function setupOptions(configOptions) {
   gui.add(configOptions, "labmda_rate");
   gui.add(configOptions, "algorithm", algorithmOptions).name("Algorithm");
   gui.add(configOptions, "random_seed", 1, 2 ** 32 - 1, 1).name("Seed");
-  const startSimulationBtn = gui
-    .add(startSimulation, "start_simulation")
-    .name("Start simulation");
-  const pauseBtn = gui
-    .add(togglePause, "pause_simulation")
-    .name("Pause")
-    .onFinishChange(updatePauseText);
-  const clearSimulationBtn = gui
-    .add(clearSimulationObj, "clear_simulation")
-    .name("Clear Simulation");
+  const startSimulationBtn = gui.add(startSimulation, "start_simulation").name("Start simulation");
+  const pauseBtn = gui.add(togglePause, "pause_simulation").name("Pause").onFinishChange(updatePauseText);
+  const clearSimulationBtn = gui.add(clearSimulationObj, "clear_simulation").name("Clear Simulation");
 
   startSimulationBtn.domElement.parentElement.parentElement.classList.add("start-btn");
-
   pauseBtn.domElement.parentElement.parentElement.classList.add("pause-btn");
-
-  clearSimulationBtn.domElement.parentElement.parentElement.classList.add(
-    "clear-simulation-btn"
-  );
+  clearSimulationBtn.domElement.parentElement.parentElement.classList.add("clear-simulation-btn");
 
   function updatePauseText() {
     if (paused) {
@@ -259,17 +216,13 @@ function setupOptions(configOptions) {
     if (configOptions.initialization_method === labels.Random) {
       numRobotsControllerElement.parentElement.parentElement.style.display = "list-item";
       numRobotsController.setValue(3);
-
       canvas.removeEventListener("click", handleCanvasClick);
-
       clearSimulation();
     } else {
       numRobotsControllerElement.parentElement.parentElement.style.display = "none";
       numRobotsController.setValue(0);
       message.style.display = "block";
-
       canvas.addEventListener("click", handleCanvasClick);
-
       clearSimulation();
     }
   }
@@ -289,9 +242,7 @@ function setupOptions(configOptions) {
 function startDrawingLoop() {
   stopAnimation = false;
   drawingSimulation = true;
-
-  // requestAnimationFrame initiates the animation loop
-  requestAnimationFrame(drawLoop); // Start the loop
+  requestAnimationFrame(drawLoop);
 }
 
 function stopDrawingLoop() {
@@ -300,88 +251,63 @@ function stopDrawingLoop() {
 }
 
 function drawLoop(currentTime) {
-  if (stopAnimation) {
-    return;
-  }
-
-  if (simulationId === undefined) {
-    return;
-  }
-  // Calculate the time since the last frame
+  if (stopAnimation) return;
+  if (simulationId === undefined) return;
   const deltaTime = currentTime - lastFrameTime;
-
-  // Check if enough time has passed to render a new frame
   if (deltaTime >= timePerFrameMs && !paused) {
     const snapshot = snapshotQueue.dequeue();
     if (snapshot) {
       clearCanvas();
       drawSnapshot(snapshot);
-      lastFrameTime = currentTime; // Reset lastFrameTime for the next frame
+      lastFrameTime = currentTime;
     } else {
       stopDrawingLoop();
       drawSEC(sec);
-
       return;
     }
   }
-
-  // Request the next frame
   requestAnimationFrame(drawLoop);
 }
 
 function clearCanvas() {
   ctx.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(-canvas / 2, -canvas.height / 2, canvas.width, canvas.height);
+  ctx.fillRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
 }
 
 function getRandomColor() {
   const r = Math.floor(50 + Math.random() * 256);
   const g = Math.floor(50 + Math.random() * 256);
   const b = Math.floor(50 + Math.random() * 256);
-
   return `rgb(${r}, ${g}, ${b})`;
 }
 
 function resizeCanvas() {
-  // This function resets the canvas
   console.log("Resized Canvas");
-
-  // Do not need to rescale the canvas as it is automatic (via flex-growth)
-  // canvas.width = canvas_parent_rect.width
-  // canvas.height = canvas_parent_rect.height
   const canvas_parent_rect = canvas.parentElement.getBoundingClientRect();
   canvas.width = canvas_parent_rect.width;
   canvas.height = canvas_parent_rect.height;
-  
-  // But Context2D does need to be rescaled since it is not resizing to the canvas size
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Translate the coordinate system to be in the center
   ctx.translate(canvas.width / 2, canvas.height / 2);
   configOptions.width_bound = canvas.width / 2;
   configOptions.height_bound = canvas.height / 2;
 }
 
-/**
- * @param {Snapshot} snapshot
- * */
 function drawSnapshot(snapshot) {
-  let time = snapshot[0];
-  updateTimeElement(time);
-
+  let timeVal = snapshot[0];
+  updateTimeElement(timeVal);
   let robotsHistory = snapshot[1];
-
   for (let id in robotsHistory) {
     let [x, y] = robotsHistory[id][0];
-    const multiplicity = robotsHistory[id][4];
     const state = robotsHistory[id][1];
-
+    const multiplicity = robotsHistory[id][4];
+    const light = robotsHistory[id][5];  // new field for light
     if (robots[id] === undefined) {
-      robots[id] = new Robot(x, y, id, "black", 1, multiplicity);
+      robots[id] = new Robot(x, y, id, light, 1, multiplicity);
+    } else {
+      robots[id].setColor(light);
     }
-
     robots[id].setPosition(x, y);
     robots[id].setState(state);
     robots[id].multiplicity = multiplicity;
@@ -393,34 +319,17 @@ function updateTimeElement(t) {
   time.innerText = t;
 }
 
-/**
- * @param {MouseEvent} e
- */
 function handleCanvasClick(e) {
   if (time.innerText !== "") {
     clearSimulation();
   }
-
   console.log(e);
   const x = e.offsetX;
   const y = e.offsetY;
-
   const [canvasX, canvasY] = translateToCanvas(canvas, x, y);
-
-  const robot = new Robot(
-    canvasX,
-    canvasY,
-    `${currRobotId++}`,
-    configOptions.robot_colors,
-    configOptions.robot_speeds,
-    1,
-    true
-  );
-
+  const robot = new Robot(canvasX, canvasY, `${currRobotId++}`, configOptions.robot_colors, configOptions.robot_speeds, 1, true);
   robots[currRobotId - 1] = robot;
-
   drawRobot(robot);
-
   configOptions.initial_positions.push(robot.getPosition());
   message.style.display = "none";
 }
@@ -428,7 +337,6 @@ function handleCanvasClick(e) {
 function clearSimulation() {
   clearCanvas();
   updateTimeElement("");
-
   simulationId = undefined;
   snapshotQueue = new Queue();
   robots = {};
@@ -441,12 +349,6 @@ function clearSimulation() {
   drawingSimulation = false;
 }
 
-/**
- * Converts mouse coordinates to coordinates on a canvas with origin at the center of screen
- * @param {HTMLCanvasElement} canvas - Canvas element
- * @param {number} x
- * @param {number} y
- */
 function translateToCanvas(canvas, x, y) {
   return [x - canvas.width / 2, y - canvas.height / 2];
 }
