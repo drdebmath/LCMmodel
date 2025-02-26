@@ -105,6 +105,8 @@ def handle_simulation_request(data):
         sampling_rate=data["sampling_rate"],
         labmda_rate=data["labmda_rate"],
         algorithm=data["algorithm"],
+        custom_alg=data["custom_alg"],
+        custom_term_code=data["custom_term_code"],
         visibility_radius=data["visibility_radius"],
     )
 

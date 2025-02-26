@@ -16,11 +16,8 @@ body {
 }
 
 #header {
-  z-index: 1;
   user-select: none;
   justify-content: center;
-  position: absolute;
-  top: 0;
   align-self: center;
 }
 
@@ -69,28 +66,19 @@ body {
   background-color: rgb(192, 47, 47) !important;
 }
 
-.controls-ui-container {
-  background-color: black;
-  z-index: 1;
-  position: absolute;
-  right: 0;
+.tablink {
+  background-color: #555;
+  color: white;
+  float: left;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  font-size: 17px;
+  width: 25%;
 }
 
-#render-container {
-  justify-content: flex-end;
-}
-
-#canvas-zoom-button {
-  justify-content: center;
-}
-
-.zoom-pan-container {
-  position: absolute;
-  left: 2rem;
-  bottom: 2rem;
-  z-index: 1;
-}
-
-#canvas-binder {
-  z-index: 0;
+/* Style dat.gui */
+.dg .c option {
+  background: #2d3748;
 }

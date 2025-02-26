@@ -2,12 +2,12 @@ import labels from "./labels.js";
 import Queue from "./Queue.js";
 import Robot from "./Robot.js";
 
-// Elements
+// General UI
 let canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("canvas"));
 let ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
 let time = /** @type {HTMLElement} */ (document.getElementById("time-value"));
 let message = /** @type {HTMLElement} */ (document.getElementById("message"));
-let controls_ui = /** @type {HTMLElement} */ (document.getElementsByClassName('controls-ui-container')[0]);
+let controls_ui = /** @type {HTMLElement} */ (document.getElementById('controls-ui-container'));
 
 window.addEventListener("load", resizeCanvas);
 window.addEventListener("resize", resizeCanvas);
@@ -54,7 +54,7 @@ socket.on("smallest_enclosing_circle", function (data) {
 });
 
 const schedulerTypes = [labels.Async, labels.Sync];
-const algorithmOptions = [labels.Gathering, labels.SEC];
+const algorithmOptions = [labels.Gathering, labels.SEC, labels.Custom];
 const probabilityDistributions = [labels.Exponential];
 const initialPositionsOptions = [labels.Random, labels.UserDefined];
 
@@ -105,6 +105,8 @@ const configOptions = {
   sampling_rate: 0.2,
   labmda_rate: 10,
   algorithm: labels.Gathering,
+  custom_alg: "",
+  custom_term_code: "",
   random_seed: Math.floor(Math.random() * (2 ** 32 - 1)) + 1,
   width_bound: canvas.width / 4,
   height_bound: canvas.height / 4,
@@ -352,3 +354,5 @@ function clearSimulation() {
 function translateToCanvas(canvas, x, y) {
   return [x - canvas.width / 2, y - canvas.height / 2];
 }
+
+export default configOptions;

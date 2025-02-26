@@ -3,41 +3,91 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.css" integrity="sha512-uf06llspW44/LZpHzHT6qBOIVODjWtv4MxCricRxkzvopAlSWnTf6hpZTFxuuZcuNE9CBQhqE0Seu1CoRk84nQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/theme/monokai.min.css" integrity="sha512-R6PH4vSzF2Yxjdvb2p2FA06yWul+U0PDDav4b/od/oXf9Iw37zl10plvwOXelrjV2Ai7Eo3vyHeyFUjhXdBCVQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="./static/styles.css" />
     <script type="text/javascript" src="./static/min/dat.gui.min.js"></script>
     <script type="text/javascript" src="./static/min/socket.io.min.js"></script>
+
+    <!-- Load the script for switching tabs -->
+    <script type="module" src="./static/feature_tabs.js"></script>
+
+    <!-- Load the core scripts -->
     <script type="module" src="./static/Robot.js"></script>
     <script type="module" src="./static/Queue.js"></script>
     <script type="module" src="./static/main.js"></script>
     <script type="module" src="./static/labels.js"></script>
+
+    <!-- This can be refactored once the script build of Tailwind is phased out for the full npm installation -->
+    <style type="text/tailwindcss">
+      @layer components {
+        .zoom-button {
+          @apply bg-[#1A1A1A] hover:bg-gray-400 hover:text-[#1A1A1A] text-white w-20 h-15 rounded-lg;
+        }
+
+        .tab-button {
+          @apply bg-[#1A1A1A] hover:bg-gray-400 hover:text-[#1A1A1A] text-white w-1/3 font-bold py-2 px-4;
+        }
+
+        .tab-content {
+          @apply h-full;
+        }
+      }
+    </style>
+
     <title>Visualization</title>
   </head>
   <body>
-    <div class="container-fluid vh-100 flex-column d-flex">
-      <div id="header" class="row">
-        <div id="time-container">
-          <div id="time">Time: &nbsp;</div>
-          <div id="time-value"></div>
-        </div>
-        <div id="message">Add robots by clicking anywhere on the canvas</div>
+    <div class="h-full">
+      <div class="inline-flex h-20 w-full">
+        <button class="tab-button" data-tab-id='tab-content-simulation' id="default-page">Simulation</button>
+        <button class="tab-button" data-tab-id='tab-content-custom-algorithm'>Custom Algorithm</button>
+        <button class="tab-button" data-tab-id='tab-content-custom-terminal-code'>Custom Terminal Code</button>
       </div>
-      <div id="render-container" class="row flex-grow-1">
-        <div class="zoom-pan-container col-1">
-          <button id="canvas-zoom-in-button" class="btn btn-dark row w-100">+</button>
-          <button id="canvas-zoom-out-button" class="btn btn-dark row mt-1 w-100">-</button>
+      <div id="tab-content-simulation" class="tab-content relative h-full">
+        <div id="header" class="absolute top-0 w-full z-1">
+          <div id="time-container">
+            <div id="time">Time: &nbsp;</div>
+            <div id="time-value"></div>
+          </div>
+          <div id="message">Add robots by clicking anywhere on the canvas</div>
         </div>
-        <div id="canvas-binder" class="flex-grow-1">
-          <canvas id="canvas"></canvas>
+        <div id="render-container" class="h-full">
+          <div class="absolute top-5 left-5 z-1">
+            <button id="canvas-zoom-in-button" class="zoom-button">+</button>
+            <button id="canvas-zoom-out-button" class="zoom-button">-</button>
+          </div>
+          <div id="canvas-binder" class="h-full">
+            <canvas id="canvas" class="h-full"></canvas>
+          </div>
+          <div id="controls-ui-container" class="absolute top-0 right-0 z-2"></div>
         </div>
-        <div class="controls-ui-container"></div>
+      </div>
+      <div id="tab-content-custom-algorithm" class="tab-content">
+        <div id="custom-alg-input" class="h-full">
+            <textarea id="custom-alg-input-area"></textarea>
+          </div>
+      </div>
+      <div id="tab-content-custom-terminal-code" class="tab-content">
+        <div id="custom-terminal-code-input" class="h-full">
+          <textarea id="custom-terminal-code-input-area"></textarea>
+        </div>
       </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.14.7/dist/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+    
+    <!-- Load Tailwind to simplify CSS styling -->
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+
+    <!-- Load Panzoom to facilitate zooming into the HTML canvas -->
     <script src="https://unpkg.com/@panzoom/panzoom@4.6.0/dist/panzoom.min.js"></script>
-    <script type="module" src="./static/zoom_pan_feature.js"></script>
+    <script type="module" src="./static/feature_zoom_pan.js"></script>
+
+    <!-- Load CodeMirror for in-browser editing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.js" integrity="sha512-8RnEqURPUc5aqFEN04aQEiPlSAdE0jlFS/9iGgUyNtwFnSKCXhmB6ZTNl7LnDtDWKabJIASzXrzD0K+LYexU9g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/python/python.min.js" integrity="sha512-2M0GdbU5OxkGYMhakED69bw0c1pW3Nb0PeF3+9d+SnwN1ryPx3wiDdNqK3gSM7KAU/pEV+2tFJFbMKjKAahOkQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script type="module" src="./static/feature_code_editor.js"></script>
   </body>
 </html>

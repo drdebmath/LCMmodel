@@ -17,6 +17,8 @@ class Scheduler:
         initial_positions: list[list[float]] | None,
         robot_speeds: float | list[float],
         algorithm: str = Algorithm.GATHERING,
+        custom_alg: str = "",
+        custom_term_code: str = "",
         visibility_radius: float | list[float] | None = None,
         robot_orientations: list[Orientation] | None = None,
         robot_colors: list[str] | None = None,
@@ -59,6 +61,8 @@ class Scheduler:
                 threshold_precision=threshold_precision,
                 speed=robot_speeds_list[i],
                 algorithm=algorithm,
+                custom_alg=custom_alg,
+                custom_term_code=custom_term_code,
                 visibility_radius=self.visibility_radius,
                 rigid_movement=self.rigid_movement,
             )

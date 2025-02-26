@@ -15,6 +15,8 @@ class Robot:
         id: int,
         coordinates: Coordinates,
         algorithm: str,
+        custom_alg: str,
+        custom_term_code: str,
         speed: float = 1.0,
         color: str | None = None,
         visibility_radius: float | None = None,
@@ -25,6 +27,8 @@ class Robot:
         threshold_precision: float = 5,
     ):
         Robot._logger = logger
+        self.custom_alg = custom_alg
+        self.custom_term_code = custom_term_code
         self.speed = speed
         self.color = color
         self.visibility_radius = visibility_radius
@@ -58,6 +62,8 @@ class Robot:
                 self.algorithm = Algorithm.GATHERING
             case "SEC":
                 self.algorithm = Algorithm.SEC
+            case "Custom":
+                self.algorithm = Algorithm.CUSTOM
 
     def set_light(self, new_color: str, simulation_time: float) -> None:
         """
@@ -107,6 +113,7 @@ class Robot:
             return
 
         algo, algo_terminal = self._select_algorithm()
+
         self.calculated_position = self._compute(algo, algo_terminal)
         pos_str = (
             f"({self.calculated_position[0]}, {self.calculated_position[1]})"
@@ -173,6 +180,8 @@ class Robot:
                 return (self._midpoint, self._midpoint_terminal)
             case Algorithm.SEC:
                 return (self._smallest_enclosing_circle, self._sec_terminal)
+            case Algorithm.CUSTOM:
+                return (self._run_custom_alg, self._run_custom_term_code)
 
     def _interpolate(self, start: Coordinates, end: Coordinates, t: float) -> Coordinates:
         return Coordinates(start.x + t * (end.x - start.x), start.y + t * (end.y - start.y))
@@ -183,6 +192,20 @@ class Robot:
     def _robot_is_visible(self, coord: Coordinates):
         distance = math.dist(self.coordinates, coord)
         return self.visibility_radius > distance
+
+    # Helper function that wraps the execution of the custom user algorithm
+    def  _run_custom_alg(self):
+        result_dict = {'Coordinates': Coordinates, 'self': self}
+        # Can also pass globals() directly but this way it is more clear what variables the custom code needs
+        exec(self.custom_alg, result_dict)
+        return result_dict['output']
+    
+    # Helper function that wraps the execution of the custom user terminal code
+    def  _run_custom_term_code(self, coord: Coordinates, args: list[Circle]):
+        result_dict = {'coord': coord, 'args': args, 'Coordinates': Coordinates, 'self': self}
+        # Can also pass globals() directly but this way it is more clear what variables the custom code needs
+        exec(self.custom_term_code, result_dict)
+        return result_dict['output']
 
     def _midpoint(self) -> tuple[Coordinates, list[any]]:
         x = y = 0

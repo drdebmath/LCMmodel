@@ -27,3 +27,4 @@ class DistributionType(Enum):
 class Algorithm(Enum):
     GATHERING = "Gathering"
     SEC = "SEC"
+    CUSTOM = "Custom"
