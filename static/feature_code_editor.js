@@ -1,4 +1,4 @@
-import configOptions from "./main.js";
+import {configOptions} from "./main.js";
 
 let codeMirrorOptions = {
   lineNumbers: true,

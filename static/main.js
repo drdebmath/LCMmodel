@@ -355,4 +355,4 @@ function translateToCanvas(canvas, x, y) {
   return [x - canvas.width / 2, y - canvas.height / 2];
 }
 
-export default configOptions;
+export {configOptions, resizeCanvas};
