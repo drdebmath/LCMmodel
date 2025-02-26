@@ -1,6 +1,7 @@
 # Asynchronous Scheduler
 
 A simulator for Look-Compute-Move robots in the Asynchronous System
+This code is not intended to be run in a production environment because the custom algorithm feature allows for arbitrary code execution
 
 ## Installing required packages
 
