@@ -1,7 +1,3 @@
-git add scheduler.py
-git commit -m "Added fault-handling logic (Crash, Byzantine, Delay) to scheduler.py"
-git push origin feature/faults
-
 from enums import *
 from type_defs import *
 from robot import Robot
