@@ -1,3 +1,7 @@
+git add scheduler.py
+git commit -m "Added fault-handling logic (Crash, Byzantine, Delay) to scheduler.py"
+git push origin feature/faults
+
 from enums import *
 from type_defs import *
 from robot import Robot
@@ -64,8 +68,16 @@ class Scheduler:
                 visibility_radius=self.visibility_radius,
                 rigid_movement=self.rigid_movement,
             )
+            new_robot.fault_type = self._assign_fault_type(i)  # Assign fault dynamically
             self.robots.append(new_robot)
+def _assign_fault_type(self, robot_id: int) -> str | None:
+    """Assigns fault properties to robots based on probability."""
+    fault_types = ["crash", "byzantine", "delay", None]  # Possible faults
+    probabilities = [0.2, 0.2, 0.2, 0.4]  # Adjust probabilities as needed
 
+    assigned_fault = np.random.choice(fault_types, p=probabilities)
+    Scheduler._logger.info(f"Assigning fault {assigned_fault} to Robot {robot_id}")
+    return assigned_fault
         self.initialize_queue_exponential()
         Robot._generator = self.generator
 
@@ -137,6 +149,22 @@ class Scheduler:
             exit_code = 0
         else:
             robot = self.robots[current_event.id]
+            
+            # Crash Fault: Skip execution
+if robot.fault_type == "crash":
+    Scheduler._logger.info(f"R{robot.id} is crashed and will not act this round.")
+    return exit_code  # Skip execution for crashed robots
+
+# Byzantine Fault: Modify snapshot before execution
+if robot.fault_type == "byzantine":
+    robot.snapshot = self._introduce_byzantine_error(robot.snapshot)
+    Scheduler._logger.info(f"R{robot.id} is Byzantine and is sending false data.")
+
+# Delayed Response Fault: 30% chance to skip movement
+if robot.fault_type == "delay" and np.random.random() < 0.3:
+    Scheduler._logger.info(f"R{robot.id} is delayed and skipping movement this round.")
+    return exit_code  # Skip movement step
+
             if event_state == RobotState.LOOK:
                 robot.state = RobotState.LOOK
                 robot.look(self.get_snapshot(time), time)
@@ -240,3 +268,9 @@ class Scheduler:
 def round_coordinates(coord: Coordinates, precision: int):
 
     return Coordinates(round(coord.x, precision), round(coord.y, precision))
+def _introduce_byzantine_error(self, snapshot):
+    """Byzantine robots modify snapshot data to mislead others."""
+    for key in snapshot.keys():
+        if np.random.random() < 0.5:  # 50% chance to corrupt data
+            snapshot[key].pos = Coordinates(np.random.uniform(-100, 100), np.random.uniform(-100, 100))
+    return snapshot
