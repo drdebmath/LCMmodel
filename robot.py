@@ -23,6 +23,7 @@ class Robot:
         multiplicity_detection: bool = False,
         rigid_movement: bool = False,
         threshold_precision: float = 5,
+        fault_type: str | None = None,
     ):
         Robot._logger = logger
         self.speed = speed
@@ -46,6 +47,7 @@ class Robot:
         self.frozen = False  # true if we skipped move step
         self.terminated = False
         self.sec = None  # Stores the calculated SEC
+        self.fault_type = fault_type  # store fault type
 
         match algorithm:
             case "Gathering":
@@ -53,12 +55,16 @@ class Robot:
             case "SEC":
                 self.algorithm = Algorithm.SEC
 
-    def look(
+		def look(self, snapshot: dict[Id, SnapshotDetails], time: float) -> None:
         self,
         snapshot: dict[Id, SnapshotDetails],
         time: float,
     ) -> None:
         self.state = RobotState.LOOK
+        if self.fault_type == "byzantine":
+    	snapshot = self._introduce_byzantine_error(snapshot)
+    	Robot._logger.info(f"R{self.id} is Byzantine and modified its snapshot.")
+
 
         self.snapshot = {}
         for key, value in snapshot.items():
@@ -458,6 +464,15 @@ class Robot:
 
     def __str__(self):
         return f"R{self.id}, speed: {self.speed}, color: {self.color}, coordinates: {self.coordinates}"
-f.id}}} LOOK -- Normal observation executed")
+	def _introduce_byzantine_error(self, snapshot):
+        """Byzantine robots modify snapshot data to mislead others."""
+        for key in snapshot.keys():
+            if np.random.random() < 0.5:  # 50% chance to corrupt data
+                snapshot[key].pos = Coordinates(
+                    np.random.uniform(-100, 100),
+                    np.random.uniform(-100, 100)
+                )
+        return snapshot
+	Robot._logger.info(f"[Robot {self.id}] LOOK -- Normal observation executed")
         else:
             self._logger.info(f"[Robot {self.id}] Faulty sensor, snapshot not updated")
