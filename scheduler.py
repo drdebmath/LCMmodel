@@ -1,3 +1,8 @@
+git add scheduler.py
+git commit -m "Added fault-handling logic (Crash, Byzantine, Delay) to scheduler.py"
+git push origin feature/faults
+
+from enums import *
 from type_defs import *
 from robot import Robot
 import numpy as np
@@ -101,6 +106,13 @@ def _assign_fault_type(self, robot_id: int) -> str | None:
 def _is_visible(self, observer: Robot, target: Robot) -> bool:
     if observer.visibility_radius is None:
         return True  # Unlimited visibility
+
+    # Obstructed visibility check
+    if self.obstructed_visibility:
+        for other in self.robots:
+            if other.id != observer.id and other.id != target.id:
+                if self._is_between(observer.coordinates, other.coordinates, target.coordinates):
+                    return False  # Obstructed
     observer_position = observer.coordinates
     target_position = target.coordinates
     distance = math.dist(
@@ -108,6 +120,23 @@ def _is_visible(self, observer: Robot, target: Robot) -> bool:
         (target_position.x, target_position.y)
     )
     return distance <= observer.visibility_radius
+    
+def _is_between(self, a: Coordinates, b: Coordinates, c: Coordinates) -> bool:
+    # Checks if b is between a and c
+    cross_product = (b.y - a.y) * (c.x - a.x) - (b.x - a.x) * (c.y - a.y)
+    if abs(cross_product) > 1e-6:
+        return False  # Not collinear
+
+    dot_product = (b.x - a.x) * (c.x - a.x) + (b.y - a.y) * (c.y - a.y)
+    if dot_product < 0:
+        return False
+
+    squared_length_ac = (c.x - a.x) ** 2 + (c.y - a.y) ** 2
+    if dot_product > squared_length_ac:
+        return False
+
+    return True
+
 
 
     def generate_event(self, current_event: Event) -> None:
