@@ -1,3 +1,7 @@
+git add scheduler.py
+git commit -m "Added fault-handling logic (Crash, Byzantine, Delay) to scheduler.py"
+git push origin feature/faults
+
 from enums import *
 from type_defs import *
 from robot import Robot
@@ -66,10 +70,6 @@ class Scheduler:
             )
             new_robot.fault_type = self._assign_fault_type(i)  # Assign fault dynamically
             self.robots.append(new_robot)
-            
-self.initialize_queue_exponential()
-Robot._generator = self.generator 
-				
 def _assign_fault_type(self, robot_id: int) -> str | None:
     """Assigns fault properties to robots based on probability."""
     fault_types = ["crash", "byzantine", "delay", None]  # Possible faults
@@ -78,6 +78,8 @@ def _assign_fault_type(self, robot_id: int) -> str | None:
     assigned_fault = np.random.choice(fault_types, p=probabilities)
     Scheduler._logger.info(f"Assigning fault {assigned_fault} to Robot {robot_id}")
     return assigned_fault
+        self.initialize_queue_exponential()
+        Robot._generator = self.generator
 
     def get_snapshot(
         self, time: float, visualization_snapshot: bool = False
@@ -152,7 +154,7 @@ def _assign_fault_type(self, robot_id: int) -> str | None:
 if robot.fault_type == "crash":
     Scheduler._logger.info(f"R{robot.id} is crashed and will not act this round.")
     return exit_code  # Skip execution for crashed robots
-	
+
 # Byzantine Fault: Modify snapshot before execution
 if robot.fault_type == "byzantine":
     robot.snapshot = self._introduce_byzantine_error(robot.snapshot)
@@ -161,9 +163,9 @@ if robot.fault_type == "byzantine":
 # Delayed Response Fault: 30% chance to skip movement
 if robot.fault_type == "delay" and np.random.random() < 0.3:
     Scheduler._logger.info(f"R{robot.id} is delayed and skipping movement this round.")
-		return exit_code  # Skip movement step
+    return exit_code  # Skip movement step
 
-if event_state == RobotState.LOOK:
+            if event_state == RobotState.LOOK:
                 robot.state = RobotState.LOOK
                 robot.look(self.get_snapshot(time), time)
 
@@ -171,17 +173,17 @@ if event_state == RobotState.LOOK:
                 if robot.terminated == True:
                     return 4
                 exit_code = 1
-elif event_state == RobotState.MOVE:
+            elif event_state == RobotState.MOVE:
                 robot.move(time)
                 exit_code = 2
-elif event_state == RobotState.WAIT:
+            elif event_state == RobotState.WAIT:
                 robot.wait(time)
                 exit_code = 3
 
-self.generate_event(current_event)
-return exit_code
+        self.generate_event(current_event)
+        return exit_code
 
-def initialize_queue(self) -> None:
+    def initialize_queue(self) -> None:
         # Set the lambda parameter (average rate of occurrences)
         lambda_value = 5  # 5 occurrences per interval
 
@@ -193,7 +195,7 @@ def initialize_queue(self) -> None:
         # Display the generated numbers
         Scheduler._logger.info(poisson_numbers)
 
-def initialize_queue_exponential(self) -> None:
+    def initialize_queue_exponential(self) -> None:
         Scheduler._logger.info(f"Seed used: {self.seed}")
 
         # Generate time intervals for n events
@@ -214,14 +216,14 @@ def initialize_queue_exponential(self) -> None:
 
         heapq.heapify(self.priority_queue)
 
-def _all_robots_reached(self) -> bool:
+    def _all_robots_reached(self) -> bool:
         for robot in self.robots:
             if robot.frozen == False:
                 return False
         return True
 
     # Can be improved when it comes to precision/detection
-def _detect_multiplicity(self, snapshot: dict[int, SnapshotDetails]):
+    def _detect_multiplicity(self, snapshot: dict[int, SnapshotDetails]):
         positions = [(v.pos, k) for k, v in snapshot.items()]
 
         positions.sort()
