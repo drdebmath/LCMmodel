@@ -1,8 +1,3 @@
-git add scheduler.py
-git commit -m "Added fault-handling logic (Crash, Byzantine, Delay) to scheduler.py"
-git push origin feature/faults
-
-from enums import *
 from type_defs import *
 from robot import Robot
 import numpy as np
@@ -82,21 +77,38 @@ def _assign_fault_type(self, robot_id: int) -> str | None:
         Robot._generator = self.generator
 
     def get_snapshot(
-        self, time: float, visualization_snapshot: bool = False
-    ) -> dict[int, SnapshotDetails]:
-        snapshot = {}
-        for robot in self.robots:
+    self, observer_robot: Robot, time: float, visualization_snapshot: bool = False
+) -> dict[int, SnapshotDetails]:
+    snapshot = {}
+    for robot in self.robots:
+        if robot.id == observer_robot.id or self._is_visible(observer_robot, robot):
             snapshot[robot.id] = SnapshotDetails(
-                robot.get_position(time), robot.state, robot.frozen, robot.terminated, 1
+                robot.get_position(time),
+                robot.state,
+                robot.frozen,
+                robot.terminated,
+                1
             )
 
-        self._detect_multiplicity(snapshot)  # in-place
-        if visualization_snapshot:
-            self.visualization_snapshots.append((time, snapshot))
-        else:
-            self.snapshot_history.append((time, snapshot))
+    self._detect_multiplicity(snapshot)  # in-place
+    if visualization_snapshot:
+        self.visualization_snapshots.append((time, snapshot))
+    else:
+        self.snapshot_history.append((time, snapshot))
 
-        return snapshot
+    return snapshot
+
+def _is_visible(self, observer: Robot, target: Robot) -> bool:
+    if observer.visibility_radius is None:
+        return True  # Unlimited visibility
+    observer_position = observer.coordinates
+    target_position = target.coordinates
+    distance = math.dist(
+        (observer_position.x, observer_position.y),
+        (target_position.x, target_position.y)
+    )
+    return distance <= observer.visibility_radius
+
 
     def generate_event(self, current_event: Event) -> None:
         # Visualization events
