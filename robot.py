@@ -3,6 +3,7 @@ from type_defs import *
 from typing import Callable
 import math
 import logging
+import numpy as np
 
 
 class Robot:
@@ -55,16 +56,13 @@ class Robot:
             case "SEC":
                 self.algorithm = Algorithm.SEC
 
-		def look(self, snapshot: dict[Id, SnapshotDetails], time: float) -> None:
-        self,
-        snapshot: dict[Id, SnapshotDetails],
-        time: float,
-    ) -> None:
+    def look(self, snapshot: dict[Id, SnapshotDetails], time: float) -> None:
         self.state = RobotState.LOOK
-        if self.fault_type == "byzantine":
-    	snapshot = self._introduce_byzantine_error(snapshot)
-    	Robot._logger.info(f"R{self.id} is Byzantine and modified its snapshot.")
 
+        # Byzantine Fault: Modify snapshot before processing
+        if self.fault_type == "byzantine":
+            snapshot = self._introduce_byzantine_error(snapshot)
+            Robot._logger.info(f"R{self.id} is Byzantine and modified its snapshot.")
 
         self.snapshot = {}
         for key, value in snapshot.items():
@@ -85,7 +83,6 @@ class Robot:
         if len(self.snapshot) == 1:
             self.frozen = True
             self.terminated = True
-
             self.wait(time)
             return
 
@@ -133,7 +130,6 @@ class Robot:
         self.start_position = self.coordinates
 
     def wait(self, time: float) -> None:
-
         self.coordinates = self.get_position(time)
         self.end_time = time
         self.state = RobotState.WAIT
@@ -149,7 +145,6 @@ class Robot:
         self.end_time = None
 
     def get_position(self, time: float) -> Coordinates:
-
         if self.state == RobotState.LOOK or self.state == RobotState.WAIT:
             return self.coordinates
 
@@ -203,7 +198,6 @@ class Robot:
         return (Coordinates(x, y), [])
 
     def _midpoint_terminal(self, coord: Coordinates, args=None) -> bool:
-
         robot_ids = self.snapshot.keys()
         for id in robot_ids:
             if math.dist(self.snapshot[id].pos, coord) > math.pow(
@@ -273,48 +267,6 @@ class Robot:
         Robot._generator.shuffle(points_copy)
         return self._sec_welzl_recur(points_copy, [], len(points_copy))
 
-    def _sec(self) -> Circle:
-        """
-        Returns smallest enclosing circle given number of robots in the form of
-        (Center, Radius)
-        Time Complexity: O(n^3)
-        """
-        sec: Circle = Circle((0, 0), -1)
-
-        ids = self._get_visible_robots()
-        num_robots = len(ids)
-        for x in range(num_robots - 1):
-            for y in range(x + 1, num_robots):
-                i = ids[x]
-                j = ids[y]
-
-                a = self.snapshot[i].pos
-                b = self.snapshot[j].pos
-                circle = self._circle_from_two(a, b)
-                currRadius = circle.radius
-                maxRadius = sec.radius
-                if currRadius > maxRadius:
-                    sec = circle
-
-        for x in range(num_robots - 2):
-            for y in range(x + 1, num_robots - 1):
-                for z in range(y + 1, num_robots):
-                    i = ids[x]
-                    j = ids[y]
-                    k = ids[z]
-
-                    a = self.snapshot[i].pos
-                    b = self.snapshot[j].pos
-                    c = self.snapshot[k].pos
-
-                    if self._is_acute_triangle(a, b, c):
-                        circle = self._circle_from_three(a, b, c)
-                        currRadius = circle.radius
-                        maxRadius = sec.radius
-                        if currRadius > maxRadius:
-                            sec = circle
-        return sec
-
     def _sec_welzl_recur(
         self, points: list[Id], R: list[Coordinates], n: int
     ) -> Circle:
@@ -366,7 +318,6 @@ class Robot:
     def _closest_point_on_circle(
         self, circle: Circle, point: Coordinates
     ) -> Coordinates:
-
         # Vector from the center of the circle to the point
         center: Coordinates = circle.center
         radius: float = circle.radius
@@ -464,7 +415,8 @@ class Robot:
 
     def __str__(self):
         return f"R{self.id}, speed: {self.speed}, color: {self.color}, coordinates: {self.coordinates}"
-	def _introduce_byzantine_error(self, snapshot):
+
+    def _introduce_byzantine_error(self, snapshot):
         """Byzantine robots modify snapshot data to mislead others."""
         for key in snapshot.keys():
             if np.random.random() < 0.5:  # 50% chance to corrupt data
@@ -473,6 +425,3 @@ class Robot:
                     np.random.uniform(-100, 100)
                 )
         return snapshot
-	Robot._logger.info(f"[Robot {self.id}] LOOK -- Normal observation executed")
-        else:
-            self._logger.info(f"[Robot {self.id}] Faulty sensor, snapshot not updated")
