@@ -1,4 +1,5 @@
 from typing import NamedTuple
+from enums import RobotState  # Import RobotState from enums.py
 
 Time = float
 Id = int
@@ -33,14 +34,14 @@ class Circle(NamedTuple):
 class SnapshotDetails(NamedTuple):
     """
     pos: Coordinates \n
-    state: float \n
+    state: RobotState \n
     frozen: bool \n
     terminated: bool \n
     multiplicity: int | None
     """
 
     pos: Coordinates
-    state: str
+    state: RobotState  # Use RobotState instead of str
     frozen: bool
     terminated: bool
     multiplicity: int | None
@@ -60,11 +61,11 @@ class Event(NamedTuple):
 
 class Orientation(NamedTuple):
     """
-    translation = float \n
-    rotation = float \n
-    reflection = float
+    translation: float \n
+    rotation: float \n
+    reflection: float
     """
 
-    translation = float
-    rotation = float
-    reflection = float
+    translation: float
+    rotation: float
+    reflection: float
