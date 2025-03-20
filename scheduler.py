@@ -50,9 +50,13 @@ class Scheduler:
         self.lambda_rate = labmda_rate  # Average number of events per time unit
         self.robots: list[Robot] = []
 
+        # Initialize robot speeds
         if isinstance(robot_speeds, float) or isinstance(robot_speeds, int):
             robot_speeds_list = [robot_speeds] * num_of_robots
+        else:
+            robot_speeds_list = robot_speeds
 
+        # Initialize robots
         for i in range(num_of_robots):
             new_robot = Robot(
                 logger=logger,
@@ -66,74 +70,74 @@ class Scheduler:
             )
             new_robot.fault_type = self._assign_fault_type(i)  # Assign fault dynamically
             self.robots.append(new_robot)
-def _assign_fault_type(self, robot_id: int) -> str | None:
-    """Assigns fault properties to robots based on probability."""
-    fault_types = ["crash", "byzantine", "delay", None]  # Possible faults
-    probabilities = [0.2, 0.2, 0.2, 0.4]  # Adjust probabilities as needed
 
-    assigned_fault = np.random.choice(fault_types, p=probabilities)
-    Scheduler._logger.info(f"Assigning fault {assigned_fault} to Robot {robot_id}")
-    return assigned_fault
         self.initialize_queue_exponential()
-        Robot._generator = self.generator
+
+    def _assign_fault_type(self, robot_id: int) -> str | None:
+        """Assigns fault properties to robots based on probability."""
+        fault_types = ["crash", "byzantine", "delay", None]  # Possible faults
+        probabilities = [0.2, 0.2, 0.2, 0.4]  # Adjust probabilities as needed
+
+        assigned_fault = np.random.choice(fault_types, p=probabilities)
+        Scheduler._logger.info(f"Assigning fault {assigned_fault} to Robot {robot_id}")
+        return assigned_fault
 
     def get_snapshot(
-    self, observer_robot: Robot, time: float, visualization_snapshot: bool = False
-) -> dict[int, SnapshotDetails]:
-    snapshot = {}
-    for robot in self.robots:
-        if robot.id == observer_robot.id or self._is_visible(observer_robot, robot):
-            snapshot[robot.id] = SnapshotDetails(
-                robot.get_position(time),
-                robot.state,
-                robot.frozen,
-                robot.terminated,
-                1
-            )
+        self, observer_robot: Robot, time: float, visualization_snapshot: bool = False
+    ) -> dict[int, SnapshotDetails]:
+        snapshot = {}
+        for robot in self.robots:
+            if robot.id == observer_robot.id or self._is_visible(observer_robot, robot):
+                snapshot[robot.id] = SnapshotDetails(
+                    robot.get_position(time),
+                    robot.state,
+                    robot.frozen,
+                    robot.terminated,
+                    1
+                )
 
-    self._detect_multiplicity(snapshot)  # in-place
-    if visualization_snapshot:
-        self.visualization_snapshots.append((time, snapshot))
-    else:
-        self.snapshot_history.append((time, snapshot))
+        self._detect_multiplicity(snapshot)  # in-place
+        if visualization_snapshot:
+            self.visualization_snapshots.append((time, snapshot))
+        else:
+            self.snapshot_history.append((time, snapshot))
 
-    return snapshot
+        return snapshot
 
-def _is_visible(self, observer: Robot, target: Robot) -> bool:
-    if observer.visibility_radius is None:
-        return True  # Unlimited visibility
+    def _is_visible(self, observer: Robot, target: Robot) -> bool:
+        if observer.visibility_radius is None:
+            return True  # Unlimited visibility
 
-    # Obstructed visibility check
-    if self.obstructed_visibility:
-        for other in self.robots:
-            if other.id != observer.id and other.id != target.id:
-                if self._is_between(observer.coordinates, other.coordinates, target.coordinates):
-                    return False  # Obstructed
-    observer_position = observer.coordinates
-    target_position = target.coordinates
-    distance = math.dist(
-        (observer_position.x, observer_position.y),
-        (target_position.x, target_position.y)
-    )
-    return distance <= observer.visibility_radius
-    
-def _is_between(self, a: Coordinates, b: Coordinates, c: Coordinates) -> bool:
-    # Checks if b is between a and c
-    cross_product = (b.y - a.y) * (c.x - a.x) - (b.x - a.x) * (c.y - a.y)
-    if abs(cross_product) > 1e-6:
-        return False  # Not collinear
+        # Obstructed visibility check
+        if self.obstructed_visibility:
+            for other in self.robots:
+                if other.id != observer.id and other.id != target.id:
+                    if self._is_between(observer.coordinates, other.coordinates, target.coordinates):
+                        return False  # Obstructed
 
-    dot_product = (b.x - a.x) * (c.x - a.x) + (b.y - a.y) * (c.y - a.y)
-    if dot_product < 0:
-        return False
+        observer_position = observer.coordinates
+        target_position = target.coordinates
+        distance = math.dist(
+            (observer_position.x, observer_position.y),
+            (target_position.x, target_position.y)
+        )
+        return distance <= observer.visibility_radius
 
-    squared_length_ac = (c.x - a.x) ** 2 + (c.y - a.y) ** 2
-    if dot_product > squared_length_ac:
-        return False
+    def _is_between(self, a: Coordinates, b: Coordinates, c: Coordinates) -> bool:
+        # Checks if b is between a and c
+        cross_product = (b.y - a.y) * (c.x - a.x) - (b.x - a.x) * (c.y - a.y)
+        if abs(cross_product) > 1e-6:
+            return False  # Not collinear
 
-    return True
+        dot_product = (b.x - a.x) * (c.x - a.x) + (b.y - a.y) * (c.y - a.y)
+        if dot_product < 0:
+            return False
 
+        squared_length_ac = (c.x - a.x) ** 2 + (c.y - a.y) ** 2
+        if dot_product > squared_length_ac:
+            return False
 
+        return True
 
     def generate_event(self, current_event: Event) -> None:
         # Visualization events
@@ -186,21 +190,21 @@ def _is_between(self, a: Coordinates, b: Coordinates, c: Coordinates) -> bool:
             exit_code = 0
         else:
             robot = self.robots[current_event.id]
-            
+
             # Crash Fault: Skip execution
-if robot.fault_type == "crash":
-    Scheduler._logger.info(f"R{robot.id} is crashed and will not act this round.")
-    return exit_code  # Skip execution for crashed robots
+            if robot.fault_type == "crash":
+                Scheduler._logger.info(f"R{robot.id} is crashed and will not act this round.")
+                return exit_code  # Skip execution for crashed robots
 
-# Byzantine Fault: Modify snapshot before execution
-if robot.fault_type == "byzantine":
-    robot.snapshot = self._introduce_byzantine_error(robot.snapshot)
-    Scheduler._logger.info(f"R{robot.id} is Byzantine and is sending false data.")
+            # Byzantine Fault: Modify snapshot before execution
+            if robot.fault_type == "byzantine":
+                robot.snapshot = self._introduce_byzantine_error(robot.snapshot)
+                Scheduler._logger.info(f"R{robot.id} is Byzantine and is sending false data.")
 
-# Delayed Response Fault: 30% chance to skip movement
-if robot.fault_type == "delay" and np.random.random() < 0.3:
-    Scheduler._logger.info(f"R{robot.id} is delayed and skipping movement this round.")
-    return exit_code  # Skip movement step
+            # Delayed Response Fault: 30% chance to skip movement
+            if robot.fault_type == "delay" and np.random.random() < 0.3:
+                Scheduler._logger.info(f"R{robot.id} is delayed and skipping movement this round.")
+                return exit_code  # Skip movement step
 
             if event_state == RobotState.LOOK:
                 robot.state = RobotState.LOOK
@@ -219,18 +223,6 @@ if robot.fault_type == "delay" and np.random.random() < 0.3:
 
         self.generate_event(current_event)
         return exit_code
-
-    def initialize_queue(self) -> None:
-        # Set the lambda parameter (average rate of occurrences)
-        lambda_value = 5  # 5 occurrences per interval
-
-        # Generate Poisson-distributed random numbers
-        generator = np.random.default_rng()
-        num_samples = 2  # Total number of samples to generate
-        poisson_numbers = generator.poisson(lambda_value, num_samples)
-
-        # Display the generated numbers
-        Scheduler._logger.info(poisson_numbers)
 
     def initialize_queue_exponential(self) -> None:
         Scheduler._logger.info(f"Seed used: {self.seed}")
@@ -259,7 +251,6 @@ if robot.fault_type == "delay" and np.random.random() < 0.3:
                 return False
         return True
 
-    # Can be improved when it comes to precision/detection
     def _detect_multiplicity(self, snapshot: dict[int, SnapshotDetails]):
         positions = [(v.pos, k) for k, v in snapshot.items()]
 
@@ -301,13 +292,13 @@ if robot.fault_type == "delay" and np.random.random() < 0.3:
             i += len(multiplicity_group)
             multiplicity = 1
 
+    def _introduce_byzantine_error(self, snapshot):
+        """Byzantine robots modify snapshot data to mislead others."""
+        for key in snapshot.keys():
+            if np.random.random() < 0.5:  # 50% chance to corrupt data
+                snapshot[key].pos = Coordinates(np.random.uniform(-100, 100), np.random.uniform(-100, 100))
+        return snapshot
+
 
 def round_coordinates(coord: Coordinates, precision: int):
-
     return Coordinates(round(coord.x, precision), round(coord.y, precision))
-def _introduce_byzantine_error(self, snapshot):
-    """Byzantine robots modify snapshot data to mislead others."""
-    for key in snapshot.keys():
-        if np.random.random() < 0.5:  # 50% chance to corrupt data
-            snapshot[key].pos = Coordinates(np.random.uniform(-100, 100), np.random.uniform(-100, 100))
-    return snapshot
