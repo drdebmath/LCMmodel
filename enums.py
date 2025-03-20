@@ -1,6 +1,5 @@
 from enum import Enum
 
-
 class RobotState(str, Enum):
     LOOK = "LOOK"
     MOVE = "MOVE"
@@ -14,18 +13,15 @@ class RobotState(str, Enum):
             return RobotState.WAIT
         elif self == RobotState.WAIT:
             return RobotState.LOOK
-
+        elif self == RobotState.TERMINATED:
+            return RobotState.TERMINATED
 
 class SchedulerType(Enum):
     ASYNC = "Async"
 
-
 class DistributionType(Enum):
     EXPONENTIAL = "Exponential"
-
 
 class Algorithm(Enum):
     GATHERING = "Gathering"
     SEC = "SEC"
-import os
-print("Current Working Directory:", os.getcwd())
