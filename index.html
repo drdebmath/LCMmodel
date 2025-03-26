@@ -1,73 +1,53 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>LCM Robot Visualizer</title>
-  <style>
-    /* Mandatory base styles */
-    body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background-color: black;
-    }
-    
-    #canvas {
-      display: block;
-      width: 100vw;
-      height: 100vh;
-      background-color: #222;
-    }
-    
-    /* Debug overlay - will appear if JS runs */
-    #debug {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      color: lime;
-      font-family: monospace;
-      z-index: 100;
-    }
-  </style>
-</head>
-<body>
-  <!-- Debug info will appear here if JS works -->
-  <div id="debug">JS NOT LOADED</div>
-  
-  <!-- Main canvas -->
-  <canvas id="canvas"></canvas>
+<script>
+// ====== ROBOT VISUALIZATION CORE ======
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const debug = document.getElementById('debug');
 
-  <!-- INLINE SCRIPT - Guaranteed to execute -->
-  <script>
-    // ====== MANDATORY TEST VISUALIZATION ======
-    const debug = document.getElementById('debug');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    // 1. Set canvas to window size
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    
-    // 2. Draw impossible-to-miss test pattern
-    ctx.fillStyle = '#FF0000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    ctx.fillStyle = '#00FF00';
-    ctx.font = 'bold 48px Arial';
-    ctx.fillText('VISUALIZATION WORKING!', 50, 100);
-    
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = '24px Arial';
-    ctx.fillText(`Canvas: ${canvas.width}x${canvas.height}`, 50, 150);
-    
-    // 3. Update debug info
-    debug.innerHTML = `
-      ✅ JavaScript Loaded<br>
-      🖥️ ${canvas.width}x${canvas.height}<br>
-      ⏱️ ${new Date().toLocaleTimeString()}
-    `;
-    
-    // ====== NEXT STEPS ======
-    console.log("Replace this script with your visualization code");
-  </script>
-</body>
-</html>
+// Canvas setup
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+
+// Color mapping (from your enums.py)
+const FAULT_COLORS = {
+  CRASH: '#FF0000',
+  BYZANTINE: '#FFA500',
+  DELAY: '#FFFF00',
+  NORMAL: '#00AAFF'
+};
+
+// Main draw function
+function drawRobots(robots) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  robots.forEach(robot => {
+    ctx.fillStyle = FAULT_COLORS[robot.fault] || FAULT_COLORS.NORMAL;
+    ctx.beginPath();
+    ctx.arc(robot.x, robot.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// ====== CONNECTION TO PYTHON ======
+// Option A: WebSocket (recommended)
+const socket = new WebSocket('ws://localhost:8001');
+
+socket.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  drawRobots(data.robots);
+  debug.innerHTML = `Robots: ${data.robots.length}`;
+};
+
+// Option B: Polling (fallback)
+// setInterval(() => {
+//   fetch('/robot-data')
+//     .then(res => res.json())
+//     .then(drawRobots);
+// }, 100);
+
+// Initial setup
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+</script>
