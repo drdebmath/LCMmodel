@@ -1,4 +1,4 @@
-// main.js - LCM Robot Visualization
+/* main.js - LCM Robot Visualization */
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const statusDiv = document.getElementById('status');
@@ -16,16 +16,20 @@ const FAULT_COLORS = {
 
 // Initialize
 function init() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    resizeCanvas();
     statusDiv.textContent = "Connecting to simulator...";
     connectWebSocket();
+}
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 }
 
 // WebSocket Connection
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}:8001`;
+    const wsUrl = `${protocol}//${window.location.host}/ws`; // Changed to use same host
     
     const socket = new WebSocket(wsUrl);
 
@@ -46,6 +50,10 @@ function connectWebSocket() {
     socket.onerror = (error) => {
         statusDiv.textContent = "Connection error";
         console.error("WebSocket error:", error);
+    };
+
+    socket.onclose = () => {
+        statusDiv.textContent = "Connection closed";
     };
 }
 
@@ -70,17 +78,21 @@ function drawRobots(robots) {
         ctx.arc(x, y, ROBOT_RADIUS, 0, Math.PI * 2);
         ctx.fill();
         
-        // Draw direction indicator
-        if (robot.direction) {
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(
-                x + Math.cos(robot.direction) * (ROBOT_RADIUS + 5),
-                y + Math.sin(robot.direction) * (ROBOT_RADIUS + 5)
-            );
-            ctx.stroke();
+        // Draw direction indicator if available
+        if (robot.velocity) {
+            const [vx, vy] = robot.velocity;
+            if (vx !== 0 || vy !== 0) {
+                const angle = Math.atan2(vy, vx);
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(
+                    x + Math.cos(angle) * (ROBOT_RADIUS + 5),
+                    y + Math.sin(angle) * (ROBOT_RADIUS + 5)
+                );
+                ctx.stroke();
+            }
         }
     });
 }
@@ -97,8 +109,9 @@ function calculateFPS() {
         frameCount = 0;
         return fps;
     }
+    return '--';
 }
 
 // Start visualization
 window.addEventListener('load', init);
-window.addEventListener('resize', init);
+window.addEventListener('resize', resizeCanvas);
