@@ -1,39 +1,40 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LCM Robot Visualization</title>
+  <title>LCM VISUAL TEST</title>
   <style>
-    /* Proper CSS syntax - fixed from your screenshot */
-    body {
-      margin: 0;
-      overflow: hidden;
-      background-color: #f5f5f5;
-      font-family: Arial, sans-serif;
-    }
-    
-    #canvas {
-      display: block;
-      width: 100vw;
-      height: 100vh;
-      background-color: white;
-    }
-    
-    /* Optional: Add loading message */
-    #loading {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 1.5em;
-    }
+    body { margin: 0; background: black; color: white; }
+    #canvas { display: block; border: 5px solid red; }
+    #debug { position: fixed; top: 0; left: 0; padding: 10px; }
   </style>
 </head>
 <body>
-  <div id="loading">Loading visualization...</div>
-  <canvas id="canvas"></canvas>
+  <div id="debug">DEBUG MODE ACTIVE</div>
+  <canvas id="canvas" width="800" height="600"></canvas>
   
-  <script defer src="main.js"></script>
+  <!-- INLINE SCRIPT (no external file dependency) -->
+  <script>
+    // FORCE VISIBLE TEST
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const debug = document.getElementById('debug');
+    
+    // 1. Make canvas visible
+    canvas.style.border = "5px solid lime";
+    
+    // 2. Draw impossible-to-miss content
+    ctx.fillStyle = 'yellow';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.fillStyle = 'black';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText('JAVASCRIPT IS WORKING!', 50, 50);
+    
+    // 3. Update debug panel
+    debug.innerHTML += `<br>Canvas: ${canvas.width}x${canvas.height}`;
+    debug.innerHTML += `<br>Time: ${new Date().toLocaleTimeString()}`;
+    
+    console.log("FORCE TEST SUCCESSFUL");
+  </script>
 </body>
 </html>
