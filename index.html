@@ -1,13 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="styles.css" />
-    <script defer src="main.js"></script>
-    <title>Visualization</title>
-  </head>
-  <body>
-    <canvas id="canvas"></canvas>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LCM Robot Visualization</title>
+  <style>
+    /* Proper CSS syntax - fixed from your screenshot */
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #f5f5f5;
+      font-family: Arial, sans-serif;
+    }
+    
+    #canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background-color: white;
+    }
+    
+    /* Optional: Add loading message */
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.5em;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading visualization...</div>
+  <canvas id="canvas"></canvas>
+  
+  <script defer src="main.js"></script>
+</body>
 </html>
