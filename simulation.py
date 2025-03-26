@@ -1,48 +1,108 @@
-import random
-from dataclasses import dataclass
-from typing import Optional, Literal
+import sys
+import os
+# Add the Downloads folder to Python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-@dataclass
-class Coordinates:
-    x: float  # Fixed from 'xs float'
-    y: float  # Fixed from 'ys float'
-
-class Robot:
-    def __init__(self, id: int, pos: Coordinates, fault: Optional[Literal["crash", "byzantine", "delay"]] = None):
-        self.id = id
-        self.pos = pos
-        self.fault = fault
-        self.frozen = False
-        print(f"🤖 Robot {id} at ({pos.x:.1f}, {pos.y:.1f}) | Fault: {fault or 'None'}")  # Fixed formatting
-
-    def move(self, target: Coordinates):
-        if self.fault == "crash":
-            print(f"💥 Robot {self.id} CRASHED and can't move")  # Fixed typo
-            return
-        if self.frozen or (self.fault == "delay" and random.random() < 0.3):
-            print(f"⏸️ Robot {self.id} DELAYED (frozen)")
-            self.frozen = True
-            return
-        print(f"🚀 Robot {self.id} moved from ({self.pos.x:.1f}, {self.pos.y:.1f}) → ({target.x:.1f}, {target.y:.1f})")
-        self.pos = target
+# Fix: Remove duplicate import
+from scheduler import Scheduler
+import logging
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from matplotlib.patches import Circle
 
 def main():
-    print("=== ROBOT SIMULATION ===")
-    robots = [
-        Robot(0, Coordinates(0, 0)),
-        Robot(1, Coordinates(1, 1), "crash"),
-        Robot(2, Coordinates(2, 2), "byzantine"),
-        Robot(3, Coordinates(3, 3), "delay")
-    ]
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("SwarmSim")
+    
+    # Reduced robot count for testing (1000 may be too heavy)
+    num_robots = 100  # Reduced from 1000 for initial testing
+    visibility_radius = 5.0
+    area_size = 50  # Reduced area for testing
+    
+    # Generate random initial positions
+    np.random.seed(42)
+    initial_positions = np.random.uniform(-area_size/2, area_size/2, (num_robots, 2)).tolist()
+    
+    # Create scheduler
+    try:
+        scheduler = Scheduler(
+            logger=logger,
+            seed=42,
+            num_of_robots=num_robots,
+            initial_positions=initial_positions,
+            robot_speeds=1.0,
+            algorithm="Gathering",
+            visibility_radius=visibility_radius,
+            obstructed_visibility=True,
+            fault_prob=0.3,
+            scheduler_type="ASYNC",
+            sampling_rate=0.1
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize scheduler: {str(e)}")
+        return
 
-    for step in range(1, 6):
-        print(f"\n🔄 **STEP {step}**")
-        for robot in robots:
-            target = Coordinates(
-                robot.pos.x + random.uniform(-1, 1),
-                robot.pos.y + random.uniform(-1, 1)
-            )
-            robot.move(target)
+    # Run simulation
+    logger.info("Starting simulation...")
+    while True:
+        result = scheduler.handle_event()
+        if result == -1:
+            break
+    
+    # Visualize if we have snapshots
+    if hasattr(scheduler, 'visualization_snapshots') and scheduler.visualization_snapshots:
+        visualize(scheduler)
+    else:
+        logger.warning("No visualization data collected")
+
+def visualize(scheduler):
+    """Improved visualization with error handling"""
+    try:
+        print("Preparing visualization...")
+        fig, ax = plt.subplots(figsize=(10, 10))  # Slightly smaller figure
+        
+        # Adjust visualization parameters based on robot count
+        robot_count = len(scheduler.robots)
+        marker_size = 6 if robot_count <= 100 else 3
+        frame_skip = max(1, robot_count // 100)  # Auto-adjust frame skipping
+        
+        # Color mapping
+        fault_colors = {
+            None: 'blue', 'crash': 'red', 
+            'byzantine': 'orange', 'delay': 'yellow'
+        }
+        
+        def update(frame):
+            try:
+                ax.clear()
+                time, snapshot = scheduler.visualization_snapshots[frame * frame_skip]
+                
+                # Draw robots
+                for robot_id, details in snapshot.items():
+                    robot = scheduler.robots[robot_id]
+                    ax.plot(details.pos.x, details.pos.y, 'o',
+                           color=fault_colors.get(robot.fault_type, 'purple'),
+                           markersize=marker_size,
+                           alpha=0.7)
+                
+                ax.set_title(f"Time: {time:.2f} | Robots: {len(snapshot)}")
+                ax.grid(True)
+                
+            except Exception as e:
+                print(f"Error rendering frame: {str(e)}")
+
+        # Create animation with blit=True for better performance
+        ani = FuncAnimation(fig, update, 
+                          frames=len(scheduler.visualization_snapshots)//frame_skip,
+                          interval=100,
+                          blit=False)
+        
+        plt.show()
+        
+    except Exception as e:
+        print(f"Visualization failed: {str(e)}")
 
 if __name__ == "__main__":
     main()
