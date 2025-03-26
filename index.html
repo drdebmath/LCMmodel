@@ -1,40 +1,73 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>LCM VISUAL TEST</title>
+  <title>LCM Robot Visualizer</title>
   <style>
-    body { margin: 0; background: black; color: white; }
-    #canvas { display: block; border: 5px solid red; }
-    #debug { position: fixed; top: 0; left: 0; padding: 10px; }
+    /* Mandatory base styles */
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: black;
+    }
+    
+    #canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background-color: #222;
+    }
+    
+    /* Debug overlay - will appear if JS runs */
+    #debug {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: lime;
+      font-family: monospace;
+      z-index: 100;
+    }
   </style>
 </head>
 <body>
-  <div id="debug">DEBUG MODE ACTIVE</div>
-  <canvas id="canvas" width="800" height="600"></canvas>
+  <!-- Debug info will appear here if JS works -->
+  <div id="debug">JS NOT LOADED</div>
   
-  <!-- INLINE SCRIPT (no external file dependency) -->
+  <!-- Main canvas -->
+  <canvas id="canvas"></canvas>
+
+  <!-- INLINE SCRIPT - Guaranteed to execute -->
   <script>
-    // FORCE VISIBLE TEST
+    // ====== MANDATORY TEST VISUALIZATION ======
+    const debug = document.getElementById('debug');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const debug = document.getElementById('debug');
     
-    // 1. Make canvas visible
-    canvas.style.border = "5px solid lime";
+    // 1. Set canvas to window size
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
     
-    // 2. Draw impossible-to-miss content
-    ctx.fillStyle = 'yellow';
+    // 2. Draw impossible-to-miss test pattern
+    ctx.fillStyle = '#FF0000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    ctx.fillStyle = 'black';
-    ctx.font = 'bold 24px Arial';
-    ctx.fillText('JAVASCRIPT IS WORKING!', 50, 50);
+    ctx.fillStyle = '#00FF00';
+    ctx.font = 'bold 48px Arial';
+    ctx.fillText('VISUALIZATION WORKING!', 50, 100);
     
-    // 3. Update debug panel
-    debug.innerHTML += `<br>Canvas: ${canvas.width}x${canvas.height}`;
-    debug.innerHTML += `<br>Time: ${new Date().toLocaleTimeString()}`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '24px Arial';
+    ctx.fillText(`Canvas: ${canvas.width}x${canvas.height}`, 50, 150);
     
-    console.log("FORCE TEST SUCCESSFUL");
+    // 3. Update debug info
+    debug.innerHTML = `
+      ✅ JavaScript Loaded<br>
+      🖥️ ${canvas.width}x${canvas.height}<br>
+      ⏱️ ${new Date().toLocaleTimeString()}
+    `;
+    
+    // ====== NEXT STEPS ======
+    console.log("Replace this script with your visualization code");
   </script>
 </body>
 </html>
