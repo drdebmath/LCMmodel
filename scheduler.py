@@ -1,35 +1,39 @@
-from enums import *
-from type_defs import *
-from robot import Robot
+from enums import Algorithm, DistributionType, SchedulerType, FaultType, RobotState
+from type_defs import Coordinates, Orientation, SnapshotDetails
+from robot import Robot, PositionGrid
+from typing import Optional, Union, Dict, List, Set
 import numpy as np
 import heapq
 import math
 import logging
+from collections import defaultdict
+import random
 
 
 class Scheduler:
-
-    _logger: logging.Logger | None = None
+    _logger: Optional[logging.Logger] = None
+    _position_grid: Optional[PositionGrid] = None  # Spatial grid for visibility optimization
 
     def __init__(
         self,
         logger: logging.Logger,
         seed: int,
         num_of_robots: int,
-        initial_positions: list[list[float]] | None,
-        robot_speeds: float | list[float],
-        algorithm: str = Algorithm.GATHERING,
-        visibility_radius: float | list[float] | None = None,
-        robot_orientations: list[Orientation] | None = None,
-        robot_colors: list[str] | None = None,
+        initial_positions: List[List[float]],
+        robot_speeds: Union[float, List[float]],
+        algorithm: Algorithm = Algorithm.GATHERING,  # Changed to use Enum directly
+        visibility_radius: Union[float, List[float]] = 10.0,
+        robot_orientations: Optional[List[Orientation]] = None,
+        robot_colors: Optional[List[str]] = None,
         obstructed_visibility: bool = False,
         rigid_movement: bool = True,
         multiplicity_detection: bool = False,
-        probability_distribution: str = DistributionType.EXPONENTIAL,
-        scheduler_type: str = SchedulerType.ASYNC,
+        probability_distribution: DistributionType = DistributionType.EXPONENTIAL,  # Enum
+        scheduler_type: SchedulerType = SchedulerType.ASYNC,  # Enum
         threshold_precision: int = 5,
         sampling_rate: float = 0.2,
         labmda_rate: float = 5,
+        fault_prob: float = 0.3  # Probability of a robot having a fault
     ):
         Scheduler._logger = logger
         self.seed = seed
@@ -44,59 +48,67 @@ class Scheduler:
         self.robot_colors = robot_colors
         self.obstructed_visibility = obstructed_visibility
         self.threshold_precision = threshold_precision
-        self.snapshot_history: list[tuple[Time, dict[int, SnapshotDetails]]] = []
-        self.visualization_snapshots: list[tuple[Time, dict[int, SnapshotDetails]]] = []
+        self.snapshot_history: List[Tuple[float, Dict[int, SnapshotDetails]]] = []
+        self.visualization_snapshots: List[Tuple[float, Dict[int, SnapshotDetails]]] = []
         self.sampling_rate = sampling_rate
-        self.lambda_rate = labmda_rate  # Average number of events per time unit
-        self.robots: list[Robot] = []
+        self.lambda_rate = labmda_rate
+        self.fault_prob = max(0.0, min(fault_prob, 1.0))  # Clamped between 0-1
+        self.robots: List[Robot] = []
+        self.priority_queue = []  # Added explicit declaration
+
+        # Initialize spatial grid (2x visibility radius for optimal performance)
+        if visibility_radius:
+            cell_size = (visibility_radius * 2) if isinstance(visibility_radius, float) else (max(visibility_radius) * 2)
+            Scheduler._position_grid = PositionGrid(cell_size=cell_size)
 
         # Initialize robot speeds
-        if isinstance(robot_speeds, float) or isinstance(robot_speeds, int):
-            robot_speeds_list = [robot_speeds] * num_of_robots
-        else:
-            robot_speeds_list = robot_speeds
+        robot_speeds_list = [robot_speeds] * num_of_robots if isinstance(robot_speeds, (float, int)) else robot_speeds
 
-        # Initialize robots
+        # Initialize robots with potential faults
         for i in range(num_of_robots):
+            fault = self._assign_fault_type(i) if random.random() < self.fault_prob else None
             new_robot = Robot(
                 logger=logger,
                 id=i,
                 coordinates=Coordinates(*initial_positions[i]),
-                threshold_precision=threshold_precision,
-                speed=robot_speeds_list[i],
                 algorithm=algorithm,
-                visibility_radius=self.visibility_radius,
-                rigid_movement=self.rigid_movement,
+                speed=robot_speeds_list[i],
+                visibility_radius=visibility_radius[i] if isinstance(visibility_radius, list) else visibility_radius,
+                obstructed_visibility=obstructed_visibility,
+                rigid_movement=rigid_movement,
+                threshold_precision=threshold_precision,
+                fault_type=fault  # Using enum type directly
             )
-            new_robot.fault_type = self._assign_fault_type(i)  # Assign fault dynamically
             self.robots.append(new_robot)
 
         self.initialize_queue_exponential()
-
-    def _assign_fault_type(self, robot_id: int) -> str | None:
-        """Assigns fault properties to robots based on probability."""
-        fault_types = ["crash", "byzantine", "delay", None]  # Possible faults
-        probabilities = [0.2, 0.2, 0.2, 0.4]  # Adjust probabilities as needed
-
-        assigned_fault = np.random.choice(fault_types, p=probabilities)
-        Scheduler._logger.info(f"Assigning fault {assigned_fault} to Robot {robot_id}")
-        return assigned_fault
+        Robot._generator = np.random.default_rng(seed=self.seed)
 
     def get_snapshot(
-        self, observer_robot: Robot, time: float, visualization_snapshot: bool = False
-    ) -> dict[int, SnapshotDetails]:
+        self, 
+        time: float, 
+        visualization_snapshot: bool = False
+    ) -> Dict[int, SnapshotDetails]:
+        """Get current state of all robots, with spatial optimization"""
         snapshot = {}
-        for robot in self.robots:
-            if robot.id == observer_robot.id or self._is_visible(observer_robot, robot):
-                snapshot[robot.id] = SnapshotDetails(
-                    robot.get_position(time),
-                    robot.state,
-                    robot.frozen,
-                    robot.terminated,
-                    1
-                )
+        
+        # Update all positions in spatial grid first
+        if Scheduler._position_grid:
+            for robot in self.robots:
+                Scheduler._position_grid.update_position(robot.id, robot.get_position(time))
 
-        self._detect_multiplicity(snapshot)  # in-place
+        for robot in self.robots:
+            snapshot[robot.id] = SnapshotDetails(
+                robot.get_position(time),
+                robot.state,
+                robot.frozen,
+                robot.terminated,
+                1,  # multiplicity
+                robot.fault_type  # Added fault type to snapshot
+            )
+
+        self._detect_multiplicity(snapshot)
+        
         if visualization_snapshot:
             self.visualization_snapshots.append((time, snapshot))
         else:
@@ -105,200 +117,159 @@ class Scheduler:
         return snapshot
 
     def _is_visible(self, observer: Robot, target: Robot) -> bool:
+        """Optimized visibility check with spatial grid"""
         if observer.visibility_radius is None:
-            return True  # Unlimited visibility
+            return True
 
-        # Obstructed visibility check
+        observer_pos = observer.coordinates
+        target_pos = target.coordinates
+        
+        # Fast distance check first
+        if math.dist((observer_pos.x, observer_pos.y), (target_pos.x, target_pos.y)) > observer.visibility_radius:
+            return False
+
+        # Full obstruction check if needed
         if self.obstructed_visibility:
-            for other in self.robots:
-                if other.id != observer.id and other.id != target.id:
-                    if self._is_between(observer.coordinates, other.coordinates, target.coordinates):
-                        return False  # Obstructed
-
-        observer_position = observer.coordinates
-        target_position = target.coordinates
-        distance = math.dist(
-            (observer_position.x, observer_position.y),
-            (target_position.x, target_position.y)
-        )
-        return distance <= observer.visibility_radius
+            if Scheduler._position_grid:
+                nearby_ids = Scheduler._position_grid.get_nearby(
+                    observer_pos, 
+                    observer.visibility_radius
+                )
+                for robot_id in nearby_ids:
+                    if robot_id == observer.id or robot_id == target.id:
+                        continue
+                    obst = self.robots[robot_id]
+                    if self._is_between(observer_pos, obst.coordinates, target_pos):
+                        return False
+            else:
+                for obst in self.robots:
+                    if obst.id == observer.id or obst.id == target.id:
+                        continue
+                    if self._is_between(observer_pos, obst.coordinates, target_pos):
+                        return False
+        return True
 
     def _is_between(self, a: Coordinates, b: Coordinates, c: Coordinates) -> bool:
-        # Checks if b is between a and c
-        cross_product = (b.y - a.y) * (c.x - a.x) - (b.x - a.x) * (c.y - a.y)
-        if abs(cross_product) > 1e-6:
-            return False  # Not collinear
-
-        dot_product = (b.x - a.x) * (c.x - a.x) + (b.y - a.y) * (c.y - a.y)
-        if dot_product < 0:
+        """Check if point b is between a and c (collinear and within segment)"""
+        cross = (c.y - a.y) * (b.x - a.x) - (c.x - a.x) * (b.y - a.y)
+        if abs(cross) > 1e-6:
             return False
-
-        squared_length_ac = (c.x - a.x) ** 2 + (c.y - a.y) ** 2
-        if dot_product > squared_length_ac:
+            
+        dot = (b.x - a.x) * (c.x - a.x) + (b.y - a.y) * (c.y - a.y)
+        if dot < 0:
             return False
-
-        return True
-
-    def generate_event(self, current_event: Event) -> None:
-        # Visualization events
-        if current_event.state == None and len(self.priority_queue) > 0:
-            new_event_time = current_event.time + self.sampling_rate
-            new_event = Event(new_event_time, -1, None)
-            heapq.heappush(self.priority_queue, new_event)
-            return
-
-        new_event_time = 0.0
-        robot = self.robots[current_event.id]
-
-        # Robot will definitely reach calculated position
-        if current_event.state == RobotState.MOVE:
-            distance = 0.0
-            if self.rigid_movement == True:
-                distance = math.dist(robot.calculated_position, robot.start_position)
-            else:
-                percentage = 1 - self.generator.uniform()  # range of values is (0,1]
-                Scheduler._logger.info(f"percentage of journey: {percentage}")
-                distance = percentage * math.dist(
-                    robot.calculated_position, robot.start_position
-                )
-            new_event_time = current_event.time + (distance / robot.speed)
-        else:
-            new_event_time = current_event.time + self.generator.exponential(
-                scale=1 / self.lambda_rate
-            )
-
-        new_event_state = robot.state.next_state()
-
-        priority_event = Event(new_event_time, current_event.id, new_event_state)
-
-        heapq.heappush(self.priority_queue, priority_event)
+            
+        squared_len = (c.x - a.x)**2 + (c.y - a.y)**2
+        return dot <= squared_len
 
     def handle_event(self) -> int:
-        exit_code = -1
-
-        if len(self.priority_queue) == 0:
-            return exit_code
+        """Process next event with enhanced fault handling"""
+        if not self.priority_queue:
+            return -1
 
         current_event = heapq.heappop(self.priority_queue)
-
-        event_state = current_event.state
-
         time = current_event.time
 
-        if event_state == None:
+        if current_event.state is None:
             self.get_snapshot(time, visualization_snapshot=True)
-            exit_code = 0
-        else:
-            robot = self.robots[current_event.id]
+            return 0
 
-            # Crash Fault: Skip execution
-            if robot.fault_type == "crash":
-                Scheduler._logger.info(f"R{robot.id} is crashed and will not act this round.")
-                return exit_code  # Skip execution for crashed robots
+        robot = self.robots[current_event.id]
 
-            # Byzantine Fault: Modify snapshot before execution
-            if robot.fault_type == "byzantine":
-                robot.snapshot = self._introduce_byzantine_error(robot.snapshot)
-                Scheduler._logger.info(f"R{robot.id} is Byzantine and is sending false data.")
+        # Enhanced fault handling with enum checks
+        if robot.fault_type == FaultType.CRASH:
+            if current_event.state == RobotState.MOVE:
+                robot.frozen = True
+                Scheduler._logger.info(f"[{time}] R{robot.id} CRASHED")
+            return -1
+        elif robot.fault_type == FaultType.DELAY and current_event.state == RobotState.MOVE:
+            if random.random() < 0.3:  # 30% chance to delay
+                Scheduler._logger.info(f"[{time}] R{robot.id} DELAYED")
+                return -1
 
-            # Delayed Response Fault: 30% chance to skip movement
-            if robot.fault_type == "delay" and np.random.random() < 0.3:
-                Scheduler._logger.info(f"R{robot.id} is delayed and skipping movement this round.")
-                return exit_code  # Skip movement step
-
-            if event_state == RobotState.LOOK:
-                robot.state = RobotState.LOOK
-                robot.look(self.get_snapshot(time), time)
-
-                # Removes robot from simulation
-                if robot.terminated == True:
-                    return 4
-                exit_code = 1
-            elif event_state == RobotState.MOVE:
-                robot.move(time)
-                exit_code = 2
-            elif event_state == RobotState.WAIT:
-                robot.wait(time)
-                exit_code = 3
+        # Normal event processing
+        if current_event.state == RobotState.LOOK:
+            robot.state = RobotState.LOOK
+            snapshot = self.get_snapshot(time)
+            
+            if robot.fault_type == FaultType.BYZANTINE:
+                snapshot = robot._introduce_byzantine_error(snapshot)
+                
+            robot.look(snapshot, time)
+            return 1 if not robot.terminated else 4
+        elif current_event.state == RobotState.MOVE:
+            robot.move(time)
+            return 2
+        elif current_event.state == RobotState.WAIT:
+            robot.wait(time)
+            return 3
 
         self.generate_event(current_event)
-        return exit_code
+        return -1
 
     def initialize_queue_exponential(self) -> None:
-        Scheduler._logger.info(f"Seed used: {self.seed}")
-
-        # Generate time intervals for n events
-        self.generator = np.random.default_rng(seed=self.seed)
-        num_of_events = len(self.robots)
-        time_intervals = self.generator.exponential(
-            scale=1 / self.lambda_rate, size=num_of_events
-        )
-        Scheduler._logger.info(f"Time intervals between events: {time_intervals}")
-
-        initial_event = Event(0.0, -1, None)  # initial event for visualization
-        self.priority_queue: list[Event] = [initial_event]
-
+        """Initialize event queue with exponential distribution"""
+        self.generator = np.random.default_rng(self.seed)
+        self.priority_queue = []
+        
         for robot in self.robots:
-            time = time_intervals[robot.id]
-            event = Event(time, robot.id, robot.state.next_state())
-            self.priority_queue.append(event)
+            event_time = self.generator.exponential(scale=1.0/self.lambda_rate)
+            heapq.heappush(self.priority_queue, (event_time, robot.id, RobotState.LOOK))
 
-        heapq.heapify(self.priority_queue)
+    def generate_event(self, event: Tuple[float, int, RobotState]) -> None:
+        """Generate next event for a robot based on current state"""
+        time, robot_id, state = event
+        robot = self.robots[robot_id]
+        
+        if state == RobotState.LOOK:
+            next_time = time + self.generator.exponential(scale=1.0/self.lambda_rate)
+            heapq.heappush(self.priority_queue, (next_time, robot_id, RobotState.MOVE))
+        elif state == RobotState.MOVE:
+            next_time = time + (robot.travelled_distance / robot.speed)
+            heapq.heappush(self.priority_queue, (next_time, robot_id, RobotState.WAIT))
 
-    def _all_robots_reached(self) -> bool:
-        for robot in self.robots:
-            if robot.frozen == False:
-                return False
-        return True
+    def _detect_multiplicity(self, snapshot: Dict[int, SnapshotDetails]) -> None:
+        """Detect if multiple robots occupy the same position"""
+        if not self.multiplicity_detection:
+            return
+            
+        pos_counts = defaultdict(int)
+        for details in snapshot.values():
+            pos_counts[(details.pos.x, details.pos.y)] += 1
+            
+        for rid, details in snapshot.items():
+            if pos_counts[(details.pos.x, details.pos.y)] > 1:
+                snapshot[rid] = details._replace(multiplicity=pos_counts[(details.pos.x, details.pos.y)])
 
-    def _detect_multiplicity(self, snapshot: dict[int, SnapshotDetails]):
-        positions = [(v.pos, k) for k, v in snapshot.items()]
-
-        positions.sort()
-
-        i = 0
-        multiplicity = 1
-        while i < len(positions):
-            multiplicity_group = [positions[i][1]]  # Start a new group
-            rounded_coordinates1 = round_coordinates(
-                positions[i][0], self.threshold_precision - 2
-            )
-
-            # Check for close positions
-            for j in range(i + 1, len(positions)):
-                rounded_coordinates2 = round_coordinates(
-                    positions[j][0], self.threshold_precision - 2
-                )
-
-                is_close = all(
-                    abs(rounded_coordinates1[x] - rounded_coordinates2[x])
-                    <= 10**-self.threshold_precision
-                    for x in range(2)
-                )
-
-                if is_close:
-                    multiplicity += 1
-                    multiplicity_group.append(positions[j][1])
-                else:
-                    break
-
-            # Update multiplicity for all robots in the group
-            for robot_id in multiplicity_group:
-                snapshot_details = list(snapshot[robot_id])
-                snapshot_details[4] = multiplicity
-                snapshot[robot_id] = SnapshotDetails(*snapshot_details)
-
-            # Move to the next group
-            i += len(multiplicity_group)
-            multiplicity = 1
-
-    def _introduce_byzantine_error(self, snapshot):
-        """Byzantine robots modify snapshot data to mislead others."""
-        for key in snapshot.keys():
-            if np.random.random() < 0.5:  # 50% chance to corrupt data
-                snapshot[key].pos = Coordinates(np.random.uniform(-100, 100), np.random.uniform(-100, 100))
-        return snapshot
+    def _assign_fault_type(self, robot_id: int) -> Optional[FaultType]:
+        """Assign random fault based on probability using Enum"""
+        if random.random() < self.fault_prob:
+            return random.choice(list(FaultType))
+        return None
 
 
-def round_coordinates(coord: Coordinates, precision: int):
+class PositionGrid:
+    """Optimized spatial partitioning for visibility checks"""
+    def __init__(self, cell_size: float):
+        self.cell_size = cell_size
+        self.grid = defaultdict(set)
+        
+    def update_position(self, robot_id: int, pos: Coordinates) -> None:
+        cell = (int(pos.x // self.cell_size), int(pos.y // self.cell_size))
+        self.grid[cell].add(robot_id)
+        
+    def get_nearby(self, pos: Coordinates, radius: float) -> Set[int]:
+        nearby = set()
+        min_x = int((pos.x - radius) // self.cell_size)
+        max_x = int((pos.x + radius) // self.cell_size)
+        min_y = int((pos.y - radius) // self.cell_size)
+        max_y = int((pos.y + radius) // self.cell_size)
+        
+        for x in range(min_x, max_x + 1):
+            for y in range(min_y, max_y + 1):
+                nearby.update(self.grid.get((x, y), set()))
+        return nearby
+
+
+def round_coordinates(coord: Coordinates, precision: int) -> Coordinates:
     return Coordinates(round(coord.x, precision), round(coord.y, precision))
