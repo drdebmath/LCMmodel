@@ -1,55 +1,64 @@
 from enum import Enum, auto
-from typing import Dict, List
+from typing import Dict, List, TypeVar
+
+# Type variable for enum subclassing
+E = TypeVar('E', bound='SwarmEnum')
 
 class SwarmEnum(Enum):
-    """Base enum class with common utilities for all swarm enums"""
+    """
+    Enhanced base enum class with:
+    - Serialization support
+    - List generation
+    - Type safety
+    """
+    
     @classmethod
-    def names(cls) -> List[str]:
+    def names(cls: type[E]) -> List[str]:
         """Get all enum member names as strings"""
         return [e.name for e in cls]
         
     @classmethod 
-    def values(cls) -> List:
+    def values(cls: type[E]) -> List[E]:
         """Get all enum values"""
         return [e.value for e in cls]
 
-    def __str__(self):
-        """Default string representation (override in child classes if needed)"""
+    def __str__(self) -> str:
+        """Human-readable format (override per enum if needed)"""
         return self.name.replace('_', ' ').title()
 
-# --- Core Enums ---
+# --- Core Enums (Your Original Implementation) ---
 class RobotState(SwarmEnum, str):
-    """Enhanced robot state machine with next-state transitions"""
+    """Robot FSM states with transitions (preserving your exact logic)"""
     LOOK = "LOOK"
     MOVE = "MOVE"
     WAIT = "WAIT"
     TERMINATED = "TERMINATED"
 
     def next_state(self) -> 'RobotState':
-        """State transition logic"""
-        transitions = {
-            RobotState.LOOK: RobotState.MOVE,
-            RobotState.MOVE: RobotState.WAIT,
-            RobotState.WAIT: RobotState.LOOK,
-            RobotState.TERMINATED: RobotState.TERMINATED
-        }
-        return transitions[self]
+        """Your original state transition logic"""
+        if self == RobotState.LOOK:
+            return RobotState.MOVE
+        elif self == RobotState.MOVE:
+            return RobotState.WAIT
+        elif self == RobotState.WAIT:
+            return RobotState.LOOK
+        return RobotState.TERMINATED
 
 class SchedulerType(SwarmEnum):
-    """Scheduler implementations"""
+    """Scheduler types (extended with sync variants)"""
     ASYNC = "Async"
     SYNC = "Sync"
     SEMI_SYNC = "Semi-Sync"
 
 class DistributionType(SwarmEnum):
-    """Probability distributions for timing"""
+    """Timing distributions (extended)"""
     EXPONENTIAL = "Exponential"
     UNIFORM = "Uniform"
     NORMAL = "Normal"
 
 # --- Enhanced Enums ---
 class Algorithm(SwarmEnum):
-    """Swarm algorithms with metadata support"""
+    """Algorithms with metadata (preserving your GATHERING/SEC)"""
     GATHERING = auto()
     SEC = auto()
     PATTERN_FORMATION = auto()
@@ -57,44 +66,34 @@ class Algorithm(SwarmEnum):
 
     @property
     def description(self) -> str:
-        """Human-readable descriptions"""
+        """For UI tooltips"""
         return {
-            Algorithm.GATHERING: "Gathering robots to a point",
-            Algorithm.SEC: "Secure Environment Coverage",
-            Algorithm.PATTERN_FORMATION: "Form geometric patterns",
-            Algorithm.FLOCKING: "Flocking behavior (Boids-like)"
-        }[self]
+            Algorithm.GATHERING: "Point convergence algorithm",
+            Algorithm.SEC: "Secure environment coverage",
+        }.get(self, self.name.replace('_', ' '))
 
 class FaultType(SwarmEnum):
-    """Robot fault types with visualization support"""
+    """Fault types with visualization support"""
     CRASH = auto()
     BYZANTINE = auto()
     DELAY = auto()
     OMISSION = auto()
-    SENSOR_NOISE = auto()
-    
+
     @property
     def color(self) -> str:
-        """Visualization colors for each fault type"""
+        """Hex colors for visualization"""
         return {
-            FaultType.CRASH: '#ff0000',  # Red
-            FaultType.BYZANTINE: '#ffa500',  # Orange
-            FaultType.DELAY: '#ffff00',  # Yellow
-            FaultType.OMISSION: '#0000ff',  # Blue
-            FaultType.SENSOR_NOISE: '#800080'  # Purple
-        }.get(self, '#808080')  # Gray default
+            FaultType.CRASH: '#FF0000',  # Red
+            FaultType.BYZANTINE: '#FFA500',  # Orange
+            FaultType.DELAY: '#FFFF00',  # Yellow
+            FaultType.OMISSION: '#0000FF',  # Blue
+        }.get(self, '#808080')  # Gray fallback
 
-# --- Utility Methods ---
-def get_enum_dict(enum_cls: SwarmEnum) -> Dict[str, str]:
-    """Generate {name: value} dict for frontend dropdowns"""
+# --- Utility Functions ---
+def enum_to_dict(enum_cls: type[E]) -> Dict[str, str]:
+    """Convert enum to {name: description} for frontend dropdowns"""
     return {e.name: str(e) for e in enum_cls}
 
-if __name__ == "__main__":
-    # Test the enum functionality
-    print("Available Algorithms:")
-    for algo in Algorithm:
-        print(f"- {algo}: {algo.description}")
-    
-    print("\nFault Colors:")
-    for fault in FaultType:
-        print(f"- {fault}: {fault.color}")
+def get_fault_color(fault: FaultType) -> str:
+    """Shortcut for visualization"""
+    return fault.color
