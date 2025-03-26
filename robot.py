@@ -1,21 +1,52 @@
-from enums import RobotState, Algorithm
-from type_defs import *
-from typing import Callable
+from enums import RobotState, Algorithm, FaultType
+from type_defs import Coordinates, Orientation, Circle, SnapshotDetails
+from typing import Callable, Optional, Dict, Set, List, Tuple, Any
 import math
 import logging
 import numpy as np
+from collections import defaultdict
+import random
+
+
+class PositionGrid:
+    """Spatial partitioning for efficient visibility checks"""
+    def __init__(self, cell_size: float):
+        self.cell_size = cell_size
+        self.grid = defaultdict(set)
+        
+    def update_position(self, robot_id: int, pos: Coordinates):
+        cell_x = int(pos.x // self.cell_size)
+        cell_y = int(pos.y // self.cell_size)
+        self.grid[(cell_x, cell_y)].add(robot_id)
+        
+    def get_nearby(self, pos: Coordinates, radius: float) -> set[int]:
+        """Added early exit for infinite visibility radius"""
+        if radius == float('inf'):
+            return {rid for cell in self.grid.values() for rid in cell}
+            
+        nearby = set()
+        min_cell_x = int((pos.x - radius) // self.cell_size)
+        max_cell_x = int((pos.x + radius) // self.cell_size)
+        min_cell_y = int((pos.y - radius) // self.cell_size)
+        max_cell_y = int((pos.y + radius) // self.cell_size)
+        
+        for x in range(min_cell_x, max_cell_x + 1):
+            for y in range(min_cell_y, max_cell_y + 1):
+                nearby.update(self.grid.get((x, y), set()))
+        return nearby
 
 
 class Robot:
     _logger: logging.Logger | None = None
     _generator = None
+    _position_grid: PositionGrid | None = None
 
     def __init__(
         self,
         logger: logging.Logger,
         id: int,
         coordinates: Coordinates,
-        algorithm: str,
+        algorithm: Algorithm,  # Changed to use Enum directly
         speed: float = 1.0,
         color: str | None = None,
         visibility_radius: float | None = None,
@@ -24,12 +55,12 @@ class Robot:
         multiplicity_detection: bool = False,
         rigid_movement: bool = False,
         threshold_precision: float = 5,
-        fault_type: str | None = None,
+        fault_type: FaultType | None = None,  # Changed to use Enum
     ):
         Robot._logger = logger
         self.speed = speed
         self.color = color
-        self.visibility_radius = visibility_radius
+        self.visibility_radius = visibility_radius if visibility_radius else float('inf')
         self.obstructed_visibility = obstructed_visibility
         self.multiplicity_detection = multiplicity_detection
         self.rigid_movement = rigid_movement
@@ -45,28 +76,30 @@ class Robot:
         self.coordinates = coordinates
         self.id = id
         self.threshold_precision = threshold_precision
-        self.frozen = False  # true if we skipped move step
+        self.frozen = False
         self.terminated = False
         self.sec = None  # Stores the calculated SEC
-        self.fault_type = fault_type  # store fault type
+        self.fault_type = fault_type
 
-        match algorithm:
-            case "Gathering":
-                self.algorithm = Algorithm.GATHERING
-            case "SEC":
-                self.algorithm = Algorithm.SEC
+        # Changed to use enum comparison
+        self.algorithm = algorithm
+
+    @classmethod
+    def init_grid(cls, cell_size: float):
+        """Initialize spatial grid for all robots"""
+        cls._position_grid = PositionGrid(cell_size)
 
     def look(self, snapshot: dict[Id, SnapshotDetails], time: float) -> None:
         self.state = RobotState.LOOK
 
-        # Byzantine Fault: Modify snapshot before processing
-        if self.fault_type == "byzantine":
+        # Changed to use enum comparison
+        if self.fault_type == FaultType.BYZANTINE:
             snapshot = self._introduce_byzantine_error(snapshot)
             Robot._logger.info(f"R{self.id} is Byzantine and modified its snapshot.")
 
         self.snapshot = {}
         for key, value in snapshot.items():
-            if self._robot_is_visible(value.pos):
+            if self._robot_is_visible(value.pos, snapshot):
                 transformed_pos = self._convert_coordinate(value.pos)
                 self.snapshot[key] = SnapshotDetails(
                     transformed_pos,
@@ -74,6 +107,7 @@ class Robot:
                     value.frozen,
                     value.terminated,
                     value.multiplicity,
+                    value.fault_type  # Added fault_type to snapshot
                 )
 
         Robot._logger.info(
@@ -89,7 +123,7 @@ class Robot:
         algo, algo_terminal = self._select_algorithm()
         self.calculated_position = self._compute(algo, algo_terminal)
         pos_str = (
-            f"({self.calculated_position[0]}, {self.calculated_position[1]})"
+            f"({self.calculated_position[0]:.2f}, {self.calculated_position[1]:.2f})"
             if self.calculated_position
             else ""
         )
@@ -105,6 +139,64 @@ class Robot:
             self.wait(time)
         else:
             self.frozen = False
+
+    def _robot_is_visible(self, coord: Coordinates, all_robots: dict[Id, SnapshotDetails]) -> bool:
+        """Check if another robot is visible (with obstruction handling)"""
+        distance = math.dist(self.coordinates, coord)
+        
+        # Basic distance check
+        if distance > self.visibility_radius:
+            return False
+            
+        # Obstructed visibility check
+        if self.obstructed_visibility:
+            for robot_id, robot in all_robots.items():
+                if robot_id == self.id:
+                    continue
+                    
+                if self._is_point_on_line(self.coordinates, coord, robot.pos):
+                    return False
+        return True
+
+    def _is_point_on_line(self, a: Coordinates, b: Coordinates, c: Coordinates, epsilon=1e-6) -> bool:
+        """Check if point c is between a and b (collinear and within segment)"""
+        # Check collinearity
+        cross = (b.y - a.y) * (c.x - a.x) - (b.x - a.x) * (c.y - a.y)
+        if abs(cross) > epsilon:
+            return False
+            
+        # Check within segment bounds
+        dot = (c.x - a.x) * (b.x - a.x) + (c.y - a.y)*(b.y - a.y)
+        if dot < 0:
+            return False
+            
+        squared_len = (b.x - a.x)**2 + (b.y - a.y)**2
+        return dot <= squared_len
+
+    def _midpoint(self) -> tuple[Coordinates, list[any]]:
+        """Limited visibility gathering algorithm"""
+        visible_positions = [value.pos for value in self.snapshot.values()]
+        
+        if not visible_positions:
+            return (self.coordinates, [])  # Stay put if no visible neighbors
+            
+        # Calculate centroid of visible robots
+        avg_x = sum(p.x for p in visible_positions) / len(visible_positions)
+        avg_y = sum(p.y for p in visible_positions) / len(visible_positions)
+        
+        # Move toward the centroid but stay within visibility range
+        direction = Coordinates(avg_x - self.coordinates.x, avg_y - self.coordinates.y)
+        distance = math.dist(self.coordinates, Coordinates(avg_x, avg_y))
+        
+        if distance > self.visibility_radius * 0.8:  # Don't go to edge
+            target = Coordinates(
+                self.coordinates.x + direction.x * 0.8,
+                self.coordinates.y + direction.y * 0.8
+            )
+        else:
+            target = Coordinates(avg_x, avg_y)
+            
+        return (target, [])
 
     def _compute(
         self,
@@ -123,6 +215,10 @@ class Robot:
         return coord
 
     def move(self, start_time: float) -> None:
+        """Added validation check before moving"""
+        if self.frozen or self.terminated:
+            return
+            
         self.state = RobotState.MOVE
         Robot._logger.info(f"[{start_time}] {{R{self.id}}} MOVE")
 
@@ -138,7 +234,7 @@ class Robot:
         self.travelled_distance += current_distance
 
         Robot._logger.info(
-            f"[{time}] {{R{self.id}}} WAIT    -- Distance: {current_distance} | Total Distance: {self.travelled_distance} units"
+            f"[{time}] {{R{self.id}}} WAIT    -- Distance: {current_distance:.2f} | Total Distance: {self.travelled_distance:.2f} units"
         )
 
         self.start_time = None
@@ -165,11 +261,13 @@ class Robot:
         return self.coordinates
 
     def _select_algorithm(self):
-        match self.algorithm:
-            case Algorithm.GATHERING:
-                return (self._midpoint, self._midpoint_terminal)
-            case Algorithm.SEC:
-                return (self._smallest_enclosing_circle, self._sec_terminal)
+        # Changed to use enum comparison
+        if self.algorithm == Algorithm.GATHERING:
+            return (self._midpoint, self._midpoint_terminal)
+        elif self.algorithm == Algorithm.SEC:
+            return (self._smallest_enclosing_circle, self._sec_terminal)
+        else:
+            raise ValueError(f"Unknown algorithm: {self.algorithm}")
 
     def _interpolate(
         self, start: Coordinates, end: Coordinates, t: float
@@ -181,22 +279,6 @@ class Robot:
     def _convert_coordinate(self, coord: Coordinates) -> Coordinates:
         return coord
 
-    def _robot_is_visible(self, coord: Coordinates):
-        distance = math.dist(self.coordinates, coord)
-
-        return self.visibility_radius > distance
-
-    def _midpoint(self) -> tuple[Coordinates, list[any]]:
-        x = y = 0
-        for _, value in self.snapshot.items():
-            x += value.pos.x
-            y += value.pos.y
-
-        x = x / len(self.snapshot)
-        y = y / len(self.snapshot)
-
-        return (Coordinates(x, y), [])
-
     def _midpoint_terminal(self, coord: Coordinates, args=None) -> bool:
         robot_ids = self.snapshot.keys()
         for id in robot_ids:
@@ -207,14 +289,17 @@ class Robot:
         return True
 
     def _smallest_enclosing_circle(self) -> tuple[Coordinates, list[Circle]]:
-        """Intermediary function that calls sec algorithms based on num of robots"""
+        """Added SEC cache validation"""
+        if self.sec and self._sec_valid():
+            return (self._closest_point_on_circle(self.sec, self.coordinates), [self.sec])
+            
         ids = self._get_visible_robots()
         num_robots = len(self.snapshot)
         destination: Coordinates | None = None
         if num_robots == 0:
-            destination = (0, 0)
+            destination = Coordinates(0, 0)
         elif num_robots == 1:
-            destination = self.snapshot[0].pos
+            destination = self.snapshot[ids[0]].pos
         elif num_robots == 2:
             i, j = ids[0], ids[1]
             a, b = self.snapshot[i].pos, self.snapshot[j].pos
@@ -238,10 +323,18 @@ class Robot:
                 self.sec = self._circle_from_three(a, b, c)
             destination = self._closest_point_on_circle(self.sec, self.coordinates)
         else:
-            # self.sec = self._sec()
             self.sec = self._sec_welzl(ids)
             destination = self._closest_point_on_circle(self.sec, self.coordinates)
         return (destination, [self.sec])
+
+    def _sec_valid(self) -> bool:
+        """New method to validate cached SEC"""
+        if not self.sec or not self.snapshot:
+            return False
+        return all(
+            self._is_point_on_circle(robot.pos, self.sec)
+            for robot in self.snapshot.values()
+        )
 
     def _sec_terminal(self, _, args: list[Circle]) -> bool:
         """Determines terminal state for robot"""
@@ -418,10 +511,15 @@ class Robot:
 
     def _introduce_byzantine_error(self, snapshot):
         """Byzantine robots modify snapshot data to mislead others."""
-        for key in snapshot.keys():
+        corrupted = {}
+        for key, value in snapshot.items():
             if np.random.random() < 0.5:  # 50% chance to corrupt data
-                snapshot[key].pos = Coordinates(
-                    np.random.uniform(-100, 100),
-                    np.random.uniform(-100, 100)
+                corrupted[key] = value._replace(
+                    pos=Coordinates(
+                        np.random.uniform(-100, 100),
+                        np.random.uniform(-100, 100)
+                    )
                 )
-        return snapshot
+            else:
+                corrupted[key] = value
+        return corrupted
