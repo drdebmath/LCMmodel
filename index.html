@@ -1,53 +1,69 @@
-<script>
-// ====== ROBOT VISUALIZATION CORE ======
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const debug = document.getElementById('debug');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LCM Robot Visualizer</title>
+  <style>
+    /* Mandatory base styles */
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #111;
+    }
+    
+    #canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background-color: #222;
+    }
+    
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: Arial, sans-serif;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 10px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">Loading visualization...</div>
+  <canvas id="canvas"></canvas>
 
-// Canvas setup
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-
-// Color mapping (from your enums.py)
-const FAULT_COLORS = {
-  CRASH: '#FF0000',
-  BYZANTINE: '#FFA500',
-  DELAY: '#FFFF00',
-  NORMAL: '#00AAFF'
-};
-
-// Main draw function
-function drawRobots(robots) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  <!-- Using absolute path to main.js -->
+  <script src="/LCMmodel/main.js"></script>
   
-  robots.forEach(robot => {
-    ctx.fillStyle = FAULT_COLORS[robot.fault] || FAULT_COLORS.NORMAL;
-    ctx.beginPath();
-    ctx.arc(robot.x, robot.y, 10, 0, Math.PI * 2);
-    ctx.fill();
-  });
-}
-
-// ====== CONNECTION TO PYTHON ======
-// Option A: WebSocket (recommended)
-const socket = new WebSocket('ws://localhost:8001');
-
-socket.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  drawRobots(data.robots);
-  debug.innerHTML = `Robots: ${data.robots.length}`;
-};
-
-// Option B: Polling (fallback)
-// setInterval(() => {
-//   fetch('/robot-data')
-//     .then(res => res.json())
-//     .then(drawRobots);
-// }, 100);
-
-// Initial setup
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
-</script>
+  <!-- Fallback inline script -->
+  <script>
+    // Immediate debug check
+    console.log("HTML loaded successfully");
+    document.getElementById('status').textContent = "HTML loaded, waiting for JS...";
+    
+    // If main.js fails to load, this will execute after 2 seconds
+    setTimeout(() => {
+      if (!window.mainJsLoaded) {
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        ctx.fillStyle = 'red';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.fillText('ERROR: main.js failed to load', 50, 50);
+        
+        document.getElementById('status').textContent = "JS failed to load";
+        console.error("main.js failed to load");
+      }
+    }, 2000);
+  </script>
+</body>
+</html>
