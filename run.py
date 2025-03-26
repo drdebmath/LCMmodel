@@ -1,186 +1,266 @@
 import json
 import socket
-from enums import Algorithm
-from scheduler import Scheduler
 import numpy as np
 import logging
-from flask import Flask, jsonify, request, Response, send_from_directory
-import webbrowser
-import threading
-import json
-from flask_socketio import SocketIO, emit
 from datetime import datetime
 import os
+import threading
+import webbrowser
+from typing import Dict, List, Optional, Union
 
+from flask import Flask, jsonify, request, send_from_directory
+from flask_socketio import SocketIO, emit
+from enums import Algorithm
+from scheduler import Scheduler
 
-def get_log_name():
-    date = datetime.now()
-    milliseconds = date.microsecond // 1000
+# Configuration Constants
+MAX_SNAPSHOTS = 1000  # Maximum frames to keep in memory
+DEFAULT_PORT = 8080
+MAX_PORT_ATTEMPTS = 10
+DEFAULT_FAULT_PROB = 0.3
 
-    return f"{date.year}-{date.month}-{date.day}-{date.hour}-{date.minute}-{date.second}-{milliseconds}.txt"
-
-
-def setup_logger(simulation_id, algo_name):
-    logger = logging.getLogger(f"app_{simulation_id}")
-    logger.setLevel(logging.INFO)
-
-    # Add a new file handler
-    log_dir = f"./logs/{algo_name}/"
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"{get_log_name()}")
-
-    new_file_handler = logging.FileHandler(log_file)
-    formatter = logging.Formatter("")
-    new_file_handler.setFormatter(formatter)
-    logger.addHandler(new_file_handler)
-
-    return logger
-
-
-def generate_initial_positions(generator, width_bound, height_bound, n):
-    x_positions = generator.uniform(low=-width_bound, high=height_bound, size=(n,))
-    y_positions = generator.uniform(low=-height_bound, high=height_bound, size=(n,))
-
-    positions = np.column_stack((x_positions, y_positions))
-
-    return positions
-
-
-# Disable Flask’s default logging to the root logger
-log = logging.getLogger(
-    "werkzeug"
-)  # 'werkzeug' is the logger used by Flask for requests
-log.setLevel(logging.ERROR)  # Set Flask's logging to a different level or disable it
-
+# Configure Flask app
 app = Flask(__name__, static_folder="static")
 socketio = SocketIO(app)
 
+# Global simulation state
 simulation_thread = None
 terminate_flag = False
 simulation_id = 0
 logger = None
 
+# Disable Flask's default logging
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-# WebSocket event handler for the simulation
+
+def get_log_name() -> str:
+    """Generate timestamped log filename with milliseconds precision"""
+    date = datetime.now()
+    milliseconds = date.microsecond // 1000
+    return f"{date.year}-{date.month}-{date.day}-{date.hour}-{date.minute}-{date.second}-{milliseconds}.txt"
+
+
+def setup_logger(simulation_id: int, algo_name: str) -> logging.Logger:
+    """Configure logging for each simulation with directory creation"""
+    logger = logging.getLogger(f"app_{simulation_id}")
+    logger.setLevel(logging.INFO)
+
+    log_dir = f"./logs/{algo_name}/"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, get_log_name())
+
+    file_handler = logging.FileHandler(log_file)
+    formatter = logging.Formatter("%(message)s")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    return logger
+
+
+def generate_initial_positions(
+    generator: np.random.Generator, 
+    width_bound: float, 
+    height_bound: float, 
+    n: int
+) -> np.ndarray:
+    """Generate random robot positions within bounds"""
+    x_pos = generator.uniform(low=-width_bound, high=width_bound, size=(n,))
+    y_pos = generator.uniform(low=-height_bound, high=height_bound, size=(n,))
+    return np.column_stack((x_pos, y_pos))
+
+
+def validate_config(data: Dict) -> Optional[Response]:
+    """Validate simulation configuration"""
+    required = [
+        "algorithm", "num_of_robots", "robot_speeds", 
+        "visibility_radius", "width_bound", "height_bound"
+    ]
+    
+    if any(param not in data for param in required):
+        return jsonify({
+            "error": "Missing required parameters",
+            "required": required
+        }), 400
+        
+    if "initial_positions" in data and len(data["initial_positions"]) != data["num_of_robots"]:
+        return jsonify({
+            "error": "Initial positions count doesn't match robot count"
+        }), 400
+        
+    return None
+
+
 @socketio.on("start_simulation")
-def handle_simulation_request(data):
-    global simulation_thread, terminate_flag, logger
+def handle_simulation_request(data: Dict) -> None:
+    """Handle simulation start request with full validation"""
+    global simulation_thread, terminate_flag, logger, simulation_id
 
-    # Terminate existing simulation thread
+    # Validate configuration
+    if error := validate_config(data):
+        emit("config_error", error[0].get_json())
+        return
+
+    # Clean up previous simulation
     if simulation_thread and simulation_thread.is_alive():
-        logger.info("Simulation Interrupted... (A new simulation was requested)")
+        logger.info("Simulation interrupted by new request")
         terminate_flag = True
         simulation_thread.join()
 
-    # Reset the termination flag and start a new simulation thread
+    # Initialize simulation
     terminate_flag = False
-
-    seed = data["random_seed"]
-    seed = 2708382154
+    seed = data.get("random_seed", np.random.randint(2**32))
     generator = np.random.default_rng(seed=seed)
-    num_robots = data["num_of_robots"]
-    initial_positions: list = data["initial_positions"]
-
-    if len(initial_positions) != 0:
-        # User defined
-        initial_positions = data["initial_positions"]
-        num_robots = len(initial_positions)
-    else:
-        # Random
-        initial_positions = generate_initial_positions(
-            generator, data["width_bound"], data["height_bound"], num_robots
+    
+    try:
+        initial_positions = (
+            data["initial_positions"] 
+            if "initial_positions" in data 
+            else generate_initial_positions(
+                generator, 
+                data["width_bound"], 
+                data["height_bound"], 
+                data["num_of_robots"]
+            )
         )
+    except Exception as e:
+        emit("init_error", {"error": str(e)})
+        return
 
+    # Configure logging and scheduler
     logger = setup_logger(simulation_id, data["algorithm"])
-    logger.info("Config:\n\n%s\n", json.dumps(data, indent=2))
+    logger.info("Simulation Config:\n%s\n", json.dumps(data, indent=2))
 
-    scheduler = Scheduler(
-        logger=logger,
-        seed=seed,
-        num_of_robots=num_robots,
-        initial_positions=initial_positions,
-        robot_speeds=data["robot_speeds"],
-        rigid_movement=data["rigid_movement"],
-        threshold_precision=data["threshold_precision"],
-        sampling_rate=data["sampling_rate"],
-        labmda_rate=data["labmda_rate"],
-        algorithm=data["algorithm"],
-        visibility_radius=data["visibility_radius"],
-    )
+    try:
+        scheduler = Scheduler(
+            logger=logger,
+            seed=seed,
+            num_of_robots=data["num_of_robots"],
+            initial_positions=initial_positions,
+            robot_speeds=data["robot_speeds"],
+            rigid_movement=data.get("rigid_movement", True),
+            threshold_precision=data.get("threshold_precision", 5),
+            sampling_rate=data.get("sampling_rate", 0.2),
+            labmda_rate=data.get("labmda_rate", 5),
+            algorithm=data["algorithm"],
+            visibility_radius=data["visibility_radius"],
+            obstructed_visibility=data.get("obstructed_visibility", False),
+            fault_prob=min(max(0, data.get("fault_prob", DEFAULT_FAULT_PROB)), 1)
+        )
+    except Exception as e:
+        logger.error(f"Scheduler init failed: {str(e)}")
+        emit("init_error", {"error": str(e)})
+        return
 
-    def run_simulation():
+    def run_simulation() -> None:
+        """Main simulation loop with state management"""
         global terminate_flag, simulation_id
-
         simulation_id += 1
 
         with app.app_context():
-            socketio.emit("simulation_start", simulation_id)
-            while terminate_flag != True:
+            emit("simulation_start", {"simulation_id": simulation_id})
+            
+            while not terminate_flag:
                 exit_code = scheduler.handle_event()
-                if exit_code == 0:
-                    snapshots = scheduler.visualization_snapshots
-                    if len(snapshots) > 0:
-                        socketio.emit(
-                            "simulation_data",
-                            json.dumps(
-                                {
-                                    "simulation_id": simulation_id,
-                                    "snapshot": scheduler.visualization_snapshots[-1],
-                                }
-                            ),
-                        )
-
+                
+                # Visualization update
+                if exit_code == 0 and scheduler.visualization_snapshots:
+                    if len(scheduler.visualization_snapshots) > MAX_SNAPSHOTS:
+                        scheduler.visualization_snapshots = scheduler.visualization_snapshots[-MAX_SNAPSHOTS:]
+                    
+                    last_snapshot = scheduler.visualization_snapshots[-1]
+                    emit(
+                        "simulation_data",
+                        {
+                            "simulation_id": simulation_id,
+                            "snapshot": last_snapshot,
+                            "faulty_robots": {
+                                r.id: r.fault_type for r in scheduler.robots 
+                                if r.fault_type is not None
+                            }
+                        },
+                        broadcast=False
+                    )
+                
+                # Termination handling
                 if exit_code < 0:
-                    # Signal the end of the simulation
+                    result_data = {
+                        "id": simulation_id,
+                        "status": "completed",
+                        "fault_summary": {
+                            "total_faulty": sum(1 for r in scheduler.robots if r.fault_type is not None),
+                            "total_robots": data["num_of_robots"],
+                            "byzantine": sum(1 for r in scheduler.robots if r.fault_type == "byzantine"),
+                            "crash": sum(1 for r in scheduler.robots if r.fault_type == "crash"),
+                            "delay": sum(1 for r in scheduler.robots if r.fault_type == "delay")
+                        }
+                    }
+
                     if scheduler.robots[0].algorithm == Algorithm.SEC:
-                        socketio.emit(
-                            "smallest_enclosing_circle",
-                            json.dumps(
-                                {
-                                    "simulation_id": simulation_id,
-                                    "sec": [
-                                        scheduler.robots[i].sec
-                                        for i in range(num_robots)
-                                    ],
-                                }
-                            ),
-                        )
-                    socketio.emit("simulation_end", "END")
+                        result_data["sec"] = [r.sec for r in scheduler.robots]
+                        result_data["robot_positions"] = [r.pos for r in scheduler.robots]
+
+                    emit("simulation_end", result_data)
                     break
 
-    # Start a thread for the simulation to not block websocket
+    # Start simulation thread
     simulation_thread = threading.Thread(target=run_simulation)
     simulation_thread.start()
 
 
+# SocketIO Events
 @socketio.on("connect")
-def client_connect():
-    print("Client connected")
+def client_connect() -> None:
+    """Handle new client connection"""
+    print(f"Client connected: {request.sid}")
 
 
 @socketio.on("disconnect")
-def client_disconnect():
-    print("Client disconnected")
+def client_disconnect() -> None:
+    """Handle client disconnection"""
+    print(f"Client disconnected: {request.sid}")
 
 
+# Flask Routes
 @app.route("/")
-def serve_frontend():
+def serve_frontend() -> Response:
+    """Serve main frontend page"""
     return send_from_directory(app.static_folder, "index.html")
 
 
-def is_port_in_use(port):
+def is_port_in_use(port: int) -> bool:
+    """Check if port is available"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def open_browser(port):
-    webbrowser.open(f"http://127.0.0.1:{port}/")
+def find_available_port(start_port: int = DEFAULT_PORT) -> int:
+    """Find next available port"""
+    port = start_port
+    attempts = 0
+    while is_port_in_use(port) and attempts < MAX_PORT_ATTEMPTS:
+        port += 1
+        attempts += 1
+    return port if attempts < MAX_PORT_ATTEMPTS else None
 
 
-port = 8080
-while is_port_in_use(port):
-    port += 1
+def start_server() -> None:
+    """Configure and start the web server"""
+    port = find_available_port()
+    if port is None:
+        print("Error: No available ports found")
+        return
 
-# Open the browser after a delay to let the server start
-threading.Timer(1, open_browser, args=(port,)).start()
-app.run(host="127.0.0.1", port=port, debug=True, use_reloader=False)
+    # Open browser after delay
+    threading.Timer(1, lambda: webbrowser.open(f"http://127.0.0.1:{port}/")).start()
+    
+    # Start Flask server
+    app.run(
+        host="127.0.0.1",
+        port=port,
+        debug=False,
+        use_reloader=False
+    )
+
+
+if __name__ == "__main__":
+    start_server()
