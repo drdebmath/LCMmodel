@@ -1,5 +1,4 @@
-from enum import Enum
-
+from enum import Enum, auto
 
 class RobotState(str, Enum):
     LOOK = "LOOK"
@@ -27,5 +26,25 @@ class DistributionType(Enum):
 class Algorithm(Enum):
     GATHERING = "Gathering"
     SEC = "SEC"
+
+# ===== NEW ENUMS ADDED BELOW =====
+class FaultType(str, Enum):
+    NONE = "None"
+    CRASH = "Crash"          # Robot stops all actions
+    BYZANTINE = "Byzantine"  # Robot sends corrupted data
+    DELAY = "Delay"          # Robot has movement delays
+
+class VisibilityState(str, Enum):
+    CLEAR = "Clear"          # Normal visibility
+    LIMITED = "Limited"      # Restricted by distance
+    OBSTRUCTED = "Obstructed" # Blocked by obstacles
+
+class Orientation(str, Enum):
+    NORTH = "North"
+    SOUTH = "South" 
+    EAST = "East"
+    WEST = "West"
+
+# (Kept original diagnostic print)
 import os
 print("Current Working Directory:", os.getcwd())
