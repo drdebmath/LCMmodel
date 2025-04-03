@@ -1,3 +1,4 @@
+const SIMULATION_SCALE_FACTOR = 100;
 import labels from "./labels.js";
 import Queue from "./Queue.js";
 import Robot from "./Robot.js";
@@ -54,11 +55,8 @@ socket.on("smallest_enclosing_circle", function (data) {
 });
 
 const schedulerTypes = [labels.Async, labels.Sync];
-
 const algorithmOptions = [labels.Gathering, labels.SEC];
-
 const probabilityDistributions = [labels.Exponential];
-
 const initialPositionsOptions = [labels.Random, labels.UserDefined];
 
 const startSimulation = {
@@ -115,7 +113,9 @@ const configOptions = {
 
 let lastSentConfigOptions = { ...configOptions };
 
+// Initialize canvas and event listeners
 resizeCanvas();
+setupInitialEventListeners();
 
 /**
  * Draws a Robot on the canvas
@@ -135,7 +135,7 @@ function drawRobot(robot) {
   ctx.fill();
   ctx.stroke();
 
-  // // Draw node label
+  // Draw node label
   ctx.beginPath();
   ctx.strokeStyle = "#FFF";
   ctx.strokeText(robot.id, x, y);
@@ -147,7 +147,6 @@ function drawRobot(robot) {
 
   // Draw multiplicity detection
   if (configOptions.multiplicity_detection) {
-    // Draw node label
     ctx.beginPath();
     ctx.strokeStyle = "#000";
     ctx.strokeText("" + robot.multiplicity, x + radius + 1, y - radius - 1);
@@ -169,6 +168,7 @@ function drawRobot(robot) {
     ctx.stroke();
   }
 }
+
 /**
  * Draws smallest enclosing circles
  * @param {Circle[]} circles - Smallest Enclosing Circles
@@ -185,10 +185,22 @@ function drawSEC(circles) {
     ctx.strokeStyle = "rgb(169 169 169 / 50%)";
 
     ctx.beginPath();
-
     ctx.arc(center_x, center_y, radius, 0, 2 * Math.PI);
     ctx.stroke();
   }
+}
+
+function setupInitialEventListeners() {
+  // Always bind click handler, but filter in handler
+  canvas.addEventListener("click", handleCanvasClick);
+  updateInitializationMessage();
+}
+
+function updateInitializationMessage() {
+  message.style.display = 
+    configOptions.initialization_method === labels.UserDefined 
+      ? "block" 
+      : "none";
 }
 
 const gui = setupOptions(configOptions);
@@ -232,9 +244,7 @@ function setupOptions(configOptions) {
     .name("Clear Simulation");
 
   startSimulationBtn.domElement.parentElement.parentElement.classList.add("start-btn");
-
   pauseBtn.domElement.parentElement.parentElement.classList.add("pause-btn");
-
   clearSimulationBtn.domElement.parentElement.parentElement.classList.add(
     "clear-simulation-btn"
   );
@@ -254,19 +264,13 @@ function setupOptions(configOptions) {
     if (configOptions.initialization_method === labels.Random) {
       numRobotsControllerElement.parentElement.parentElement.style.display = "list-item";
       numRobotsController.setValue(3);
-
-      canvas.removeEventListener("click", handleCanvasClick);
-
-      clearSimulation();
+      updateInitializationMessage();
     } else {
       numRobotsControllerElement.parentElement.parentElement.style.display = "none";
       numRobotsController.setValue(0);
-      message.style.display = "block";
-
-      canvas.addEventListener("click", handleCanvasClick);
-
-      clearSimulation();
+      updateInitializationMessage();
     }
+    clearSimulation();
   }
 
   function changeVisualizationRadius() {
@@ -284,9 +288,7 @@ function setupOptions(configOptions) {
 function startDrawingLoop() {
   stopAnimation = false;
   drawingSimulation = true;
-
-  // requestAnimationFrame initiates the animation loop
-  requestAnimationFrame(drawLoop); // Start the loop
+  requestAnimationFrame(drawLoop);
 }
 
 function stopDrawingLoop() {
@@ -302,61 +304,50 @@ function drawLoop(currentTime) {
   if (simulationId === undefined) {
     return;
   }
-  // Calculate the time since the last frame
+
   const deltaTime = currentTime - lastFrameTime;
 
-  // Check if enough time has passed to render a new frame
   if (deltaTime >= timePerFrameMs && !paused) {
     const snapshot = snapshotQueue.dequeue();
     if (snapshot) {
       clearCanvas();
       drawSnapshot(snapshot);
-      lastFrameTime = currentTime; // Reset lastFrameTime for the next frame
+      lastFrameTime = currentTime;
     } else {
       stopDrawingLoop();
       drawSEC(sec);
-
       return;
     }
   }
 
-  // Request the next frame
   requestAnimationFrame(drawLoop);
 }
 
 function clearCanvas() {
   ctx.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(-canvas / 2, -canvas.height / 2, canvas.width, canvas.height);
-}
-
-function getRandomColor() {
-  const r = Math.floor(50 + Math.random() * 256);
-  const g = Math.floor(50 + Math.random() * 256);
-  const b = Math.floor(50 + Math.random() * 256);
-
-  return `rgb(${r}, ${g}, ${b})`;
+  ctx.fillRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
 }
 
 function resizeCanvas() {
-  // This function resets the canvas
   console.log("Resized Canvas");
-
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Translate the coordinate system to be in the center
+  // Reset transform and set new center
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.translate(canvas.width / 2, canvas.height / 2);
+  
   configOptions.width_bound = canvas.width / 2;
   configOptions.height_bound = canvas.height / 2;
 }
 
 /**
  * @param {Snapshot} snapshot
- * */
+ */
 function drawSnapshot(snapshot) {
   let time = snapshot[0];
   updateTimeElement(time);
@@ -387,32 +378,45 @@ function updateTimeElement(t) {
  * @param {MouseEvent} e
  */
 function handleCanvasClick(e) {
+  // Only process in UserDefined mode
+  if (configOptions.initialization_method !== labels.UserDefined) return;
+
   if (time.innerText !== "") {
     clearSimulation();
   }
 
-  console.log(e);
-  const x = e.offsetX;
-  const y = e.offsetY;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left - canvas.width/2;  // Direct to canvas coords
+  const y = e.clientY - rect.top - canvas.height/2;
+  
+  const simX = x / Robot.ROBOT_X_POS_FACTOR;
+  const simY = -y / Robot.ROBOT_X_POS_FACTOR;
 
-  const [canvasX, canvasY] = translateToCanvas(canvas, x, y);
+  console.log(`Clicked at screen: (${e.clientX}, ${e.clientY})`);
+  console.log(`Canvas coordinates: (${x}, ${y})`);
+  console.log(`Simulation coordinates: (${simX}, ${simY})`);
 
+  // Visual feedback
+  ctx.fillStyle = 'rgba(0, 200, 0, 0.7)';
+  ctx.beginPath();
+  ctx.arc(x, y, 15, 0, Math.PI*2);
+  ctx.fill();
+
+  // Add robot
   const robot = new Robot(
-    canvasX,
-    canvasY,
+    simX, 
+    simY,
     `${currRobotId++}`,
     configOptions.robot_colors,
     configOptions.robot_speeds,
     1,
     true
   );
-
-  robots[currRobotId - 1] = robot;
-
+  
+  robots[currRobotId-1] = robot;
   drawRobot(robot);
-
-  configOptions.initial_positions.push(robot.getPosition());
-  message.style.display = "none";
+  configOptions.initial_positions.push([simX, simY]);
+  updateInitializationMessage();
 }
 
 function clearSimulation() {
@@ -426,17 +430,9 @@ function clearSimulation() {
   currRobotId = 0;
   configOptions.initial_positions = [];
   paused = false;
-  gui.updatePauseText();
+  if (gui && gui.updatePauseText) {
+    gui.updatePauseText();
+  }
   sec = [];
   drawingSimulation = false;
-}
-
-/**
- * Converts mouse coordinates to coordinates on a canvas with origin at the center of screen
- * @param {HTMLCanvasElement} canvas - Canvas element
- * @param {number} x
- * @param {number} y
- */
-function translateToCanvas(canvas, x, y) {
-  return [x - canvas.width / 2, y - canvas.height / 2];
 }
