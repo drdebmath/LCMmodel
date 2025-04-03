@@ -74,11 +74,16 @@ class Scheduler:
     ) -> dict[int, SnapshotDetails]:
         snapshot = {}
         for robot in self.robots:
+            visible_robots = self._get_visible_robots(robot, time)
             snapshot[robot.id] = SnapshotDetails(
-                robot.get_position(time), robot.state, robot.frozen, robot.terminated, 1
+                robot.get_position(time),
+                robot.state,
+                robot.frozen,
+                robot.terminated,
+                1
             )
 
-        self._detect_multiplicity(snapshot)  # in-place
+        self._detect_multiplicity(snapshot)
         if visualization_snapshot:
             self.visualization_snapshots.append((time, snapshot))
         else:
@@ -86,8 +91,58 @@ class Scheduler:
 
         return snapshot
 
+    def _get_visible_robots(self, observer: Robot, time: float) -> dict[int, SnapshotDetails]:
+        """Returns only robots visible to the observer"""
+        visible = {}
+        for robot in self.robots:
+            if robot.id == observer.id:
+                continue
+                
+            if self._is_visible(observer, robot, time):
+                visible[robot.id] = SnapshotDetails(
+                    robot.get_position(time),
+                    robot.state,
+                    robot.frozen,
+                    robot.terminated,
+                    1
+                )
+        return visible
+
+    def _is_visible(self, observer: Robot, target: Robot, time: float) -> bool:
+        """Check visibility considering radius and obstructions"""
+        observer_pos = observer.get_position(time)
+        target_pos = target.get_position(time)
+        distance = math.dist(observer_pos, target_pos)
+
+        # Basic visibility radius check
+        if observer.visibility_radius and distance > observer.visibility_radius:
+            return False
+            
+        # Obstructed visibility check
+        if observer.obstructed_visibility:
+            for other_robot in self.robots:
+                if other_robot.id in [observer.id, target.id]:
+                    continue
+                    
+                other_pos = other_robot.get_position(time)
+                if self._is_between(observer_pos, target_pos, other_pos):
+                    return False
+        return True
+
+    def _is_between(
+        self, 
+        a: Coordinates, 
+        b: Coordinates, 
+        c: Coordinates,
+        threshold: float = 0.1
+    ) -> bool:
+        """Check if point c lies between a and b with threshold tolerance"""
+        ac = math.dist(a, c)
+        bc = math.dist(b, c)
+        ab = math.dist(a, b)
+        return abs(ac + bc - ab) < threshold
+
     def generate_event(self, current_event: Event) -> None:
-        # Visualization events
         if current_event.state == None and len(self.priority_queue) > 0:
             new_event_time = current_event.time + self.sampling_rate
             new_event = Event(new_event_time, -1, None)
@@ -97,13 +152,12 @@ class Scheduler:
         new_event_time = 0.0
         robot = self.robots[current_event.id]
 
-        # Robot will definitely reach calculated position
         if current_event.state == RobotState.MOVE:
             distance = 0.0
             if self.rigid_movement == True:
                 distance = math.dist(robot.calculated_position, robot.start_position)
             else:
-                percentage = 1 - self.generator.uniform()  # range of values is (0,1]
+                percentage = 1 - self.generator.uniform()
                 Scheduler._logger.info(f"percentage of journey: {percentage}")
                 distance = percentage * math.dist(
                     robot.calculated_position, robot.start_position
@@ -115,9 +169,7 @@ class Scheduler:
             )
 
         new_event_state = robot.state.next_state()
-
         priority_event = Event(new_event_time, current_event.id, new_event_state)
-
         heapq.heappush(self.priority_queue, priority_event)
 
     def handle_event(self) -> int:
@@ -127,9 +179,7 @@ class Scheduler:
             return exit_code
 
         current_event = heapq.heappop(self.priority_queue)
-
         event_state = current_event.state
-
         time = current_event.time
 
         if event_state == None:
@@ -141,7 +191,6 @@ class Scheduler:
                 robot.state = RobotState.LOOK
                 robot.look(self.get_snapshot(time), time)
 
-                # Removes robot from simulation
                 if robot.terminated == True:
                     return 4
                 exit_code = 1
@@ -156,21 +205,14 @@ class Scheduler:
         return exit_code
 
     def initialize_queue(self) -> None:
-        # Set the lambda parameter (average rate of occurrences)
-        lambda_value = 5  # 5 occurrences per interval
-
-        # Generate Poisson-distributed random numbers
+        lambda_value = 5
         generator = np.random.default_rng()
-        num_samples = 2  # Total number of samples to generate
+        num_samples = 2
         poisson_numbers = generator.poisson(lambda_value, num_samples)
-
-        # Display the generated numbers
         Scheduler._logger.info(poisson_numbers)
 
     def initialize_queue_exponential(self) -> None:
         Scheduler._logger.info(f"Seed used: {self.seed}")
-
-        # Generate time intervals for n events
         self.generator = np.random.default_rng(seed=self.seed)
         num_of_events = len(self.robots)
         time_intervals = self.generator.exponential(
@@ -178,7 +220,7 @@ class Scheduler:
         )
         Scheduler._logger.info(f"Time intervals between events: {time_intervals}")
 
-        initial_event = Event(0.0, -1, None)  # initial event for visualization
+        initial_event = Event(0.0, -1, None)
         self.priority_queue: list[Event] = [initial_event]
 
         for robot in self.robots:
@@ -194,21 +236,18 @@ class Scheduler:
                 return False
         return True
 
-    # Can be improved when it comes to precision/detection
     def _detect_multiplicity(self, snapshot: dict[int, SnapshotDetails]):
         positions = [(v.pos, k) for k, v in snapshot.items()]
-
         positions.sort()
 
         i = 0
         multiplicity = 1
         while i < len(positions):
-            multiplicity_group = [positions[i][1]]  # Start a new group
+            multiplicity_group = [positions[i][1]]
             rounded_coordinates1 = round_coordinates(
                 positions[i][0], self.threshold_precision - 2
             )
 
-            # Check for close positions
             for j in range(i + 1, len(positions)):
                 rounded_coordinates2 = round_coordinates(
                     positions[j][0], self.threshold_precision - 2
@@ -226,17 +265,14 @@ class Scheduler:
                 else:
                     break
 
-            # Update multiplicity for all robots in the group
             for robot_id in multiplicity_group:
                 snapshot_details = list(snapshot[robot_id])
                 snapshot_details[4] = multiplicity
                 snapshot[robot_id] = SnapshotDetails(*snapshot_details)
 
-            # Move to the next group
             i += len(multiplicity_group)
             multiplicity = 1
 
 
 def round_coordinates(coord: Coordinates, precision: int):
-
     return Coordinates(round(coord.x, precision), round(coord.y, precision))
