@@ -3,6 +3,15 @@ from type_defs import *
 from typing import Callable
 import math
 import logging
+import random  # Added for Delay fault
+from enum import Enum, auto  # Added for FaultType enum
+
+# Added: New enum for fault types
+class FaultType(Enum):
+    NONE = auto()
+    CRASH = auto()
+    BYZANTINE = auto()
+    DELAY = auto()
 
 
 class Robot:
@@ -23,6 +32,7 @@ class Robot:
         multiplicity_detection: bool = False,
         rigid_movement: bool = False,
         threshold_precision: float = 5,
+        fault_type: FaultType = FaultType.NONE,  # Added: fault_type parameter
     ):
         Robot._logger = logger
         self.speed = speed
@@ -46,6 +56,7 @@ class Robot:
         self.frozen = False  # true if we skipped move step
         self.terminated = False
         self.sec = None  # Stores the calculated SEC
+        self.fault_type = fault_type  # Added: fault_type attribute
 
         match algorithm:
             case "Gathering":
@@ -53,17 +64,37 @@ class Robot:
             case "SEC":
                 self.algorithm = Algorithm.SEC
 
+    # Added: Helper method to apply Byzantine fault to data
+    def _corrupt_data(self, data):
+        """Corrupt data for Byzantine robots"""
+        if isinstance(data, Coordinates):
+            return Coordinates(data.x * 1.5, data.y * 0.5)  # Example corruption
+        elif isinstance(data, dict):
+            return {k: self._corrupt_data(v) for k, v in data.items()}
+        return data * 1.1  # Default corruption
+
     def look(
         self,
         snapshot: dict[Id, SnapshotDetails],
         time: float,
     ) -> None:
+        # Added: Skip if crashed
+        if self.fault_type == FaultType.CRASH:
+            Robot._logger.info(f"[{time}] {{R{self.id}}} CRASHED - Skipping LOOK")
+            return
+
         self.state = RobotState.LOOK
 
         self.snapshot = {}
         for key, value in snapshot.items():
             if self._robot_is_visible(value.pos):
                 transformed_pos = self._convert_coordinate(value.pos)
+                
+                # Added: Byzantine fault corrupts the snapshot
+                if self.fault_type == FaultType.BYZANTINE:
+                    transformed_pos = self._corrupt_data(transformed_pos)
+                    value = self._corrupt_data(value)
+                
                 self.snapshot[key] = SnapshotDetails(
                     transformed_pos,
                     value.state,
@@ -85,6 +116,11 @@ class Robot:
 
         algo, algo_terminal = self._select_algorithm()
         self.calculated_position = self._compute(algo, algo_terminal)
+        
+        # Added: Byzantine fault corrupts the calculated position
+        if self.fault_type == FaultType.BYZANTINE:
+            self.calculated_position = self._corrupt_data(self.calculated_position)
+            
         pos_str = (
             f"({self.calculated_position[0]}, {self.calculated_position[1]})"
             if self.calculated_position
@@ -120,6 +156,17 @@ class Robot:
         return coord
 
     def move(self, start_time: float) -> None:
+        # Added: Skip if crashed
+        if self.fault_type == FaultType.CRASH:
+            Robot._logger.info(f"[{start_time}] {{R{self.id}}} CRASHED - Skipping MOVE")
+            return
+            
+        # Added: 30% chance to skip if DELAY fault
+        if self.fault_type == FaultType.DELAY and random.random() < 0.3:
+            Robot._logger.info(f"[{start_time}] {{R{self.id}}} DELAYED - Skipping MOVE")
+            self.frozen = True
+            return
+
         self.state = RobotState.MOVE
         Robot._logger.info(f"[{start_time}] {{R{self.id}}} MOVE")
 
@@ -127,7 +174,6 @@ class Robot:
         self.start_position = self.coordinates
 
     def wait(self, time: float) -> None:
-
         self.coordinates = self.get_position(time)
         self.end_time = time
         self.state = RobotState.WAIT
@@ -143,7 +189,6 @@ class Robot:
         self.end_time = None
 
     def get_position(self, time: float) -> Coordinates:
-
         if self.state == RobotState.LOOK or self.state == RobotState.WAIT:
             return self.coordinates
 
@@ -197,7 +242,6 @@ class Robot:
         return (Coordinates(x, y), [])
 
     def _midpoint_terminal(self, coord: Coordinates, args=None) -> bool:
-
         robot_ids = self.snapshot.keys()
         for id in robot_ids:
             if math.dist(self.snapshot[id].pos, coord) > math.pow(
@@ -360,7 +404,6 @@ class Robot:
     def _closest_point_on_circle(
         self, circle: Circle, point: Coordinates
     ) -> Coordinates:
-
         # Vector from the center of the circle to the point
         center: Coordinates = circle.center
         radius: float = circle.radius
@@ -397,7 +440,6 @@ class Robot:
 
     def _circle_from_two(self, a: Coordinates, b: Coordinates) -> Circle:
         """Returns circle intersecting two points"""
-
         # Midpoint between a and b
         center = Coordinates((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)
         return Circle(center, math.dist(a, b) / 2.0)
@@ -406,7 +448,6 @@ class Robot:
         self, a: Coordinates, b: Coordinates, c: Coordinates
     ) -> Circle:
         """Returns circle intersecting three points"""
-
         # Calculate the midpoints of lines AB and AC
         D = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y))
 
@@ -457,4 +498,5 @@ class Robot:
         return ids
 
     def __str__(self):
-        return f"R{self.id}, speed: {self.speed}, color: {self.color}, coordinates: {self.coordinates}"
+        fault_status = "" if self.fault_type == FaultType.NONE else f", Fault: {self.fault_type.name}"
+        return f"R{self.id}, speed: {self.speed}, color: {self.color}, coordinates: {self.coordinates}{fault_status}"
