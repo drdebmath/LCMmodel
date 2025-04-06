@@ -46,7 +46,7 @@ def generate_initial_positions(generator, width_bound, height_bound, n):
     return positions
 
 
-# Disable Flask’s default logging to the root logger
+# Disable Flask's default logging to the root logger
 log = logging.getLogger(
     "werkzeug"
 )  # 'werkzeug' is the logger used by Flask for requests
@@ -170,17 +170,20 @@ def serve_frontend():
 
 def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(("127.0.0.1", port)) == 0
+        return s.connect_ex(("0.0.0.0", port)) == 0
 
 
-def open_browser(port):
-    webbrowser.open(f"http://127.0.0.1:{port}/")
+def open_browser(host, port):
+    # If host is 0.0.0.0, use localhost for browser opening
+    browser_host = "localhost" if host == "0.0.0.0" else host
+    webbrowser.open(f"http://{browser_host}:{port}/")
 
 
+host = "0.0.0.0"  # Change from 127.0.0.1 to 0.0.0.0 to allow external access
 port = 8080
 while is_port_in_use(port):
     port += 1
 
 # Open the browser after a delay to let the server start
-threading.Timer(1, open_browser, args=(port,)).start()
-app.run(host="127.0.0.1", port=port, debug=True, use_reloader=False)
+threading.Timer(1, open_browser, args=(host, port)).start()
+app.run(host=host, port=port, debug=True, use_reloader=False)
