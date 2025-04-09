@@ -1,17 +1,9 @@
-from enums import RobotState, Algorithm
+from enums import RobotState, Algorithm, FaultType, FaultStatus
 from type_defs import *
 from typing import Callable
 import math
 import logging
-import random  # Added for Delay fault
-from enum import Enum, auto  # Added for FaultType enum
-
-# Added: New enum for fault types
-class FaultType(Enum):
-    NONE = auto()
-    CRASH = auto()
-    BYZANTINE = auto()
-    DELAY = auto()
+import random
 
 
 class Robot:
@@ -32,12 +24,13 @@ class Robot:
         multiplicity_detection: bool = False,
         rigid_movement: bool = False,
         threshold_precision: float = 5,
-        fault_type: FaultType = FaultType.NONE,  # Added: fault_type parameter
+        fault_type: FaultType = FaultType.NONE,
     ):
         Robot._logger = logger
         self.speed = speed
         self.color = color
         self.visibility_radius = visibility_radius
+        self.original_visibility_radius = visibility_radius
         self.obstructed_visibility = obstructed_visibility
         self.multiplicity_detection = multiplicity_detection
         self.rigid_movement = rigid_movement
@@ -56,7 +49,12 @@ class Robot:
         self.frozen = False  # true if we skipped move step
         self.terminated = False
         self.sec = None  # Stores the calculated SEC
-        self.fault_type = fault_type  # Added: fault_type attribute
+
+        # Fault-related attributes
+        self.fault_type = fault_type
+        self.fault_status = FaultStatus.INACTIVE
+        self.original_speed = speed  # Store original speed for fault recovery
+        self.fault_activation_time = None
 
         match algorithm:
             case "Gathering":
@@ -64,44 +62,77 @@ class Robot:
             case "SEC":
                 self.algorithm = Algorithm.SEC
 
-    # Added: Helper method to apply Byzantine fault to data
-    def _corrupt_data(self, data):
-        """Corrupt data for Byzantine robots"""
-        if isinstance(data, Coordinates):
-            return Coordinates(data.x * 1.5, data.y * 0.5)  # Example corruption
-        elif isinstance(data, dict):
-            return {k: self._corrupt_data(v) for k, v in data.items()}
-        return data * 1.1  # Default corruption
+    def _apply_fault_effects(self, time: float) -> bool:
+        """Apply effects based on fault type and return True if fault blocks operation"""
+        if self.fault_type == FaultType.NONE:
+            return False
+            
+        # First activation of fault
+        if self.fault_status == FaultStatus.INACTIVE:
+            self.fault_status = FaultStatus.ACTIVE
+            self.fault_activation_time = time
+            Robot._logger.info(f"[{time}] {{R{self.id}}} FAULT ACTIVATED: {self.fault_type.value}")
+
+        # Check if fault should trigger now
+        if random.random() < 0.3:  # 30% chance to trigger fault effect
+            self.fault_status = FaultStatus.TRIGGERED
+            Robot._logger.info(f"[{time}] {{R{self.id}}} FAULT TRIGGERED: {self.fault_type.value}")
+            
+            if self.fault_type == FaultType.CRASH:
+                self.terminated = True
+                return True
+                
+            elif self.fault_type == FaultType.DELAY:
+                self.speed = self.original_speed * 0.5  # Reduce speed by 50%
+                
+            elif self.fault_type == FaultType.WRONG_COMPUTE:
+                # Add random error to computations
+                return False  # Let computation happen but it will be wrong
+                
+            elif self.fault_type == FaultType.VISIBILITY:
+                # Randomly reduce visibility
+                self.visibility_radius = self.original_visibility_radius * random.uniform(0.3, 0.7)
+                
+            elif self.fault_type == FaultType.MOVEMENT:
+                # Invert movement direction
+                if self.calculated_position:
+                    self.calculated_position = Coordinates(
+                        -self.calculated_position.x,
+                        -self.calculated_position.y
+                    )
+                
+        return False
 
     def look(
         self,
         snapshot: dict[Id, SnapshotDetails],
         time: float,
     ) -> None:
-        # Added: Skip if crashed
-        if self.fault_type == FaultType.CRASH:
-            Robot._logger.info(f"[{time}] {{R{self.id}}} CRASHED - Skipping LOOK")
+        if self._apply_fault_effects(time):
             return
-
+            
         self.state = RobotState.LOOK
-
         self.snapshot = {}
+        
+        # Handle visibility faults
+        visible_robots = []
         for key, value in snapshot.items():
             if self._robot_is_visible(value.pos):
-                transformed_pos = self._convert_coordinate(value.pos)
+                visible_robots.append((key, value))
                 
-                # Added: Byzantine fault corrupts the snapshot
-                if self.fault_type == FaultType.BYZANTINE:
-                    transformed_pos = self._corrupt_data(transformed_pos)
-                    value = self._corrupt_data(value)
-                
-                self.snapshot[key] = SnapshotDetails(
-                    transformed_pos,
-                    value.state,
-                    value.frozen,
-                    value.terminated,
-                    value.multiplicity,
-                )
+        # For visibility faults, randomly drop some robots from view
+        if self.fault_type == FaultType.VISIBILITY and self.fault_status == FaultStatus.TRIGGERED:
+            visible_robots = random.sample(visible_robots, max(1, len(visible_robots)//2))
+            
+        for key, value in visible_robots:
+            transformed_pos = self._convert_coordinate(value.pos)
+            self.snapshot[key] = SnapshotDetails(
+                transformed_pos,
+                value.state,
+                value.frozen,
+                value.terminated,
+                value.multiplicity,
+            )
 
         Robot._logger.info(
             f"[{time}] {{R{self.id}}} LOOK    -- Snapshot {self.prettify_snapshot(snapshot)}"
@@ -110,17 +141,19 @@ class Robot:
         if len(self.snapshot) == 1:
             self.frozen = True
             self.terminated = True
-
             self.wait(time)
             return
 
         algo, algo_terminal = self._select_algorithm()
         self.calculated_position = self._compute(algo, algo_terminal)
         
-        # Added: Byzantine fault corrupts the calculated position
-        if self.fault_type == FaultType.BYZANTINE:
-            self.calculated_position = self._corrupt_data(self.calculated_position)
-            
+        # Apply wrong computation fault if active
+        if self.fault_type == FaultType.WRONG_COMPUTE and self.fault_status == FaultStatus.TRIGGERED:
+            self.calculated_position = Coordinates(
+                self.calculated_position.x * random.uniform(0.8, 1.2),
+                self.calculated_position.y * random.uniform(0.8, 1.2)
+            )
+
         pos_str = (
             f"({self.calculated_position[0]}, {self.calculated_position[1]})"
             if self.calculated_position
@@ -156,17 +189,9 @@ class Robot:
         return coord
 
     def move(self, start_time: float) -> None:
-        # Added: Skip if crashed
-        if self.fault_type == FaultType.CRASH:
-            Robot._logger.info(f"[{start_time}] {{R{self.id}}} CRASHED - Skipping MOVE")
+        if self._apply_fault_effects(start_time):
             return
             
-        # Added: 30% chance to skip if DELAY fault
-        if self.fault_type == FaultType.DELAY and random.random() < 0.3:
-            Robot._logger.info(f"[{start_time}] {{R{self.id}}} DELAYED - Skipping MOVE")
-            self.frozen = True
-            return
-
         self.state = RobotState.MOVE
         Robot._logger.info(f"[{start_time}] {{R{self.id}}} MOVE")
 
@@ -184,6 +209,16 @@ class Robot:
         Robot._logger.info(
             f"[{time}] {{R{self.id}}} WAIT    -- Distance: {current_distance} | Total Distance: {self.travelled_distance} units"
         )
+
+        # Reset fault effects if applicable
+        if self.fault_status == FaultStatus.TRIGGERED:
+            if self.fault_type == FaultType.DELAY:
+                self.speed = self.original_speed
+            elif self.fault_type == FaultType.VISIBILITY:
+                self.visibility_radius = self.original_visibility_radius
+                
+            self.fault_status = FaultStatus.RESOLVED
+            Robot._logger.info(f"[{time}] {{R{self.id}}} FAULT RESOLVED")
 
         self.start_time = None
         self.end_time = None
@@ -498,5 +533,7 @@ class Robot:
         return ids
 
     def __str__(self):
-        fault_status = "" if self.fault_type == FaultType.NONE else f", Fault: {self.fault_type.name}"
-        return f"R{self.id}, speed: {self.speed}, color: {self.color}, coordinates: {self.coordinates}{fault_status}"
+        fault_info = ""
+        if self.fault_type != FaultType.NONE:
+            fault_info = f", fault: {self.fault_type.value} ({self.fault_status.value})"
+        return f"R{self.id}, speed: {self.speed}, color: {self.color}, coordinates: {self.coordinates}{fault_info}"
