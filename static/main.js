@@ -61,17 +61,16 @@ const initialPositionsOptions = [labels.Random, labels.UserDefined];
 
 const startSimulation = {
   start_simulation: () => {
-    // Collect fault selections if UI exists
-    if (document.getElementById('fault-container')) {
-      configOptions.robot_faults = [];
-      for (let i = 0; i < configOptions.num_of_robots; i++) {
-        const select = document.getElementById(`fault-select-${i}`);
-        if (select) {
-          configOptions.robot_faults.push(select.value);
-        } else {
-          configOptions.robot_faults.push('None');
-        }
-      }
+    // Collect fault configurations
+    configOptions.robot_faults = [];
+    for (let i = 0; i < configOptions.num_of_robots; i++) {
+      const faultType = document.getElementById(`fault-type-${i}`)?.value || 'NONE';
+      const faultProb = parseFloat(document.getElementById(`fault-prob-${i}`)?.value) || 0.3;
+      
+      configOptions.robot_faults.push({
+        type: faultType,
+        probability: faultProb
+      });
     }
     
     if (
@@ -182,12 +181,18 @@ function drawRobot(robot) {
     ctx.stroke();
   }
 
-  // Draw fault status if it exists
-  if (robot.fault_type && robot.fault_type !== 'None') {
+  // Enhanced fault display
+  if (robot.fault_type && robot.fault_type !== 'NONE') {
     ctx.font = '10px Arial';
-    ctx.fillStyle = 'red';
+    ctx.fillStyle = robot.fault_status === 'TRIGGERED' ? 'red' : 'orange';
     ctx.textAlign = 'center';
-    ctx.fillText(robot.fault_type, x, y + Robot.ROBOT_SIZE + 12);
+    
+    const statusText = robot.fault_status ? ` (${robot.fault_status})` : '';
+    ctx.fillText(
+      `${robot.fault_type}${statusText}`, 
+      x, 
+      y + Robot.ROBOT_SIZE + 12
+    );
   }
 }
 
@@ -235,33 +240,92 @@ function createFaultSelectionUI() {
   const title = document.createElement('h3');
   title.textContent = 'Robot Fault Configuration';
   faultContainer.appendChild(title);
-  
+
+  const description = document.createElement('p');
+  description.textContent = 'Select fault type for each robot. Faults will activate during simulation.';
+  description.style.fontSize = '0.9em';
+  description.style.color = '#666';
+  faultContainer.appendChild(description);
+
+  const table = document.createElement('table');
+  table.style.width = '100%';
+  table.style.marginTop = '10px';
+  table.style.borderCollapse = 'collapse';
+
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  ['Robot ID', 'Fault Type', 'Activation Probability'].forEach(text => {
+    const th = document.createElement('th');
+    th.textContent = text;
+    th.style.textAlign = 'left';
+    th.style.padding = '8px';
+    th.style.borderBottom = '1px solid #ddd';
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+
+  const faultOptions = [
+    { value: 'NONE', label: 'No Fault' },
+    { value: 'CRASH', label: 'Crash (Instant Termination)' },
+    { value: 'DELAY', label: 'Delay (50% Speed)' },
+    { value: 'WRONG_COMPUTE', label: 'Wrong Computation' },
+    { value: 'VISIBILITY', label: 'Partial Visibility' },
+    { value: 'MOVEMENT', label: 'Inverted Movement' }
+  ];
+
   for (let i = 0; i < configOptions.num_of_robots; i++) {
-    const div = document.createElement('div');
-    div.style.margin = '5px 0';
+    const tr = document.createElement('tr');
     
+    const idCell = document.createElement('td');
+    idCell.textContent = `Robot ${i}`;
+    idCell.style.padding = '8px';
+    idCell.style.borderBottom = '1px solid #eee';
+    tr.appendChild(idCell);
+
+    const typeCell = document.createElement('td');
     const select = document.createElement('select');
-    select.id = `fault-select-${i}`;
-    select.style.marginLeft = '10px';
+    select.id = `fault-type-${i}`;
+    select.name = `fault-type-${i}`;
+    select.style.width = '100%';
+    select.style.padding = '4px';
     
-    // Add fault options
-    ['None', 'Crashed', 'Delayed', 'Stuck', 'Wrong Compute', 'Intermittent'].forEach(fault => {
-      const option = document.createElement('option');
-      option.value = fault;
-      option.text = fault;
-      select.appendChild(option);
+    faultOptions.forEach(option => {
+      const optElement = document.createElement('option');
+      optElement.value = option.value;
+      optElement.textContent = option.label;
+      select.appendChild(optElement);
     });
     
-    const label = document.createElement('label');
-    label.htmlFor = select.id;
-    label.textContent = `Robot ${i} Fault: `;
-    
-    div.appendChild(label);
-    div.appendChild(select);
-    faultContainer.appendChild(div);
+    typeCell.appendChild(select);
+    typeCell.style.padding = '8px';
+    typeCell.style.borderBottom = '1px solid #eee';
+    tr.appendChild(typeCell);
+
+    const probCell = document.createElement('td');
+    const probInput = document.createElement('input');
+    probInput.type = 'number';
+    probInput.id = `fault-prob-${i}`;
+    probInput.name = `fault-prob-${i}`;
+    probInput.min = '0';
+    probInput.max = '1';
+    probInput.step = '0.1';
+    probInput.value = '0.3';
+    probInput.style.width = '60px';
+    probInput.style.padding = '4px';
+    probCell.appendChild(probInput);
+    probCell.style.padding = '8px';
+    probCell.style.borderBottom = '1px solid #eee';
+    tr.appendChild(probCell);
+
+    tbody.appendChild(tr);
   }
-  
-  // Add the container near the GUI controls
+
+  table.appendChild(tbody);
+  faultContainer.appendChild(table);
+
   const guiContainer = document.querySelector('.dg.main.a');
   if (guiContainer) {
     guiContainer.parentNode.insertBefore(faultContainer, guiContainer.nextSibling);
@@ -332,7 +396,6 @@ function setupOptions(configOptions) {
       numRobotsControllerElement.parentElement.parentElement.style.display = "list-item";
       numRobotsController.setValue(3);
       updateInitializationMessage();
-      // Update fault UI when number of robots changes
       if (document.getElementById('fault-container')) {
         document.getElementById('fault-container').remove();
       }
@@ -341,7 +404,6 @@ function setupOptions(configOptions) {
       numRobotsControllerElement.parentElement.parentElement.style.display = "none";
       numRobotsController.setValue(0);
       updateInitializationMessage();
-      // Remove fault UI in user-defined mode
       if (document.getElementById('fault-container')) {
         document.getElementById('fault-container').remove();
       }
@@ -434,7 +496,8 @@ function drawSnapshot(snapshot) {
     let [x, y] = robotsHistory[id][0];
     const multiplicity = robotsHistory[id][4];
     const state = robotsHistory[id][1];
-    const fault_type = robotsHistory[id][5] || 'None'; // Assuming fault type is at index 5
+    const fault_type = robotsHistory[id][5] || 'NONE';
+    const fault_status = robotsHistory[id][6] || 'INACTIVE';
 
     if (robots[id] === undefined) {
       robots[id] = new Robot(x, y, id, "black", 1, multiplicity);
@@ -444,6 +507,7 @@ function drawSnapshot(snapshot) {
     robots[id].setState(state);
     robots[id].multiplicity = multiplicity;
     robots[id].fault_type = fault_type;
+    robots[id].fault_status = fault_status;
     drawRobot(robots[id]);
   }
 }
@@ -464,7 +528,7 @@ function handleCanvasClick(e) {
   }
 
   const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left - canvas.width/2;  // Direct to canvas coords
+  const x = e.clientX - rect.left - canvas.width/2;
   const y = e.clientY - rect.top - canvas.height/2;
   
   const simX = x / Robot.ROBOT_X_POS_FACTOR;
