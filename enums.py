@@ -1,6 +1,5 @@
 from enum import Enum
 
-
 class RobotState(str, Enum):
     LOOK = "LOOK"
     MOVE = "MOVE"
@@ -28,3 +27,6 @@ class Algorithm(Enum):
     GATHERING = "Gathering"
     SEC = "SEC"
     CUSTOM = "Custom"
+    COLOR_BASED = "ColorBased"  # Color-based algorithm selection
+    TWO_ROBOT = "TwoRobot"  # Two-robot algorithm
+    MUTUAL_VISIBILITY = "MutualVisibility"  # New mutual visibility algorithm

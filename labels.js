@@ -4,14 +4,13 @@ const labels = {
   Gathering: "Gathering",
   SEC: "SEC",
   Custom: "Custom",
-  RotationReflectionTest: "RotationReflectionTest",
   ColorBased: "ColorBased",
-  TwoRobot: "TwoRobot",  // New two-robot algorithm
-  MutualVisibility: "MutualVisibility",  // Add MutualVisibility algorithm
+  TwoRobot: "TwoRobot",
+  MutualVisibility: "MutualVisibility",
   Exponential: "Exponential",
   Random: "Random",
   UserDefined: "User Defined",
   MissingInitialPositionsAlert: "Please click on the screen to provide initial positions",
 };
 
-export default labels;
+export default labels; 
