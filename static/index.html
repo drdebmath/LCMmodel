@@ -5,18 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.css" integrity="sha512-uf06llspW44/LZpHzHT6qBOIVODjWtv4MxCricRxkzvopAlSWnTf6hpZTFxuuZcuNE9CBQhqE0Seu1CoRk84nQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/theme/monokai.min.css" integrity="sha512-R6PH4vSzF2Yxjdvb2p2FA06yWul+U0PDDav4b/od/oXf9Iw37zl10plvwOXelrjV2Ai7Eo3vyHeyFUjhXdBCVQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <link rel="stylesheet" href="./static/styles.css" />
-    <script type="text/javascript" src="./static/min/dat.gui.min.js"></script>
-    <script type="text/javascript" src="./static/min/socket.io.min.js"></script>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="text/javascript" src="min/dat.gui.min.js"></script>
+    
+    <!-- Updated socket.io to use CDN version -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
     <!-- Load the script for switching tabs -->
-    <script type="module" src="./static/feature_tabs.js"></script>
+    <script type="module" src="feature_tabs.js"></script>
 
     <!-- Load the core scripts -->
-    <script type="module" src="./static/Robot.js"></script>
-    <script type="module" src="./static/Queue.js"></script>
-    <script type="module" src="./static/main.js"></script>
-    <script type="module" src="./static/labels.js"></script>
+    <script type="module" src="Robot.js"></script>
+    <script type="module" src="Queue.js"></script>
+    <script type="module" src="main.js"></script>
+    <script type="module" src="labels.js"></script>
 
     <!-- This can be refactored once the script build of Tailwind is phased out for the full npm installation -->
     <style type="text/tailwindcss">
@@ -83,11 +85,11 @@
 
     <!-- Load Panzoom to facilitate zooming into the HTML canvas -->
     <script src="https://unpkg.com/@panzoom/panzoom@4.6.0/dist/panzoom.min.js"></script>
-    <script type="module" src="./static/feature_zoom_pan.js"></script>
+    <script type="module" src="feature_zoom_pan.js"></script>
 
     <!-- Load CodeMirror for in-browser editing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.js" integrity="sha512-8RnEqURPUc5aqFEN04aQEiPlSAdE0jlFS/9iGgUyNtwFnSKCXhmB6ZTNl7LnDtDWKabJIASzXrzD0K+LYexU9g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/python/python.min.js" integrity="sha512-2M0GdbU5OxkGYMhakED69bw0c1pW3Nb0PeF3+9d+SnwN1ryPx3wiDdNqK3gSM7KAU/pEV+2tFJFbMKjKAahOkQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script type="module" src="./static/feature_code_editor.js"></script>
+    <script type="module" src="feature_code_editor.js"></script>
   </body>
 </html>
