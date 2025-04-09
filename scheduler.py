@@ -30,6 +30,7 @@ class Scheduler:
         threshold_precision: int = 5,
         sampling_rate: float = 0.2,
         labmda_rate: float = 5,
+        robot_faults: list[FaultType] = None,
     ):
         Scheduler._logger = logger
         self.seed = seed
@@ -52,6 +53,8 @@ class Scheduler:
 
         if isinstance(robot_speeds, float) or isinstance(robot_speeds, int):
             robot_speeds_list = [robot_speeds] * num_of_robots
+        else:
+            robot_speeds_list = robot_speeds
 
         for i in range(num_of_robots):
             new_robot = Robot(
@@ -65,6 +68,10 @@ class Scheduler:
                 rigid_movement=self.rigid_movement,
             )
             self.robots.append(new_robot)
+
+        if robot_faults:
+            for i, fault in enumerate(robot_faults):
+                self.robots[i].fault_type = fault
 
         self.initialize_queue_exponential()
         Robot._generator = self.generator
@@ -92,7 +99,6 @@ class Scheduler:
         return snapshot
 
     def _get_visible_robots(self, observer: Robot, time: float) -> dict[int, SnapshotDetails]:
-        """Returns only robots visible to the observer"""
         visible = {}
         for robot in self.robots:
             if robot.id == observer.id:
@@ -109,16 +115,13 @@ class Scheduler:
         return visible
 
     def _is_visible(self, observer: Robot, target: Robot, time: float) -> bool:
-        """Check visibility considering radius and obstructions"""
         observer_pos = observer.get_position(time)
         target_pos = target.get_position(time)
         distance = math.dist(observer_pos, target_pos)
 
-        # Basic visibility radius check
         if observer.visibility_radius and distance > observer.visibility_radius:
             return False
             
-        # Obstructed visibility check
         if observer.obstructed_visibility:
             for other_robot in self.robots:
                 if other_robot.id in [observer.id, target.id]:
@@ -136,14 +139,13 @@ class Scheduler:
         c: Coordinates,
         threshold: float = 0.1
     ) -> bool:
-        """Check if point c lies between a and b with threshold tolerance"""
         ac = math.dist(a, c)
         bc = math.dist(b, c)
         ab = math.dist(a, b)
         return abs(ac + bc - ab) < threshold
 
     def generate_event(self, current_event: Event) -> None:
-        if current_event.state == None and len(self.priority_queue) > 0:
+        if current_event.state is None and len(self.priority_queue) > 0:
             new_event_time = current_event.time + self.sampling_rate
             new_event = Event(new_event_time, -1, None)
             heapq.heappush(self.priority_queue, new_event)
@@ -154,7 +156,7 @@ class Scheduler:
 
         if current_event.state == RobotState.MOVE:
             distance = 0.0
-            if self.rigid_movement == True:
+            if self.rigid_movement:
                 distance = math.dist(robot.calculated_position, robot.start_position)
             else:
                 percentage = 1 - self.generator.uniform()
@@ -182,7 +184,7 @@ class Scheduler:
         event_state = current_event.state
         time = current_event.time
 
-        if event_state == None:
+        if event_state is None:
             self.get_snapshot(time, visualization_snapshot=True)
             exit_code = 0
         else:
@@ -191,7 +193,7 @@ class Scheduler:
                 robot.state = RobotState.LOOK
                 robot.look(self.get_snapshot(time), time)
 
-                if robot.terminated == True:
+                if robot.terminated:
                     return 4
                 exit_code = 1
             elif event_state == RobotState.MOVE:
@@ -232,7 +234,7 @@ class Scheduler:
 
     def _all_robots_reached(self) -> bool:
         for robot in self.robots:
-            if robot.frozen == False:
+            if not robot.frozen:
                 return False
         return True
 
