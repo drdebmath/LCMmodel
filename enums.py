@@ -1,4 +1,4 @@
-from enum import Enum, auto
+from enum import Enum
 
 class RobotState(str, Enum):
     LOOK = "LOOK"
@@ -14,37 +14,33 @@ class RobotState(str, Enum):
         elif self == RobotState.WAIT:
             return RobotState.LOOK
 
-
 class SchedulerType(Enum):
     ASYNC = "Async"
 
-
 class DistributionType(Enum):
     EXPONENTIAL = "Exponential"
-
 
 class Algorithm(Enum):
     GATHERING = "Gathering"
     SEC = "SEC"
 
-# ===== NEW ENUMS ADDED BELOW =====
-class FaultType(str, Enum):
-    NONE = "None"
-    CRASH = "Crash"          # Robot stops all actions
-    BYZANTINE = "Byzantine"  # Robot sends corrupted data
-    DELAY = "Delay"          # Robot has movement delays
+# New additions
+class FaultType(Enum):
+    NONE = "No Fault"
+    CRASH = "Crash (Instant Termination)"
+    DELAY = "Delay (50% Speed)"
+    WRONG_COMPUTE = "Wrong Computation"
+    VISIBILITY = "Partial Visibility"
+    MOVEMENT = "Inverted Movement"
 
-class VisibilityState(str, Enum):
-    CLEAR = "Clear"          # Normal visibility
-    LIMITED = "Limited"      # Restricted by distance
-    OBSTRUCTED = "Obstructed" # Blocked by obstacles
+class FaultStatus(Enum):
+    INACTIVE = "Inactive"
+    ACTIVE = "Active"
+    TRIGGERED = "Triggered"
+    RESOLVED = "Resolved"
 
-class Orientation(str, Enum):
-    NORTH = "North"
-    SOUTH = "South" 
-    EAST = "East"
-    WEST = "West"
-
-# (Kept original diagnostic print)
-import os
-print("Current Working Directory:", os.getcwd())
+# Verify 
+assert hasattr(RobotState, 'LOOK') 
+assert hasattr(SchedulerType, 'ASYNC')
+assert hasattr(DistributionType, 'EXPONENTIAL') 
+assert hasattr(Algorithm, 'GATHERING')
