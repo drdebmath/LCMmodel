@@ -61,6 +61,19 @@ const initialPositionsOptions = [labels.Random, labels.UserDefined];
 
 const startSimulation = {
   start_simulation: () => {
+    // Collect fault selections if UI exists
+    if (document.getElementById('fault-container')) {
+      configOptions.robot_faults = [];
+      for (let i = 0; i < configOptions.num_of_robots; i++) {
+        const select = document.getElementById(`fault-select-${i}`);
+        if (select) {
+          configOptions.robot_faults.push(select.value);
+        } else {
+          configOptions.robot_faults.push('None');
+        }
+      }
+    }
+    
     if (
       configOptions.initialization_method === labels.UserDefined &&
       configOptions.initial_positions.length === 0
@@ -109,6 +122,7 @@ const configOptions = {
   random_seed: Math.floor(Math.random() * (2 ** 32 - 1)) + 1,
   width_bound: canvas.width / 4,
   height_bound: canvas.height / 4,
+  robot_faults: [],
 };
 
 let lastSentConfigOptions = { ...configOptions };
@@ -167,6 +181,14 @@ function drawRobot(robot) {
     ctx.strokeStyle = "rgb(169 169 169 / 25%)";
     ctx.stroke();
   }
+
+  // Draw fault status if it exists
+  if (robot.fault_type && robot.fault_type !== 'None') {
+    ctx.font = '10px Arial';
+    ctx.fillStyle = 'red';
+    ctx.textAlign = 'center';
+    ctx.fillText(robot.fault_type, x, y + Robot.ROBOT_SIZE + 12);
+  }
 }
 
 /**
@@ -201,6 +223,51 @@ function updateInitializationMessage() {
     configOptions.initialization_method === labels.UserDefined 
       ? "block" 
       : "none";
+}
+
+function createFaultSelectionUI() {
+  const faultContainer = document.createElement('div');
+  faultContainer.id = 'fault-container';
+  faultContainer.style.margin = '20px';
+  faultContainer.style.padding = '10px';
+  faultContainer.style.border = '1px solid #ccc';
+  
+  const title = document.createElement('h3');
+  title.textContent = 'Robot Fault Configuration';
+  faultContainer.appendChild(title);
+  
+  for (let i = 0; i < configOptions.num_of_robots; i++) {
+    const div = document.createElement('div');
+    div.style.margin = '5px 0';
+    
+    const select = document.createElement('select');
+    select.id = `fault-select-${i}`;
+    select.style.marginLeft = '10px';
+    
+    // Add fault options
+    ['None', 'Crashed', 'Delayed', 'Stuck', 'Wrong Compute', 'Intermittent'].forEach(fault => {
+      const option = document.createElement('option');
+      option.value = fault;
+      option.text = fault;
+      select.appendChild(option);
+    });
+    
+    const label = document.createElement('label');
+    label.htmlFor = select.id;
+    label.textContent = `Robot ${i} Fault: `;
+    
+    div.appendChild(label);
+    div.appendChild(select);
+    faultContainer.appendChild(div);
+  }
+  
+  // Add the container near the GUI controls
+  const guiContainer = document.querySelector('.dg.main.a');
+  if (guiContainer) {
+    guiContainer.parentNode.insertBefore(faultContainer, guiContainer.nextSibling);
+  } else {
+    document.body.appendChild(faultContainer);
+  }
 }
 
 const gui = setupOptions(configOptions);
@@ -265,10 +332,19 @@ function setupOptions(configOptions) {
       numRobotsControllerElement.parentElement.parentElement.style.display = "list-item";
       numRobotsController.setValue(3);
       updateInitializationMessage();
+      // Update fault UI when number of robots changes
+      if (document.getElementById('fault-container')) {
+        document.getElementById('fault-container').remove();
+      }
+      createFaultSelectionUI();
     } else {
       numRobotsControllerElement.parentElement.parentElement.style.display = "none";
       numRobotsController.setValue(0);
       updateInitializationMessage();
+      // Remove fault UI in user-defined mode
+      if (document.getElementById('fault-container')) {
+        document.getElementById('fault-container').remove();
+      }
     }
     clearSimulation();
   }
@@ -358,6 +434,7 @@ function drawSnapshot(snapshot) {
     let [x, y] = robotsHistory[id][0];
     const multiplicity = robotsHistory[id][4];
     const state = robotsHistory[id][1];
+    const fault_type = robotsHistory[id][5] || 'None'; // Assuming fault type is at index 5
 
     if (robots[id] === undefined) {
       robots[id] = new Robot(x, y, id, "black", 1, multiplicity);
@@ -366,6 +443,7 @@ function drawSnapshot(snapshot) {
     robots[id].setPosition(x, y);
     robots[id].setState(state);
     robots[id].multiplicity = multiplicity;
+    robots[id].fault_type = fault_type;
     drawRobot(robots[id]);
   }
 }
@@ -429,10 +507,23 @@ function clearSimulation() {
   lastFrameTime = 0;
   currRobotId = 0;
   configOptions.initial_positions = [];
+  configOptions.robot_faults = [];
   paused = false;
   if (gui && gui.updatePauseText) {
     gui.updatePauseText();
   }
   sec = [];
   drawingSimulation = false;
+  
+  const faultContainer = document.getElementById('fault-container');
+  if (faultContainer) {
+    faultContainer.remove();
+  }
 }
+
+// Create fault UI when page loads
+window.addEventListener('load', () => {
+  if (configOptions.initialization_method === labels.Random) {
+    createFaultSelectionUI();
+  }
+});
