@@ -24,16 +24,15 @@ class Algorithm(Enum):
     GATHERING = "Gathering"
     SEC = "SEC"
 
-# New additions
-class FaultType(Enum):
+class FaultType(str, Enum):
     NONE = "No Fault"
     CRASH = "Crash (Instant Termination)"
     DELAY = "Delay (50% Speed)"
-    WRONG_COMPUTE = "Wrong Computation"
+    BYZANTINE = "Byzantine (Wrong Computation)"
     VISIBILITY = "Partial Visibility"
     MOVEMENT = "Inverted Movement"
 
-class FaultStatus(Enum):
+class FaultStatus(str, Enum):
     INACTIVE = "Inactive"
     ACTIVE = "Active"
     TRIGGERED = "Triggered"
