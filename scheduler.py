@@ -71,7 +71,12 @@ class Scheduler:
 
         if robot_faults:
             for i, fault in enumerate(robot_faults):
-                self.robots[i].fault_type = fault
+                if i < len(self.robots):  # Ensure we don't go out of bounds
+                    self.robots[i].fault_type = fault
+                    # Add fault probability if available
+                    if len(robot_faults) > i and isinstance(robot_faults[i], tuple):
+                        self.robots[i].fault_type = fault[0]
+                        self.robots[i].fault_probability = fault[1] / 100.0
 
         self.initialize_queue_exponential()
         Robot._generator = self.generator
