@@ -55,6 +55,7 @@ class Robot:
         self.fault_status = FaultStatus.INACTIVE
         self.original_speed = speed  # Store original speed for fault recovery
         self.fault_activation_time = None
+        self.fault_probability = 0.3  # Probability of fault triggering
 
         match algorithm:
             case "Gathering":
@@ -73,8 +74,8 @@ class Robot:
             self.fault_activation_time = time
             Robot._logger.info(f"[{time}] {{R{self.id}}} FAULT ACTIVATED: {self.fault_type.value}")
 
-        # Check if fault should trigger now
-        if random.random() < 0.3:  # 30% chance to trigger fault effect
+        # Check if fault should trigger now based on probability
+        if random.random() < self.fault_probability:  
             self.fault_status = FaultStatus.TRIGGERED
             Robot._logger.info(f"[{time}] {{R{self.id}}} FAULT TRIGGERED: {self.fault_type.value}")
             
@@ -85,13 +86,13 @@ class Robot:
             elif self.fault_type == FaultType.DELAY:
                 self.speed = self.original_speed * 0.5  # Reduce speed by 50%
                 
-            elif self.fault_type == FaultType.WRONG_COMPUTE:
-                # Add random error to computations
+            elif self.fault_type == FaultType.BYZANTINE:
+                # Add significant error to computations
                 return False  # Let computation happen but it will be wrong
                 
             elif self.fault_type == FaultType.VISIBILITY:
-                # Randomly reduce visibility
-                self.visibility_radius = self.original_visibility_radius * random.uniform(0.3, 0.7)
+                # Reduce visibility
+                self.visibility_radius = self.original_visibility_radius * 0.5
                 
             elif self.fault_type == FaultType.MOVEMENT:
                 # Invert movement direction
@@ -122,7 +123,7 @@ class Robot:
                 
         # For visibility faults, randomly drop some robots from view
         if self.fault_type == FaultType.VISIBILITY and self.fault_status == FaultStatus.TRIGGERED:
-            visible_robots = random.sample(visible_robots, max(1, len(visible_robots)//2))
+            visible_robots = random.sample(visible_robots, max(1, len(visible_robots)//2)
             
         for key, value in visible_robots:
             transformed_pos = self._convert_coordinate(value.pos)
@@ -148,7 +149,7 @@ class Robot:
         self.calculated_position = self._compute(algo, algo_terminal)
         
         # Apply wrong computation fault if active
-        if self.fault_type == FaultType.WRONG_COMPUTE and self.fault_status == FaultStatus.TRIGGERED:
+        if self.fault_type == FaultType.BYZANTINE and self.fault_status == FaultStatus.TRIGGERED:
             self.calculated_position = Coordinates(
                 self.calculated_position.x * random.uniform(0.8, 1.2),
                 self.calculated_position.y * random.uniform(0.8, 1.2)
