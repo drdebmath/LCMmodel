@@ -206,41 +206,7 @@ function drawRobot(robot) {
     ctx.fillText(`${robot.fault_type} (${robot.fault_status})`, 
                 x, y + Robot.ROBOT_SIZE + 12);
   }
-}px Arial`;
-  ctx.fill();
-  ctx.stroke();
 
-  // Draw multiplicity detection
-  if (configOptions.multiplicity_detection) {
-    ctx.beginPath();
-    ctx.strokeStyle = "#000";
-    ctx.strokeText("" + robot.multiplicity, x + radius + 1, y - radius - 1);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `${radius + 1}px Arial`;
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  // Draw visibility radius
-  if (configOptions.show_visibility) {
-    const vis_radius = drawingSimulation
-      ? lastSentConfigOptions.visibility_radius
-      : configOptions.visibility_radius;
-
-    ctx.arc(x, y, vis_radius, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgb(169 169 169 / 25%)";
-    ctx.stroke();
-  }
-
-  // Draw fault status if it exists
-  if (robot.fault_type && robot.fault_type !== 'None') {
-    ctx.font = '10px Arial';
-    ctx.fillStyle = 'red';
-    ctx.textAlign = 'center';
-    ctx.fillText(robot.fault_type, x, y + Robot.ROBOT_SIZE + 12);
-  }
-}
 
 /**
  * Draws smallest enclosing circles
