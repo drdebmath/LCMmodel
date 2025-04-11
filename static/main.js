@@ -206,7 +206,7 @@ function drawRobot(robot) {
     ctx.fillText(`${robot.fault_type} (${robot.fault_status})`, 
                 x, y + Robot.ROBOT_SIZE + 12);
   }
-
+}
 
 /**
  * Draws smallest enclosing circles
@@ -475,7 +475,7 @@ function drawSnapshot(snapshot) {
     const multiplicity = robotsHistory[id][4];
     const state = robotsHistory[id][1];
     const fault_type = robotsHistory[id][5] || 'None';
-    const fault_status = robotsHistory[id][6] || 'None'; // ✅ ADDED
+    const fault_status = robotsHistory[id][6] || 'None';
 
     if (robots[id] === undefined) {
       robots[id] = new Robot(x, y, id, "black", 1, multiplicity);
@@ -485,15 +485,7 @@ function drawSnapshot(snapshot) {
     robots[id].setState(state);
     robots[id].multiplicity = multiplicity;
     robots[id].fault_type = fault_type;
-    robots[id].fault_status = fault_status; // ✅ ADDED
-    drawRobot(robots[id]);
-  }
-}
-
-    robots[id].setPosition(x, y);
-    robots[id].setState(state);
-    robots[id].multiplicity = multiplicity;
-    robots[id].fault_type = fault_type;
+    robots[id].fault_status = fault_status;
     drawRobot(robots[id]);
   }
 }
