@@ -181,14 +181,13 @@ class Scheduler:
         snapshot = {}
         for robot in self.robots:
             visible_robots = self._get_visible_robots(robot, time)
+            
             snapshot[robot.id] = SnapshotDetails(
-                robot.get_position(time),
-                robot.state,
-                robot.frozen,
-                robot.terminated,
-                1,
-                robot.fault_type,
-                getattr(robot, 'fault_status', 'None')
+                pos=robot.get_position(time),    # Position
+                state=robot.state,               # State
+                frozen=robot.frozen,             # Frozen
+                terminated=robot.terminated,     # Terminated
+                multiplicity=1                   # Multiplicity
             )
 
         self._detect_multiplicity(snapshot)
@@ -206,14 +205,13 @@ class Scheduler:
                 continue
                 
             if self._is_visible(observer, robot, time):
+                
                 visible[robot.id] = SnapshotDetails(
-                    robot.get_position(time),
-                    robot.state,
-                    robot.frozen,
-                    robot.terminated,
-                    1,
-                    robot.fault_type,
-                    getattr(robot, 'fault_status', 'None')
+                    pos=robot.get_position(time),
+                    state=robot.state,
+                    frozen=robot.frozen,
+                    terminated=robot.terminated,
+                    multiplicity=1
                 )
         return visible
 
