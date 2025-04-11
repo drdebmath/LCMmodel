@@ -123,7 +123,7 @@ class Robot:
                 
         # For visibility faults, randomly drop some robots from view
         if self.fault_type == FaultType.VISIBILITY and self.fault_status == FaultStatus.TRIGGERED:
-            visible_robots = random.sample(visible_robots, max(1, len(visible_robots)//2)
+            visible_robots = random.sample(visible_robots, max(1, len(visible_robots)//2))
             
         for key, value in visible_robots:
             transformed_pos = self._convert_coordinate(value.pos)
