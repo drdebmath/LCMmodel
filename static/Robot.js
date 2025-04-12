@@ -7,6 +7,7 @@ class Robot {
     WAIT: "#E4A125", // yellow
     LOOK: "#1A8FE3", // blue
     MOVE: "#008148", // green
+    CRASH: "#FF0000", // red
     INACTIVE: "#000000",
   };
 

@@ -91,6 +91,7 @@ const clearSimulationObj = {
 
 const configOptions = {
   num_of_robots: 3,
+  num_of_faults: 0,
   initialization_method: labels.Random,
   /** @type {Array}*/ initial_positions: [],
   robot_speeds: 1.0,
@@ -202,6 +203,9 @@ function setupOptions(configOptions) {
     .add(configOptions, "initialization_method", initialPositionsOptions)
     .name("Positions")
     .onFinishChange(changeInitializationMethod);
+  gui
+    .add(configOptions, "num_of_faults", 0, 10, 1)
+    .onFinishChange(changeFaults);
   gui.add(configOptions, "rigid_movement");
   gui.add(configOptions, "multiplicity_detection");
   gui.add(configOptions, "obstructed_visibility");
@@ -249,6 +253,7 @@ function setupOptions(configOptions) {
     }
   }
 
+
   function changeInitializationMethod() {
     const numRobotsControllerElement = numRobotsController.domElement;
     if (configOptions.initialization_method === labels.Random) {
@@ -276,6 +281,19 @@ function setupOptions(configOptions) {
         drawRobot(robots[id]);
       }
     }
+  }
+
+  function changeFaults() {
+    if (configOptions.num_of_faults > configOptions.num_of_robots) {
+      configOptions.num_of_faults = configOptions.num_of_robots;
+    }
+    if (configOptions.num_of_faults < 0) {
+      configOptions.num_of_faults = 0;
+    }
+    else{
+      configOptions.num_of_faults = Math.floor(configOptions.num_of_faults);
+    }
+    clearSimulation();
   }
 
   return { gui, updatePauseText };

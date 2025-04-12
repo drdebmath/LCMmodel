@@ -5,6 +5,7 @@ import numpy as np
 import heapq
 import math
 import logging
+import random
 
 
 class Scheduler:
@@ -30,6 +31,7 @@ class Scheduler:
         threshold_precision: int = 5,
         sampling_rate: float = 0.2,
         labmda_rate: float = 5,
+        num_of_faults: list[int] | None = None
     ):
         Scheduler._logger = logger
         self.seed = seed
@@ -49,6 +51,7 @@ class Scheduler:
         self.sampling_rate = sampling_rate
         self.lambda_rate = labmda_rate  # Average number of events per time unit
         self.robots: list[Robot] = []
+        self.faulty_robots = num_of_faults
 
         if isinstance(robot_speeds, float) or isinstance(robot_speeds, int):
             robot_speeds_list = [robot_speeds] * num_of_robots
@@ -65,6 +68,17 @@ class Scheduler:
                 rigid_movement=self.rigid_movement,
             )
             self.robots.append(new_robot)
+
+        if self.faulty_robots is not None:
+            faulty_robot_count = self.faulty_robots
+            faulty_robot_indices = random.sample(
+                range(num_of_robots), faulty_robot_count
+            )
+            Scheduler._logger.info(
+                f"Faulty robots: {faulty_robot_indices} out of {num_of_robots}"
+            )
+            for faulty_robot in faulty_robot_indices:
+                self.robots[faulty_robot].set_faulty(True)
 
         self.initialize_queue_exponential()
         Robot._generator = self.generator
@@ -151,6 +165,9 @@ class Scheduler:
             elif event_state == RobotState.WAIT:
                 robot.wait(time)
                 exit_code = 3
+            elif event_state == RobotState.CRASH:
+                robot.state = RobotState.CRASH
+                exit_code = 5
 
         self.generate_event(current_event)
         return exit_code

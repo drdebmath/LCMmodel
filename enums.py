@@ -6,9 +6,12 @@ class RobotState(str, Enum):
     MOVE = "MOVE"
     WAIT = "WAIT"
     TERMINATED = "TERMINATED"
+    CRASH = "CRASH"
 
     def next_state(self):
-        if self == RobotState.LOOK:
+        if self == RobotState.CRASH:
+            return RobotState.CRASH
+        elif self == RobotState.LOOK:
             return RobotState.MOVE
         elif self == RobotState.MOVE:
             return RobotState.WAIT

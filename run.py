@@ -106,6 +106,7 @@ def handle_simulation_request(data):
         labmda_rate=data["labmda_rate"],
         algorithm=data["algorithm"],
         visibility_radius=data["visibility_radius"],
+        num_of_faults=data["num_of_faults"],
     )
 
     def run_simulation():

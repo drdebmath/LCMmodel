@@ -53,6 +53,10 @@ class Robot:
             case "SEC":
                 self.algorithm = Algorithm.SEC
 
+    def set_faulty(self, faulty: bool) -> None:
+        """Sets the robot to faulty state"""
+        self.state = RobotState.CRASH
+
     def look(
         self,
         snapshot: dict[Id, SnapshotDetails],
@@ -144,7 +148,7 @@ class Robot:
 
     def get_position(self, time: float) -> Coordinates:
 
-        if self.state == RobotState.LOOK or self.state == RobotState.WAIT:
+        if self.state == RobotState.LOOK or self.state == RobotState.WAIT or self.state == RobotState.CRASH:
             return self.coordinates
 
         distance = math.dist(self.start_position, self.calculated_position)
