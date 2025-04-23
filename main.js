@@ -1,369 +1,283 @@
-/* main.js – updated so Pyodide can import robot/scheduler/run correctly */
+/* ================================================================
+ *  main.js  —  robots coloured by state, no number labels
+ * ================================================================ */
 
-console.log("main.js started");
+/* -------- DOM refs ------------------------------------------------ */
+const statusDiv     = document.getElementById("status");
+const startBtn      = document.getElementById("start_button");
+const stopBtn       = document.getElementById("stop_button");
+const zoomInBtn     = document.getElementById("zoom_in_btn");
+const zoomOutBtn    = document.getElementById("zoom_out_btn");
 
-/* ------------------------------------------------------------------ *
- *  DOM ELEMENT REFERENCES
- * ------------------------------------------------------------------ */
-const statusDiv            = document.getElementById("status");
-const startButton          = document.getElementById("start_button");
-const stopButton           = document.getElementById("stop_button");
-const canvas               = document.getElementById("canvas");
-const ctx                  = canvas.getContext("2d");
-const simTimeDiv           = document.getElementById("sim_time");
-const simMessageDiv        = document.getElementById("sim_message");
+const canvas        = document.getElementById("canvas");
+const ctx           = canvas.getContext("2d");
 
-const algorithmSelect      = document.getElementById("algorithm");
-const numRobotsSlider      = document.getElementById("num_robots");
-const numRobotsVal         = document.getElementById("num_robots_val");
-const robotSpeedSlider     = document.getElementById("robot_speed");
-const robotSpeedVal        = document.getElementById("robot_speed_val");
-const visibilityRadiusSlider   = document.getElementById("visibility_radius");
-const visibilityRadiusVal      = document.getElementById("visibility_radius_val");
-const infiniteVisibilityCheckbox = document.getElementById("infinite_visibility");
-const numFaultsSlider      = document.getElementById("num_faults");
-const numFaultsVal         = document.getElementById("num_faults_val");
-const rigidMovementCheckbox = document.getElementById("rigid_movement");
-const widthBoundSlider     = document.getElementById("width_bound");
-const widthBoundVal        = document.getElementById("width_bound_val");
-const heightBoundSlider    = document.getElementById("height_bound");
-const heightBoundVal       = document.getElementById("height_bound_val");
-const lambdaRateSlider     = document.getElementById("lambda_rate");
-const lambdaRateVal        = document.getElementById("lambda_rate_val");
-const samplingRateSlider   = document.getElementById("sampling_rate");
-const samplingRateVal      = document.getElementById("sampling_rate_val");
-const thresholdPrecisionSlider  = document.getElementById("threshold_precision");
-const thresholdPrecisionVal     = document.getElementById("threshold_precision_val");
-const randomSeedInput      = document.getElementById("random_seed");
+const simTimeDiv    = document.getElementById("sim_time");
+const simMsgDiv     = document.getElementById("sim_message");
 
-/* ------------------------------------------------------------------ *
- *  PYODIDE / SIMULATION STATE
- * ------------------------------------------------------------------ */
-let pyodide          = null;
-let pythonRunner     = null;     // proxy to Python module “simulation_runner”
-let simulationRunning = false;
-let animationFrameId  = null;
+/* sliders / fields (unchanged from previous version) -------------- */
+const algorithmSelect = document.getElementById("algorithm");
+const numRobotsSlider = document.getElementById("num_robots");
+const numRobotsVal    = document.getElementById("num_robots_val");
+const robotSpeedSlider = document.getElementById("robot_speed");
+const robotSpeedVal    = document.getElementById("robot_speed_val");
 
-/* ------------------------------------------------------------------ *
- *  CANVAS CONFIG
- * ------------------------------------------------------------------ */
-const robotRadius = 5;
-let scale   = 2;
-let offsetX = 0;
-let offsetY = 0;
-const colors = [
-  "#FF0000", "#0000FF", "#008000", "#FFA500", "#800080",
-  "#00FFFF", "#FF00FF", "#4682B4", "#FFD700", "#32CD32",
-];
+const visibilitySlider  = document.getElementById("visibility_radius");
+const visibilityVal     = document.getElementById("visibility_radius_val");
+const infiniteVisChk    = document.getElementById("infinite_visibility");
 
-/* ------------------------------------------------------------------ *
- *  SMALL HELPERS
- * ------------------------------------------------------------------ */
-function updateStatus(msg) {
-  console.log("Status:", msg);
-  if (statusDiv) statusDiv.textContent = msg;
+const numFaultsSlider   = document.getElementById("num_faults");
+const numFaultsVal      = document.getElementById("num_faults_val");
+const rigidChk          = document.getElementById("rigid_movement");
+
+const widthSlider       = document.getElementById("width_bound");
+const widthVal          = document.getElementById("width_bound_val");
+const heightSlider      = document.getElementById("height_bound");
+const heightVal         = document.getElementById("height_bound_val");
+
+const lambdaSlider      = document.getElementById("lambda_rate");
+const lambdaVal         = document.getElementById("lambda_rate_val");
+const sampleSlider      = document.getElementById("sampling_rate");
+const sampleVal         = document.getElementById("sampling_rate_val");
+
+const precisionSlider   = document.getElementById("threshold_precision");
+const precisionVal      = document.getElementById("threshold_precision_val");
+
+const seedInput         = document.getElementById("random_seed");
+
+/* -------- Pyodide / sim state ------------------------------------ */
+let pyodide      = null;
+let pythonRunner = null;
+let simRunning   = false;
+let animFrameId  = null;
+
+/* -------- canvas / world config ---------------------------------- */
+const ROBOT_R = 5;
+let scale   = 1;
+let offsetX = 0, offsetY = 0;
+
+const ZOOM_STEP = 1.15;
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 50;
+
+let lastRobotsFrame = [];
+
+/* -------- helpers ------------------------------------------------ */
+const updStatus = (msg) => (statusDiv.textContent = msg);
+function updMsg(msg) {
+  simMsgDiv.textContent = msg;
+  simMsgDiv.style.color       = msg.toLowerCase().includes("error") ? "red" : "";
+  simMsgDiv.style.fontWeight  = msg.toLowerCase().includes("error") ? "600" : "";
 }
+const updSlider = (sl, out) => (out.textContent = sl.value);
 
-function updateSimMessage(msg) {
-  console.log("SimMessage:", msg);
-  if (!simMessageDiv) return;
-  simMessageDiv.textContent = msg;
-  if (msg && msg.toLowerCase().includes("error")) {
-    simMessageDiv.style.color      = "red";
-    simMessageDiv.style.fontWeight = "bold";
-  } else {
-    simMessageDiv.style.color      = "black";
-    simMessageDiv.style.fontWeight = "normal";
-  }
-}
-
-function updateSliderValue(slider, span) {
-  if (slider && span) span.textContent = slider.value;
-}
-
-// --- Canvas resize (replace the previous version) ------------------
+/* -------- canvas auto-size --------------------------------------- */
 function resizeCanvas() {
-    const viz = document.getElementById("visualization");
-    if (!viz) return;
-  
-    /* use exact CSS pixel size, no magic “-20” paddings */
-    const { width, height } = viz.getBoundingClientRect();
-  
-    /* physical bitmap size for crispness on Hi-DPI screens         */
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width  = Math.floor(width  * dpr);
-    canvas.height = Math.floor(height * dpr);
-  
-    /* show it at 100% logical size                                  */
-    canvas.style.width  = `${width}px`;
-    canvas.style.height = `${height}px`;
-  
-    offsetX = width  / 2;
-    offsetY = height / 2;
-  
-    /* world-bound scaling (unchanged) */
-    const worldW = +widthBoundSlider.value;
-    const worldH = +heightBoundSlider.value;
-    scale = Math.min(width / worldW, height / worldH) * 0.9;
-  
-    console.log(`Canvas resized: ${width}×${height}  (dpr ${dpr})`);
-  }
-  
+  const vis = document.getElementById("visualization");
+  if (!vis) return;
 
-/* ------------------------------------------------------------------ *
- *  PYODIDE BOOTSTRAP
- * ------------------------------------------------------------------ */
+  const { width, height } = vis.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.floor(width  * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width  = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  offsetX = width / 2;
+  offsetY = height / 2;
+
+  const w = +widthSlider.value, h = +heightSlider.value;
+  scale = Math.min(width / w, height / h) * 0.9;
+
+  if (lastRobotsFrame.length) drawSimulation(lastRobotsFrame);
+}
+
+/* -------- zoom buttons ------------------------------------------- */
+function applyZoom(factor) {
+  scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor));
+  if (lastRobotsFrame.length) drawSimulation(lastRobotsFrame);
+}
+zoomInBtn .addEventListener("click", () => applyZoom(ZOOM_STEP));
+zoomOutBtn.addEventListener("click", () => applyZoom(1 / ZOOM_STEP));
+
+/* -------- Pyodide bootstrap -------------------------------------- */
 async function loadPyodideAndPackages() {
-  updateStatus("Loading Pyodide runtime…");
+  updStatus("Loading Pyodide…");
   try {
     pyodide = await loadPyodide();
     await pyodide.loadPackage(["numpy", "micropip"]);
-    updateStatus("Runtime ready. Loading Python files…");
-
-    /* 1️⃣  Fetch and write files into the in-browser FS            */
-    const pyFiles = ["robot.py", "scheduler.py", "run.py"];
-    for (const fname of pyFiles) {
-      updateStatus(`Fetching ${fname}…`);
-      const res = await fetch(`./${fname}`);
-      if (!res.ok) throw new Error(`Fetch failed for ${fname}: ${res.statusText}`);
-      const code = await res.text();
-      pyodide.FS.writeFile(fname, code);
+    const files = ["robot.py", "scheduler.py", "run.py"];
+    for (const f of files) {
+      const code = await (await fetch(`./${f}`)).text();
+      pyodide.FS.writeFile(f, code);
     }
-
-    /* 2️⃣  Import “run” → register as simulation_runner           */
-    updateStatus("Importing Python modules…");
     await pyodide.runPythonAsync("import run as simulation_runner");
-
-    /* 3️⃣  Grab proxy to the module                               */
     pythonRunner = pyodide.globals.get("simulation_runner");
 
-    updateStatus("Python ready. You can start the simulation.");
-    startButton.disabled = false;
+    updStatus("Ready. Click Start.");
+    startBtn.disabled = false;
   } catch (err) {
-    console.error(err);
-    updateStatus(`Pyodide init error: ${err.message}`);
+    updStatus(`Pyodide init error: ${err.message}`);
   }
 }
 
-/* ------------------------------------------------------------------ *
- *  SIMULATION CONTROL
- * ------------------------------------------------------------------ */
-async function startSimulation() {
-  if (simulationRunning || !pythonRunner) return;
-
-  startButton.disabled = true;
-  stopButton.disabled  = false;
-  simulationRunning    = true;
-  updateSimMessage("");
-
-  const params = {
+/* -------- simulation control ------------------------------------- */
+function params() {
+  return {
     algorithm          : algorithmSelect.value,
     num_of_robots      : +numRobotsSlider.value,
     robot_speeds       : +robotSpeedSlider.value,
-    visibility_radius  : infiniteVisibilityCheckbox.checked ? null : +visibilityRadiusSlider.value,
+    visibility_radius  : infiniteVisChk.checked ? null : +visibilitySlider.value,
     num_of_faults      : +numFaultsSlider.value,
-    rigid_movement     : rigidMovementCheckbox.checked,
-    width_bound        : +widthBoundSlider.value,
-    height_bound       : +heightBoundSlider.value,
-    lambda_rate        : +lambdaRateSlider.value,
-    sampling_rate      : +samplingRateSlider.value,
-    threshold_precision: +thresholdPrecisionSlider.value,
-    random_seed        : +randomSeedInput.value,
-    initial_positions  : [],
+    rigid_movement     : rigidChk.checked,
+    width_bound        : +widthSlider.value,
+    height_bound       : +heightSlider.value,
+    lambda_rate        : +lambdaSlider.value,
+    sampling_rate      : +sampleSlider.value,
+    threshold_precision: +precisionSlider.value,
+    random_seed        : +seedInput.value,
+    initial_positions  : []
   };
+}
 
-  resizeCanvas();
-
+async function startSimulation() {
+  if (simRunning || !pythonRunner) return;
+  startBtn.disabled = true; stopBtn.disabled = false; simRunning = true; updMsg("");
   try {
-    const setupJson   = await pythonRunner.setup_simulation(JSON.stringify(params));
-    const setupResult = JSON.parse(setupJson);
-
-    if (setupResult.status === "error") throw new Error(setupResult.message);
-
-    updateStatus("Simulation running…");
-    updateSimMessage(setupResult.message || "Running…");
-    simTimeDiv.textContent = `Time: ${setupResult.time.toFixed(2)}`;
-    drawSimulation(setupResult.robots);
-    animationFrameId = requestAnimationFrame(simulationStep);
+    const setup = JSON.parse(await pythonRunner.setup_simulation(JSON.stringify(params())));
+    if (setup.status === "error") throw new Error(setup.message);
+    simTimeDiv.textContent = `Time: ${setup.time.toFixed(2)}`;
+    drawSimulation(setup.robots); lastRobotsFrame = setup.robots;
+    updStatus("Simulation running…");
+    animFrameId = requestAnimationFrame(simStep);
   } catch (err) {
-    console.error(err);
-    updateStatus("Failed to start simulation.");
-    updateSimMessage(`Error: ${err.message}`);
-    startButton.disabled = false;
-    stopButton.disabled  = true;
-    simulationRunning    = false;
+    updStatus("Start error."); updMsg(`Error: ${err.message}`);
+    startBtn.disabled = false; stopBtn.disabled = true; simRunning = false;
   }
 }
 
 function stopSimulation() {
-  if (!simulationRunning) return;
-  simulationRunning = false;
-  cancelAnimationFrame(animationFrameId);
-  animationFrameId = null;
-
-  try {
-    const stopJson   = pythonRunner.stop_simulation();
-    const stopResult = JSON.parse(stopJson);
-    updateSimMessage(stopResult.message);
-  } catch (e) {
-    console.error("stop_simulation error:", e);
-  }
-
-  updateStatus("Simulation stopped.");
-  startButton.disabled = false;
-  stopButton.disabled  = true;
+  if (!simRunning) return;
+  simRunning = false; cancelAnimationFrame(animFrameId);
+  try { updMsg(JSON.parse(pythonRunner.stop_simulation()).message); } catch {}
+  updStatus("Simulation stopped."); startBtn.disabled = false; stopBtn.disabled = true;
 }
 
-async function simulationStep() {
-  if (!simulationRunning) return;
-
+async function simStep() {
+  if (!simRunning) return;
   try {
-    const stepJson = await pythonRunner.run_simulation_step();
-    const step     = JSON.parse(stepJson);
-
+    const step = JSON.parse(await pythonRunner.run_simulation_step());
     simTimeDiv.textContent = `Time: ${step.time.toFixed(2)}`;
-    if (step.message) updateSimMessage(step.message);
-    if (step.robots)  drawSimulation(step.robots);
-
+    if (step.message) updMsg(step.message);
+    if (step.robots) { drawSimulation(step.robots); lastRobotsFrame = step.robots; }
     if (step.status !== "running") {
-      simulationRunning   = false;
-      startButton.disabled = false;
-      stopButton.disabled  = true;
-      updateStatus(`Simulation ${step.status}.`);
+      simRunning = false;
+      updStatus(`Simulation ${step.status}.`);
+      startBtn.disabled = false; stopBtn.disabled = true;
     }
   } catch (err) {
-    console.error("Step error:", err);
-    updateStatus("Simulation error!");
-    updateSimMessage(`Runtime error: ${err.message}`);
-    simulationRunning    = false;
-    startButton.disabled = false;
-    stopButton.disabled  = true;
+    updStatus("Runtime error!"); updMsg(`Error: ${err.message}`);
+    simRunning = false; startBtn.disabled = false; stopBtn.disabled = true;
   }
-
-  if (simulationRunning) animationFrameId = requestAnimationFrame(simulationStep);
+  if (simRunning) animFrameId = requestAnimationFrame(simStep);
 }
 
-/* ------------------------------------------------------------------ *
- *  DRAWING UTILS
- * ------------------------------------------------------------------ */
-function transformCoords(x, y) {
-  return { x: offsetX + x * scale, y: offsetY - y * scale };
+/* -------- drawing ------------------------------------------------ */
+const STATE_COLORS = {
+  CRASH      : "#555555",
+  TERMINATED : "#a0a0a0",
+  FROZEN     : "#ff9500",
+  MOVE       : "#34c759",
+  DEFAULT    : "#007aff"    // LOOK / WAIT / others
+};
+/* ---------- build legend (once) --------------------------------- */
+function buildLegend() {
+    const legendDiv = document.getElementById("legend");
+    if (!legendDiv) return;
+  
+    const LABELS = {
+      DEFAULT   : "Active (LOOK / WAIT)",
+      MOVE      : "Moving",
+      FROZEN    : "Frozen",
+      TERMINATED: "Terminated",
+      CRASH     : "Crashed"
+    };
+  
+    Object.entries(STATE_COLORS).forEach(([key, hex]) => {
+      if (!LABELS[key]) return;                // skip unknown keys
+      const item   = document.createElement("div");
+      item.className = "legend-item";
+      item.innerHTML =
+        `<span class="legend-swatch" style="background:${hex}"></span>${LABELS[key]}`;
+      legendDiv.appendChild(item);
+    });
+  }
+  
+function colorForRobot(r) {
+  if (r.crashed)       return STATE_COLORS.CRASH;
+  if (r.terminated)    return STATE_COLORS.TERMINATED;
+  if (r.frozen)        return STATE_COLORS.FROZEN;
+  if (r.state === "MOVE") return STATE_COLORS.MOVE;
+  return STATE_COLORS.DEFAULT;
 }
+
+function transform(x, y) { return { x: offsetX + x * scale, y: offsetY - y * scale }; }
 
 function drawSimulation(robots) {
-  if (!ctx) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  /* world rectangle */
-  const w = +widthBoundSlider.value;
-  const h = +heightBoundSlider.value;
-  const tl = transformCoords(-w / 2,  h / 2);
-  const br = transformCoords( w / 2, -h / 2);
-  ctx.strokeStyle = "#ccc";
-  ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
-
-  /* robots */
   robots.forEach((r) => {
-    const p = transformCoords(r.x, r.y);
-    ctx.fillStyle   = r.crashed ? "#404040"
-                     : r.terminated ? "#a0a0a0"
-                     : colors[r.id % colors.length];
-    ctx.strokeStyle = "#000";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, robotRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    const p = transform(r.x, r.y);
+    const c = colorForRobot(r);
 
-    /* id / state label */
-    let label = `${r.id}`;
-    if (r.state === "MOVE") label += " M";
-    if (r.frozen)           label += "*";
-    if (r.terminated)       label += "#";
-    if (r.crashed)          label += "!";
-    if (r.multiplicity > 1) label += `(${r.multiplicity})`;
-    ctx.fillStyle = "#000";
-    ctx.font      = "10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(label, p.x, p.y + robotRadius + 10);
+    /* body */
+    ctx.fillStyle = c; ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(p.x, p.y, ROBOT_R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
     /* target line */
     if (r.state === "MOVE" && r.target_x != null) {
-      const t = transformCoords(r.target_x, r.target_y);
-      ctx.setLineDash([2, 3]);
-      ctx.strokeStyle = ctx.fillStyle;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(t.x, t.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      const t = transform(r.target_x, r.target_y);
+      ctx.setLineDash([2, 3]); ctx.strokeStyle = c; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(t.x, t.y); ctx.stroke(); ctx.setLineDash([]);
     }
 
     /* SEC (SEC algorithm only) */
     if (algorithmSelect.value === "SEC" && r.sec) {
-      const center = transformCoords(r.sec.center_x, r.sec.center_y);
-      ctx.strokeStyle = "rgba(255,165,0,0.6)";
-      ctx.beginPath();
-      ctx.arc(center.x, center.y, r.sec.radius * scale, 0, Math.PI * 2);
-      ctx.stroke();
+      const sc = transform(r.sec.center_x, r.sec.center_y);
+      ctx.strokeStyle = "rgba(255,165,0,0.6)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, r.sec.radius * scale, 0, Math.PI * 2); ctx.stroke();
     }
 
-    /* visibility circle */
+    /* visibility */
     if (r.visibility_radius && !r.crashed && !r.terminated) {
-      ctx.strokeStyle = "rgba(100,100,200,0.3)";
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r.visibility_radius * scale, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.strokeStyle = "rgba(100,100,200,.25)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r.visibility_radius * scale, 0, Math.PI * 2); ctx.stroke();
     }
   });
 }
 
-/* ------------------------------------------------------------------ *
- *  EVENT LISTENERS
- * ------------------------------------------------------------------ */
-startButton.addEventListener("click", startSimulation);
-stopButton .addEventListener("click", stopSimulation);
+/* -------- listeners & init -------------------------------------- */
+startBtn.addEventListener("click", startSimulation);
+stopBtn .addEventListener("click", stopSimulation);
 window.addEventListener("resize", resizeCanvas);
 
-numRobotsSlider     .addEventListener("input", () => updateSliderValue(numRobotsSlider, numRobotsVal));
-robotSpeedSlider    .addEventListener("input", () => updateSliderValue(robotSpeedSlider, robotSpeedVal));
-visibilityRadiusSlider.addEventListener("input", () => updateSliderValue(visibilityRadiusSlider, visibilityRadiusVal));
-numFaultsSlider     .addEventListener("input", () => updateSliderValue(numFaultsSlider, numFaultsVal));
-widthBoundSlider    .addEventListener("input", () => { updateSliderValue(widthBoundSlider,  widthBoundVal);  resizeCanvas(); });
-heightBoundSlider   .addEventListener("input", () => { updateSliderValue(heightBoundSlider, heightBoundVal); resizeCanvas(); });
-lambdaRateSlider    .addEventListener("input", () => updateSliderValue(lambdaRateSlider,  lambdaRateVal));
-samplingRateSlider  .addEventListener("input", () => updateSliderValue(samplingRateSlider, samplingRateVal));
-thresholdPrecisionSlider.addEventListener("input", () => updateSliderValue(thresholdPrecisionSlider, thresholdPrecisionVal));
-
-infiniteVisibilityCheckbox.addEventListener("change", () => {
-  visibilityRadiusSlider.disabled = infiniteVisibilityCheckbox.checked;
-  visibilityRadiusVal.textContent =
-    infiniteVisibilityCheckbox.checked ? "Inf" : visibilityRadiusSlider.value;
+[
+  [numRobotsSlider, numRobotsVal], [robotSpeedSlider, robotSpeedVal],
+  [visibilitySlider, visibilityVal], [numFaultsSlider, numFaultsVal],
+  [widthSlider, widthVal], [heightSlider, heightVal],
+  [lambdaSlider, lambdaVal], [sampleSlider, sampleVal],
+  [precisionSlider, precisionVal]
+].forEach(([sl, out]) => {
+  updSlider(sl, out); sl.addEventListener("input", () => updSlider(sl, out));
 });
 
-/* ------------------------------------------------------------------ *
- *  INITIAL SETUP
- * ------------------------------------------------------------------ */
-[
-  [numRobotsSlider,          numRobotsVal],
-  [robotSpeedSlider,         robotSpeedVal],
-  [visibilityRadiusSlider,   visibilityRadiusVal],
-  [numFaultsSlider,          numFaultsVal],
-  [widthBoundSlider,         widthBoundVal],
-  [heightBoundSlider,        heightBoundVal],
-  [lambdaRateSlider,         lambdaRateVal],
-  [samplingRateSlider,       samplingRateVal],
-  [thresholdPrecisionSlider, thresholdPrecisionVal],
-].forEach(([slider, span]) => updateSliderValue(slider, span));
+infiniteVisChk.addEventListener("change", () => {
+  visibilitySlider.disabled = infiniteVisChk.checked;
+  visibilityVal.textContent = infiniteVisChk.checked ? "Inf" : visibilitySlider.value;
+});
 
-if (infiniteVisibilityCheckbox.checked) {
-  visibilityRadiusSlider.disabled = true;
-  visibilityRadiusVal.textContent = "Inf";
-}
-
-resizeCanvas();
+/* First-time layout */
+buildLegend(); 
+resizeCanvas(); 
 drawSimulation([]);
-
-/* boot the runtime */
 loadPyodideAndPackages();
-
-console.log("main.js loaded and setup complete.");
+console.log("main.js loaded.");

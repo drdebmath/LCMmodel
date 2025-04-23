@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
 
-<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="style.css" />
 
 <!-- Pyodide runtime -->
 <script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"></script>
@@ -28,8 +28,8 @@
         <label class="field">
           <span>Algorithm</span>
           <select id="algorithm">
-            <option value="Gathering" selected>Gathering</option>
-            <option value="SEC">SEC (Smallest E.C.)</option>
+            <option value="Gathering" selected>Center of Gravity</option>
+            <option value="SEC">Smallest Enclosing Circle)</option>
           </select>
         </label>
 
@@ -69,13 +69,13 @@
         <h3>Environment</h3>
 
         <label class="field range">
-          <span>World W <output id="width_bound_val">200</output></span>
-          <input type="range" id="width_bound" min="50" max="1000" step="10" value="200">
+          <span>World W <output id="width_bound_val">600</output></span>
+          <input type="range" id="width_bound" min="50" max="1000" step="10" value="600">
         </label>
 
         <label class="field range">
-          <span>World H <output id="height_bound_val">200</output></span>
-          <input type="range" id="height_bound" min="50" max="1000" step="10" value="200">
+          <span>World H <output id="height_bound_val">600</output></span>
+          <input type="range" id="height_bound" min="50" max="1000" step="10" value="600">
         </label>
 
         <label class="field range">
@@ -102,6 +102,9 @@
           <button id="start_button" disabled>Start</button>
           <button id="stop_button"  disabled class="secondary">Stop</button>
         </div>
+        <!-- colour legend -------------------------------------------------->
+        <div id="legend" class="legend"></div>
+
 
         <p id="sim_time">Time: 0.00</p>
         <p id="sim_message"></p>
@@ -109,6 +112,10 @@
     </aside>
 
     <!-- MAIN VISUAL -------------------------------------------------->
+    <div class="buttons zoom">
+      <button id="zoom_in_btn"  title="Zoom in">＋</button>
+      <button id="zoom_out_btn" title="Zoom out">－</button>
+    </div>
     <main id="visualization">
       <canvas id="canvas"></canvas>
     </main>
