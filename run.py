@@ -125,19 +125,19 @@ def run_simulation_step():
             message = "Simulation Ended (Terminated)"
             log_info("Simulation terminated by scheduler.")
 
+        # ============================ run.py =============================
+        # --- inside run_simulation_step(), replace the step_result build ---
+        visible = (exit_code == 99 or status != "running")  # only send robot data for VISUALIZE or final frame
 
-        # Prepare data for JS
         step_result = {
             "status": status,
             "time": current_simulation_time,
-            # Use the dedicated function to get robot data in JS-friendly format
-            "robots": scheduler_instance.get_all_robot_data_for_js(),
+            "robots": scheduler_instance.get_all_robot_data_for_js() if visible else None,
             "exit_code": exit_code,
             "message": message
-            # Include snapshot if needed for debugging?
-            # "snapshot": snapshot_data # This snapshot might be slightly outdated vs get_all_robot_data
         }
         return json.dumps(step_result)
+
 
     except Exception as e:
         log_error(f"Error during simulation step: {e}")

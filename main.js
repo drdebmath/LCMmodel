@@ -163,24 +163,42 @@ function stopSimulation() {
   updStatus("Simulation stopped."); startBtn.disabled = false; stopBtn.disabled = true;
 }
 
+/* ============================ main.js ============================ */
+/* --- replace the whole simStep() with this version -------------- */
 async function simStep() {
-  if (!simRunning) return;
-  try {
-    const step = JSON.parse(await pythonRunner.run_simulation_step());
-    simTimeDiv.textContent = `Time: ${step.time.toFixed(2)}`;
-    if (step.message) updMsg(step.message);
-    if (step.robots) { drawSimulation(step.robots); lastRobotsFrame = step.robots; }
-    if (step.status !== "running") {
+    if (!simRunning) return;
+    try {
+      const step = JSON.parse(await pythonRunner.run_simulation_step());
+  
+      /* update wall-clock time + UI msg */
+      simTimeDiv.textContent = `Time: ${step.time.toFixed(2)}`;
+      if (step.message) updMsg(step.message);
+  
+      /* redraw **only** on VISUALIZE (exit_code 99) or when simulation stops */
+      const shouldRedraw = step.exit_code === 99 || step.status !== "running";
+      if (shouldRedraw && step.robots) {
+        drawSimulation(step.robots);
+        lastRobotsFrame = step.robots;
+      }
+  
+      /* stop loop if sim finished */
+      if (step.status !== "running") {
+        simRunning = false;
+        updStatus(`Simulation ${step.status}.`);
+        startBtn.disabled = false;
+        stopBtn.disabled  = true;
+        return;
+      }
+    } catch (err) {
+      updStatus("Runtime error!");
+      updMsg(`Error: ${err.message}`);
       simRunning = false;
-      updStatus(`Simulation ${step.status}.`);
-      startBtn.disabled = false; stopBtn.disabled = true;
+      startBtn.disabled = false;
+      stopBtn.disabled  = true;
     }
-  } catch (err) {
-    updStatus("Runtime error!"); updMsg(`Error: ${err.message}`);
-    simRunning = false; startBtn.disabled = false; stopBtn.disabled = true;
+    if (simRunning) animFrameId = requestAnimationFrame(simStep);
   }
-  if (simRunning) animFrameId = requestAnimationFrame(simStep);
-}
+  
 
 /* -------- drawing ------------------------------------------------ */
 const STATE_COLORS = {
@@ -208,7 +226,8 @@ function buildLegend() {
       const item   = document.createElement("div");
       item.className = "legend-item";
       item.innerHTML =
-        `<span class="legend-swatch" style="background:${hex}"></span>${LABELS[key]}`;
+        `<span class="inline-block mr-2 rounded-sm"
+          style="background:${hex};width:1rem;height:1rem;"></span>${LABELS[key]}`;
       legendDiv.appendChild(item);
     });
   }

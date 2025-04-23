@@ -5,538 +5,478 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pyodide Robot Sim</title>
-    <link rel="stylesheet" href="styles.css" />
-    <!-- Load Pyodide -->
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robot-SIM (Pyodide)</title>
+
+  <!-- Tailwind (via CDN) –– remove style.css link -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google font & icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+
+  <!-- Pyodide runtime -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"></script>
 </head>
-<body>
-    <div id="container">
-        <div id="controls">
-            <h2>Simulation Controls</h2>
-            <div id="status">Loading Pyodide...</div>
 
-            <div class="control-group">
-                <label for="algorithm">Algorithm:</label>
-                <select id="algorithm">
-                    <option value="Gathering" selected>Gathering</option>
-                    <option value="SEC">SEC (Smallest Enclosing Circle)</option>
-                </select>
-            </div>
+<body class="font-inter bg-gray-50 text-gray-900">
+  <div id="app" class="flex h-screen overflow-hidden">
 
-            <div class="control-group slider-group">
-                <label for="num_robots">Number of Robots (<span id="num_robots_val">5</span>):</label>
-                <input type="range" id="num_robots" min="1" max="50" value="5">
-            </div>
+    <!-- ========== LEFT DRAWER / CONTROLS ========== -->
+    <aside id="controls" class="w-80 max-w-full shrink-0 overflow-y-auto bg-white border-r border-gray-200 p-4 space-y-6">
+      <header class="space-y-1">
+        <h2 class="flex items-center text-lg font-semibold gap-1">
+          <span class="material-icons-outlined text-base">tune</span>
+          Controls
+        </h2>
+        <p id="status" class="text-sm text-gray-500">Loading Pyodide…</p>
+      </header>
 
-            <div class="control-group slider-group">
-                <label for="robot_speed">Robot Speed (<span id="robot_speed_val">1.0</span>):</label>
-                <input type="range" id="robot_speed" min="0.1" max="10" value="1.0" step="0.1">
-            </div>
+      <!----- Parameters -------------------------------------->
+      <section class="space-y-4">
 
-            <div class="control-group slider-group">
-                <label for="visibility_radius">Visibility Radius (<span id="visibility_radius_val">150</span>):</label>
-                <input type="range" id="visibility_radius" min="10" max="1000" value="150" step="10">
-                 <input type="checkbox" id="infinite_visibility" title="Infinite Visibility"> Inf.
-            </div>
+        <!-- select -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">Algorithm</span>
+          <select id="algorithm" class="rounded border-gray-300 text-sm p-1.5">
+            <option value="Gathering" selected>Center of Gravity</option>
+            <option value="SEC">Smallest Enclosing Circle</option>
+          </select>
+        </label>
 
-             <div class="control-group slider-group">
-                <label for="num_faults">Faulty Robots (<span id="num_faults_val">0</span>):</label>
-                <input type="range" id="num_faults" min="0" max="10" value="0" step="1">
-            </div>
+        <!-- sliders (all share the same pattern) -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">
+            Robots <output id="num_robots_val">5</output>
+          </span>
+          <input id="num_robots" type="range" min="1" max="50" value="5" class="w-full accent-blue-600">
+        </label>
 
-            <div class="control-group">
-                 <label for="rigid_movement">Rigid Movement:</label>
-                 <input type="checkbox" id="rigid_movement" checked>
-            </div>
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">
+            Speed <output id="robot_speed_val">1.0</output>
+          </span>
+          <input id="robot_speed" type="range" min="0.1" max="10" step="0.1" value="1.0" class="w-full accent-blue-600">
+        </label>
 
-            <hr>
-            <h3>Advanced / Environment</h3>
+        <!-- Visibility row rewritten with pure Tailwind -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">
+            Visibility <output id="visibility_radius_val">150</output>
+          </span>
 
-             <div class="control-group slider-group">
-                <label for="width_bound">World Width (<span id="width_bound_val">200</span>):</label>
-                <input type="range" id="width_bound" min="50" max="1000" value="200" step="10">
-            </div>
-             <div class="control-group slider-group">
-                <label for="height_bound">World Height (<span id="height_bound_val">200</span>):</label>
-                <input type="range" id="height_bound" min="50" max="1000" value="200" step="10">
-            </div>
+          <!-- inline flex container -->
+          <div class="flex items-center gap-2">
+            <input
+              id="visibility_radius"
+              type="range"
+              min="10" max="1000" step="10" value="150"
+              class="flex-1 min-w-0 accent-blue-600"
+            >
 
-             <div class="control-group slider-group">
-                <label for="lambda_rate">Activation Rate (λ) (<span id="lambda_rate_val">5.0</span>):</label>
-                <input type="range" id="lambda_rate" min="0.1" max="20" value="5.0" step="0.1">
-            </div>
+            <!-- Tailwind-only toggle switch -->
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input id="infinite_visibility" type="checkbox" class="sr-only peer">
+              <div class="w-10 h-5 bg-gray-300 rounded-full peer peer-checked:bg-blue-600
+                          after:content-[''] after:absolute after:top-0.5 after:left-1
+                          after:w-4 after:h-4 after:bg-white after:rounded-full
+                          after:transition-all peer-checked:after:translate-x-5">
+              </div>
+              <span class="ml-2 text-sm">Inf</span>
+            </label>
+          </div>
+        </label>
 
-            <div class="control-group slider-group">
-                <label for="sampling_rate">Vis Sample Rate (s) (<span id="sampling_rate_val">0.1</span>):</label>
-                <input type="range" id="sampling_rate" min="0.05" max="1.0" value="0.1" step="0.05">
-            </div>
+        <!-- … repeat pattern for the rest of your sliders / toggles … -->
+        <!-- Faulty -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">
+            Faulty <output id="num_faults_val">0</output>
+          </span>
+          <input id="num_faults" type="range" min="0" max="10" step="1" value="0" class="w-full accent-blue-600">
+        </label>
 
-             <div class="control-group slider-group">
-                <label for="threshold_precision">Precision (1e-X) (<span id="threshold_precision_val">5</span>):</label>
-                <input type="range" id="threshold_precision" min="2" max="10" value="5" step="1">
-            </div>
+        <!-- Rigid movement toggle -->
+        <label class="inline-flex items-center gap-3 text-sm font-medium">
+          <input id="rigid_movement" type="checkbox" checked class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+          Rigid movement
+        </label>
 
-             <div class="control-group">
-                <label for="random_seed">Random Seed:</label>
-                <input type="number" id="random_seed" value="12345">
-            </div>
+        <!-- World + env sliders (unchanged markup, Tailwind classes analogous) -->
+        <h3 class="pt-2 font-semibold">Environment</h3>
 
+        <!-- World width -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">
+            World W <output id="width_bound_val">600</output>
+          </span>
+          <input id="width_bound" type="range" min="50" max="1000" step="10" value="600" class="w-full accent-blue-600">
+        </label>
 
-            <button id="start_button" disabled>Start Simulation</button>
-            <button id="stop_button" disabled>Stop Simulation</button>
+        <!-- World height -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">
+            World H <output id="height_bound_val">600</output>
+          </span>
+          <input id="height_bound" type="range" min="50" max="1000" step="10" value="600" class="w-full accent-blue-600">
+        </label>
 
-            <div id="sim_time">Time: 0.00</div>
-             <div id="sim_message"></div>
+        <!-- λ rate -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">
+            λ (rate) <output id="lambda_rate_val">5.0</output>
+          </span>
+          <input id="lambda_rate" type="range" min="0.1" max="20" step="0.1" value="5.0" class="w-full accent-blue-600">
+        </label>
 
+        <!-- sampling -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">
+            Sample s <output id="sampling_rate_val">0.1</output>
+          </span>
+          <input id="sampling_rate" type="range" min="0.05" max="1" step="0.05" value="0.1" class="w-full accent-blue-600">
+        </label>
+
+        <!-- precision -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">
+            Precision 1e-<output id="threshold_precision_val">5</output>
+          </span>
+          <input id="threshold_precision" type="range" min="2" max="10" step="1" value="5" class="w-full accent-blue-600">
+        </label>
+
+        <!-- random seed -->
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">Random seed</span>
+          <input id="random_seed" type="number" value="12345" class="rounded border-gray-300 p-1.5 text-sm w-full">
+        </label>
+
+        <!-- start / stop -->
+        <div class="flex gap-3 pt-2">
+          <button id="start_button" disabled
+                  class="px-4 py-1.5 rounded bg-blue-600 text-white font-medium disabled:opacity-50">
+            Start
+          </button>
+          <button id="stop_button" disabled
+                  class="px-4 py-1.5 rounded border border-gray-300 text-gray-800 disabled:opacity-50">
+            Stop
+          </button>
         </div>
-        <div id="visualization">
-            <canvas id="canvas"></canvas>
-        </div>
-    </div>
 
-    <!-- Load the main JavaScript -->
-    <script defer src="main.js"></script>
+        <!-- legend -->
+        <div id="legend" class="space-y-1 text-sm"></div>
+
+        <p id="sim_time"     class="text-sm"></p>
+        <p id="sim_message"  class="text-sm font-medium"></p>
+      </section>
+    </aside>
+
+    <!-- ========== MAIN CANVAS & ZOOM ========== -->
+    <main id="visualization" class="flex-1 relative bg-gray-100">
+      <canvas id="canvas" class="block w-full h-full"></canvas>
+
+      <!-- zoom buttons -->
+      <div class="absolute top-4 right-4 flex flex-col gap-2">
+        <button id="zoom_in_btn"
+                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold">＋</button>
+        <button id="zoom_out_btn"
+                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold">－</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- main JS -->
+  <script defer src="main.js"></script>
 </body>
 </html>
+
 ===== ./main.js =====
-console.log("main.js started");
+/* ================================================================
+ *  main.js  —  robots coloured by state, no number labels
+ * ================================================================ */
 
-// --- DOM Elements ---
-const statusDiv = document.getElementById('status');
-const startButton = document.getElementById('start_button');
-const stopButton = document.getElementById('stop_button');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const simTimeDiv = document.getElementById('sim_time');
-const simMessageDiv = document.getElementById('sim_message');
+/* -------- DOM refs ------------------------------------------------ */
+const statusDiv     = document.getElementById("status");
+const startBtn      = document.getElementById("start_button");
+const stopBtn       = document.getElementById("stop_button");
+const zoomInBtn     = document.getElementById("zoom_in_btn");
+const zoomOutBtn    = document.getElementById("zoom_out_btn");
 
-// Input Elements
-const algorithmSelect = document.getElementById('algorithm');
-const numRobotsSlider = document.getElementById('num_robots');
-const numRobotsVal = document.getElementById('num_robots_val');
-const robotSpeedSlider = document.getElementById('robot_speed');
-const robotSpeedVal = document.getElementById('robot_speed_val');
-const visibilityRadiusSlider = document.getElementById('visibility_radius');
-const visibilityRadiusVal = document.getElementById('visibility_radius_val');
-const infiniteVisibilityCheckbox = document.getElementById('infinite_visibility');
-const numFaultsSlider = document.getElementById('num_faults');
-const numFaultsVal = document.getElementById('num_faults_val');
-const rigidMovementCheckbox = document.getElementById('rigid_movement');
-const widthBoundSlider = document.getElementById('width_bound');
-const widthBoundVal = document.getElementById('width_bound_val');
-const heightBoundSlider = document.getElementById('height_bound');
-const heightBoundVal = document.getElementById('height_bound_val');
-const lambdaRateSlider = document.getElementById('lambda_rate');
-const lambdaRateVal = document.getElementById('lambda_rate_val');
-const samplingRateSlider = document.getElementById('sampling_rate');
-const samplingRateVal = document.getElementById('sampling_rate_val');
-const thresholdPrecisionSlider = document.getElementById('threshold_precision');
-const thresholdPrecisionVal = document.getElementById('threshold_precision_val');
-const randomSeedInput = document.getElementById('random_seed');
+const canvas        = document.getElementById("canvas");
+const ctx           = canvas.getContext("2d");
 
-// --- Pyodide and Simulation State ---
-let pyodide = null;
-let simulationRunning = false;
-let animationFrameId = null;
-let pythonRunner = null; // Will hold Python functions like setup_simulation, run_simulation_step
+const simTimeDiv    = document.getElementById("sim_time");
+const simMsgDiv     = document.getElementById("sim_message");
 
-// --- Canvas Drawing Configuration ---
-const robotRadius = 5;
-let scale = 2; // Pixels per simulation unit
-let offsetX = 0; // Canvas center X
-let offsetY = 0; // Canvas center Y
-const colors = ["#FF0000", "#0000FF", "#008000", "#FFA500", "#800080", "#00FFFF", "#FF00FF", "#4682B4", "#FFD700", "#32CD32"]; // Add more colors if needed
+/* sliders / fields (unchanged from previous version) -------------- */
+const algorithmSelect = document.getElementById("algorithm");
+const numRobotsSlider = document.getElementById("num_robots");
+const numRobotsVal    = document.getElementById("num_robots_val");
+const robotSpeedSlider = document.getElementById("robot_speed");
+const robotSpeedVal    = document.getElementById("robot_speed_val");
 
-// --- Helper Functions ---
+const visibilitySlider  = document.getElementById("visibility_radius");
+const visibilityVal     = document.getElementById("visibility_radius_val");
+const infiniteVisChk    = document.getElementById("infinite_visibility");
 
-function updateStatus(message) {
-    console.log("Status:", message);
-    if (statusDiv) statusDiv.textContent = message;
+const numFaultsSlider   = document.getElementById("num_faults");
+const numFaultsVal      = document.getElementById("num_faults_val");
+const rigidChk          = document.getElementById("rigid_movement");
+
+const widthSlider       = document.getElementById("width_bound");
+const widthVal          = document.getElementById("width_bound_val");
+const heightSlider      = document.getElementById("height_bound");
+const heightVal         = document.getElementById("height_bound_val");
+
+const lambdaSlider      = document.getElementById("lambda_rate");
+const lambdaVal         = document.getElementById("lambda_rate_val");
+const sampleSlider      = document.getElementById("sampling_rate");
+const sampleVal         = document.getElementById("sampling_rate_val");
+
+const precisionSlider   = document.getElementById("threshold_precision");
+const precisionVal      = document.getElementById("threshold_precision_val");
+
+const seedInput         = document.getElementById("random_seed");
+
+/* -------- Pyodide / sim state ------------------------------------ */
+let pyodide      = null;
+let pythonRunner = null;
+let simRunning   = false;
+let animFrameId  = null;
+
+/* -------- canvas / world config ---------------------------------- */
+const ROBOT_R = 5;
+let scale   = 1;
+let offsetX = 0, offsetY = 0;
+
+const ZOOM_STEP = 1.15;
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 50;
+
+let lastRobotsFrame = [];
+
+/* -------- helpers ------------------------------------------------ */
+const updStatus = (msg) => (statusDiv.textContent = msg);
+function updMsg(msg) {
+  simMsgDiv.textContent = msg;
+  simMsgDiv.style.color       = msg.toLowerCase().includes("error") ? "red" : "";
+  simMsgDiv.style.fontWeight  = msg.toLowerCase().includes("error") ? "600" : "";
 }
+const updSlider = (sl, out) => (out.textContent = sl.value);
 
-function updateSimMessage(message) {
-    console.log("Sim Message:", message);
-    if (simMessageDiv) simMessageDiv.textContent = message;
-     if (message && message.toLowerCase().includes("error")) {
-          simMessageDiv.style.color = 'red';
-          simMessageDiv.style.fontWeight = 'bold';
-     } else {
-          simMessageDiv.style.color = 'black';
-          simMessageDiv.style.fontWeight = 'normal';
-     }
-}
-
-
-function updateSliderValue(slider, span) {
-    if (slider && span) {
-        span.textContent = slider.value;
-    }
-}
-
+/* -------- canvas auto-size --------------------------------------- */
 function resizeCanvas() {
-    const vizDiv = document.getElementById('visualization');
-    if (!vizDiv) return;
-    const width = vizDiv.clientWidth - 20; // Subtract padding
-    const height = vizDiv.clientHeight - 20;
-    canvas.width = width;
-    canvas.height = height;
-    offsetX = canvas.width / 2;
-    offsetY = canvas.height / 2;
-    // Determine scale based on world bounds and canvas size
-    const worldWidth = parseFloat(widthBoundSlider.value);
-    const worldHeight = parseFloat(heightBoundSlider.value);
-    scale = Math.min(canvas.width / worldWidth, canvas.height / worldHeight) * 0.9; // Add some padding
+  const vis = document.getElementById("visualization");
+  if (!vis) return;
 
-    console.log(`Canvas resized: ${width}x${height}, Scale: ${scale}, Offset: (${offsetX}, ${offsetY})`);
-    // Redraw if simulation was running? Or wait for next step?
-    // For now, let the next step handle redraw.
+  const { width, height } = vis.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.floor(width  * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.width  = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  offsetX = width / 2;
+  offsetY = height / 2;
+
+  const w = +widthSlider.value, h = +heightSlider.value;
+  scale = Math.min(width / w, height / h) * 0.9;
+
+  if (lastRobotsFrame.length) drawSimulation(lastRobotsFrame);
 }
 
-// --- Pyodide Initialization ---
+/* -------- zoom buttons ------------------------------------------- */
+function applyZoom(factor) {
+  scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor));
+  if (lastRobotsFrame.length) drawSimulation(lastRobotsFrame);
+}
+zoomInBtn .addEventListener("click", () => applyZoom(ZOOM_STEP));
+zoomOutBtn.addEventListener("click", () => applyZoom(1 / ZOOM_STEP));
 
+/* -------- Pyodide bootstrap -------------------------------------- */
 async function loadPyodideAndPackages() {
-    updateStatus("Loading Pyodide runtime...");
-    try {
-        pyodide = await loadPyodide({
-             // indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" // Optional: specify indexURL
-        });
-        updateStatus("Pyodide loaded. Loading packages...");
-        await pyodide.loadPackage(["numpy", "micropip"]); // Need numpy, micropip helpful for fetching
-        updateStatus("Packages loaded. Fetching Python code...");
-
-        // Fetch Python code
-        const pythonFiles = [
-            './robot.py',
-            './scheduler.py', 
-            './run.py'
-        ];
-
-        for (const filePath of pythonFiles) {
-            updateStatus(`Fetching ${filePath}...`);
-            const response = await fetch(filePath);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch ${filePath}: ${response.statusText}`);
-            }
-            const pythonCode = await response.text();
-            updateStatus(`Running ${filePath}...`);
-            pyodide.runPython(pythonCode);
-        }
-
-        updateStatus("Python code loaded. Ready.");
-        pythonRunner = pyodide.globals.get('simulation_runner'); // Get the module proxy
-        startButton.disabled = false;
-
-    } catch (error) {
-        updateStatus(`Error initializing Pyodide or loading code: ${error}`);
-        console.error("Pyodide loading error:", error);
-        startButton.disabled = true;
-        stopButton.disabled = true;
+  updStatus("Loading Pyodide…");
+  try {
+    pyodide = await loadPyodide();
+    await pyodide.loadPackage(["numpy", "micropip"]);
+    const files = ["robot.py", "scheduler.py", "run.py"];
+    for (const f of files) {
+      const code = await (await fetch(`./${f}`)).text();
+      pyodide.FS.writeFile(f, code);
     }
+    await pyodide.runPythonAsync("import run as simulation_runner");
+    pythonRunner = pyodide.globals.get("simulation_runner");
+
+    updStatus("Ready. Click Start.");
+    startBtn.disabled = false;
+  } catch (err) {
+    updStatus(`Pyodide init error: ${err.message}`);
+  }
 }
 
-// --- Simulation Control ---
+/* -------- simulation control ------------------------------------- */
+function params() {
+  return {
+    algorithm          : algorithmSelect.value,
+    num_of_robots      : +numRobotsSlider.value,
+    robot_speeds       : +robotSpeedSlider.value,
+    visibility_radius  : infiniteVisChk.checked ? null : +visibilitySlider.value,
+    num_of_faults      : +numFaultsSlider.value,
+    rigid_movement     : rigidChk.checked,
+    width_bound        : +widthSlider.value,
+    height_bound       : +heightSlider.value,
+    lambda_rate        : +lambdaSlider.value,
+    sampling_rate      : +sampleSlider.value,
+    threshold_precision: +precisionSlider.value,
+    random_seed        : +seedInput.value,
+    initial_positions  : []
+  };
+}
 
 async function startSimulation() {
-    if (simulationRunning || !pyodide || !pythonRunner) return;
-    updateStatus("Starting simulation...");
-    startButton.disabled = true;
-    stopButton.disabled = false;
-    simulationRunning = true;
-    updateSimMessage(""); // Clear previous messages
-
-    // Gather parameters
-    const params = {
-        algorithm: algorithmSelect.value,
-        num_of_robots: parseInt(numRobotsSlider.value),
-        robot_speeds: parseFloat(robotSpeedSlider.value),
-        visibility_radius: infiniteVisibilityCheckbox.checked ? null : parseFloat(visibilityRadiusSlider.value),
-        num_of_faults: parseInt(numFaultsSlider.value),
-        rigid_movement: rigidMovementCheckbox.checked,
-        width_bound: parseFloat(widthBoundSlider.value),
-        height_bound: parseFloat(heightBoundSlider.value),
-        lambda_rate: parseFloat(lambdaRateSlider.value),
-        sampling_rate: parseFloat(samplingRateSlider.value),
-        threshold_precision: parseInt(thresholdPrecisionSlider.value),
-        random_seed: parseInt(randomSeedInput.value),
-        // Add other params as needed
-        initial_positions: [] // Let Python handle generation for now
-    };
-
-    console.log("Simulation Params:", params);
-    resizeCanvas(); // Ensure canvas size and scale are set based on bounds
-
-    try {
-        // Call Python setup function
-        const setupResultJson = await pythonRunner.setup_simulation(JSON.stringify(params));
-        const setupResult = JSON.parse(setupResultJson);
-
-        if (setupResult.status === 'error') {
-             throw new Error(`Setup failed: ${setupResult.message}`);
-        }
-
-        updateStatus("Simulation running...");
-        updateSimMessage(setupResult.message || "Running...");
-        simTimeDiv.textContent = `Time: ${setupResult.time.toFixed(2)}`;
-
-        // Draw initial state
-        drawSimulation(setupResult.robots);
-
-        // Start the animation loop
-        animationFrameId = requestAnimationFrame(simulationStep);
-
-    } catch (error) {
-        updateStatus("Error starting simulation.");
-        updateSimMessage(`Error: ${error.message}`);
-        console.error("Simulation start error:", error);
-        simulationRunning = false;
-        startButton.disabled = false;
-        stopButton.disabled = true;
-    }
+  if (simRunning || !pythonRunner) return;
+  startBtn.disabled = true; stopBtn.disabled = false; simRunning = true; updMsg("");
+  try {
+    const setup = JSON.parse(await pythonRunner.setup_simulation(JSON.stringify(params())));
+    if (setup.status === "error") throw new Error(setup.message);
+    simTimeDiv.textContent = `Time: ${setup.time.toFixed(2)}`;
+    drawSimulation(setup.robots); lastRobotsFrame = setup.robots;
+    updStatus("Simulation running…");
+    animFrameId = requestAnimationFrame(simStep);
+  } catch (err) {
+    updStatus("Start error."); updMsg(`Error: ${err.message}`);
+    startBtn.disabled = false; stopBtn.disabled = true; simRunning = false;
+  }
 }
 
 function stopSimulation() {
-    if (!simulationRunning || !pyodide || !pythonRunner) return;
-    updateStatus("Stopping simulation...");
-    simulationRunning = false; // Signal loop to stop
-    if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
-    }
-    startButton.disabled = false;
-    stopButton.disabled = true;
-
-    try {
-         // Call Python stop function (optional, for cleanup)
-        const stopResultJson = pythonRunner.stop_simulation();
-        const stopResult = JSON.parse(stopResultJson);
-        updateSimMessage(stopResult.message || "Simulation stopped.");
-        updateStatus("Simulation stopped.");
-    } catch (error) {
-        console.error("Error calling Python stop function:", error);
-        updateSimMessage("Simulation stopped (with cleanup error).");
-        updateStatus("Simulation stopped.");
-    }
+  if (!simRunning) return;
+  simRunning = false; cancelAnimationFrame(animFrameId);
+  try { updMsg(JSON.parse(pythonRunner.stop_simulation()).message); } catch {}
+  updStatus("Simulation stopped."); startBtn.disabled = false; stopBtn.disabled = true;
 }
 
-async function simulationStep() {
-    if (!simulationRunning || !pyodide || !pythonRunner) {
-        // Ensure buttons are correct if loop stops unexpectedly
-        startButton.disabled = false;
-        stopButton.disabled = true;
-        updateStatus("Simulation stopped unexpectedly.");
-        return;
+async function simStep() {
+  if (!simRunning) return;
+  try {
+    const step = JSON.parse(await pythonRunner.run_simulation_step());
+    simTimeDiv.textContent = `Time: ${step.time.toFixed(2)}`;
+    if (step.message) updMsg(step.message);
+    if (step.robots) { drawSimulation(step.robots); lastRobotsFrame = step.robots; }
+    if (step.status !== "running") {
+      simRunning = false;
+      updStatus(`Simulation ${step.status}.`);
+      startBtn.disabled = false; stopBtn.disabled = true;
     }
-
-    try {
-        // Call Python step function
-        const stepResultJson = await pythonRunner.run_simulation_step();
-        const result = JSON.parse(stepResultJson);
-
-        // Update UI
-        simTimeDiv.textContent = `Time: ${result.time.toFixed(2)}`;
-        if (result.message) {
-            // Only update message if it's significant (not just "event handled")
-             if (result.status !== 'running' || !result.message.startsWith("Event handled")) {
-                  updateSimMessage(result.message);
-             }
-        }
-
-        // Draw current state
-        if (result.robots) {
-            drawSimulation(result.robots);
-        }
-
-        // Check simulation status
-        if (result.status === 'ended' || result.status === 'error' || result.status === 'stopped') {
-            simulationRunning = false;
-            startButton.disabled = false;
-            stopButton.disabled = true;
-            updateStatus(`Simulation ${result.status}.`);
-            if (result.status === 'error') {
-                 console.error("Simulation Error:", result.message);
-            }
-        }
-
-    } catch (error) {
-        console.error("Error during simulation step:", error);
-        updateStatus("Simulation Error!");
-        updateSimMessage(`Runtime Error: ${error.message}`);
-        simulationRunning = false;
-        startButton.disabled = false;
-        stopButton.disabled = true;
-    }
-
-    // Request next frame if still running
-    if (simulationRunning) {
-        animationFrameId = requestAnimationFrame(simulationStep);
-    }
+  } catch (err) {
+    updStatus("Runtime error!"); updMsg(`Error: ${err.message}`);
+    simRunning = false; startBtn.disabled = false; stopBtn.disabled = true;
+  }
+  if (simRunning) animFrameId = requestAnimationFrame(simStep);
 }
 
-
-// --- Canvas Drawing ---
-
-function transformCoords(x, y) {
-    // Translate simulation coords (origin at 0,0) to canvas coords (origin top-left)
-    // Apply scaling and centering offset
-    return {
-        x: offsetX + x * scale,
-        y: offsetY - y * scale // Y is inverted in canvas
+/* -------- drawing ------------------------------------------------ */
+const STATE_COLORS = {
+  CRASH      : "#555555",
+  TERMINATED : "#a0a0a0",
+  FROZEN     : "#ff9500",
+  MOVE       : "#34c759",
+  DEFAULT    : "#007aff"    // LOOK / WAIT / others
+};
+/* ---------- build legend (once) --------------------------------- */
+function buildLegend() {
+    const legendDiv = document.getElementById("legend");
+    if (!legendDiv) return;
+  
+    const LABELS = {
+      DEFAULT   : "Active (LOOK / WAIT)",
+      MOVE      : "Moving",
+      FROZEN    : "Frozen",
+      TERMINATED: "Terminated",
+      CRASH     : "Crashed"
     };
+  
+    Object.entries(STATE_COLORS).forEach(([key, hex]) => {
+      if (!LABELS[key]) return;                // skip unknown keys
+      const item   = document.createElement("div");
+      item.className = "legend-item";
+      item.innerHTML =
+        `<span class="inline-block mr-2 rounded-sm"
+          style="background:${hex};width:1rem;height:1rem;"></span>${LABELS[key]}`;
+      legendDiv.appendChild(item);
+    });
+  }
+  
+function colorForRobot(r) {
+  if (r.crashed)       return STATE_COLORS.CRASH;
+  if (r.terminated)    return STATE_COLORS.TERMINATED;
+  if (r.frozen)        return STATE_COLORS.FROZEN;
+  if (r.state === "MOVE") return STATE_COLORS.MOVE;
+  return STATE_COLORS.DEFAULT;
 }
+
+function transform(x, y) { return { x: offsetX + x * scale, y: offsetY - y * scale }; }
 
 function drawSimulation(robots) {
-    if (!ctx || !robots) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  robots.forEach((r) => {
+    const p = transform(r.x, r.y);
+    const c = colorForRobot(r);
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    /* body */
+    ctx.fillStyle = c; ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(p.x, p.y, ROBOT_R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
-    // Draw world boundaries (optional)
-    const worldW = parseFloat(widthBoundSlider.value);
-    const worldH = parseFloat(heightBoundSlider.value);
-    const topLeft = transformCoords(-worldW / 2, worldH / 2);
-    const bottomRight = transformCoords(worldW / 2, -worldH / 2);
-    ctx.strokeStyle = "#cccccc";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+    /* target line */
+    if (r.state === "MOVE" && r.target_x != null) {
+      const t = transform(r.target_x, r.target_y);
+      ctx.setLineDash([2, 3]); ctx.strokeStyle = c; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(t.x, t.y); ctx.stroke(); ctx.setLineDash([]);
+    }
 
+    /* SEC (SEC algorithm only) */
+    if (algorithmSelect.value === "SEC" && r.sec) {
+      const sc = transform(r.sec.center_x, r.sec.center_y);
+      ctx.strokeStyle = "rgba(255,165,0,0.6)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sc.x, sc.y, r.sec.radius * scale, 0, Math.PI * 2); ctx.stroke();
+    }
 
-    // Draw robots
-    robots.forEach((robot, index) => {
-        const { x: canvasX, y: canvasY } = transformCoords(robot.x, robot.y);
-
-        // Determine color
-        let color = colors[robot.id % colors.length];
-        if (robot.crashed) color = "#404040"; // Gray for crashed
-        else if (robot.terminated) color = "#a0a0a0"; // Lighter gray for terminated
-
-        ctx.fillStyle = color;
-        ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 1;
-
-        // Draw robot body
-        ctx.beginPath();
-        ctx.arc(canvasX, canvasY, robotRadius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-         // Draw visibility radius (if finite and enabled)
-         if (robot.visibility_radius !== null && robot.visibility_radius > 0 && !robot.crashed && !robot.terminated) {
-             ctx.strokeStyle = "rgba(100, 100, 200, 0.3)"; // Light blue, semi-transparent
-             ctx.lineWidth = 1;
-             ctx.beginPath();
-             ctx.arc(canvasX, canvasY, robot.visibility_radius * scale, 0, Math.PI * 2);
-             ctx.stroke();
-         }
-
-
-        // Draw state indicator / other info
-        ctx.fillStyle = "#000000";
-        ctx.font = "10px sans-serif";
-        ctx.textAlign = "center";
-        let statusText = `${robot.id}`;
-        if (robot.state === 'MOVE') statusText += ' M';
-        if (robot.frozen) statusText += '*'; // Frozen indicator
-        if (robot.terminated) statusText += '#'; // Terminated indicator
-        if (robot.crashed) statusText += '!'; // Crashed indicator
-        if (robot.multiplicity > 1) statusText += `(${robot.multiplicity})`; // Multiplicity
-
-        ctx.fillText(statusText, canvasX, canvasY + robotRadius + 10);
-
-        // Draw target position and line (if moving/has target)
-        if (robot.state === 'MOVE' && robot.target_x !== null && robot.target_y !== null) {
-            const { x: targetX, y: targetY } = transformCoords(robot.target_x, robot.target_y);
-            // Draw small target marker
-            ctx.strokeStyle = color; // Use robot's color for target line
-            ctx.fillStyle = color;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(targetX - 3, targetY - 3);
-            ctx.lineTo(targetX + 3, targetY + 3);
-            ctx.moveTo(targetX - 3, targetY + 3);
-            ctx.lineTo(targetX + 3, targetY - 3);
-            ctx.stroke();
-            // Draw line from robot to target
-            ctx.beginPath();
-            ctx.moveTo(canvasX, canvasY);
-            ctx.lineTo(targetX, targetY);
-            ctx.setLineDash([2, 3]); // Dashed line
-            ctx.stroke();
-            ctx.setLineDash([]); // Reset line dash
-        }
-
-         // Draw SEC (if available and algorithm is SEC)
-         if (robot.sec && algorithmSelect.value === 'SEC' && !robot.crashed && !robot.terminated) {
-             const { center_x, center_y, radius } = robot.sec;
-             if (radius >= 0) { // Check for valid radius
-                 const { x: secX, y: secY } = transformCoords(center_x, center_y);
-                 const secRadiusCanvas = radius * scale;
-
-                 ctx.strokeStyle = "rgba(255, 165, 0, 0.6)"; // Orange, semi-transparent
-                 ctx.lineWidth = 2;
-                 ctx.beginPath();
-                 ctx.arc(secX, secY, secRadiusCanvas, 0, Math.PI * 2);
-                 ctx.stroke();
-             }
-         }
-    });
+    /* visibility */
+    if (r.visibility_radius && !r.crashed && !r.terminated) {
+      ctx.strokeStyle = "rgba(100,100,200,.25)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r.visibility_radius * scale, 0, Math.PI * 2); ctx.stroke();
+    }
+  });
 }
 
+/* -------- listeners & init -------------------------------------- */
+startBtn.addEventListener("click", startSimulation);
+stopBtn .addEventListener("click", stopSimulation);
+window.addEventListener("resize", resizeCanvas);
 
-// --- Event Listeners ---
-
-startButton.addEventListener('click', startSimulation);
-stopButton.addEventListener('click', stopSimulation);
-window.addEventListener('resize', resizeCanvas); // Adjust canvas on window resize
-
-// Slider value displays
-numRobotsSlider.addEventListener('input', () => updateSliderValue(numRobotsSlider, numRobotsVal));
-robotSpeedSlider.addEventListener('input', () => updateSliderValue(robotSpeedSlider, robotSpeedVal));
-visibilityRadiusSlider.addEventListener('input', () => updateSliderValue(visibilityRadiusSlider, visibilityRadiusVal));
-numFaultsSlider.addEventListener('input', () => updateSliderValue(numFaultsSlider, numFaultsVal));
-widthBoundSlider.addEventListener('input', () => { updateSliderValue(widthBoundSlider, widthBoundVal); resizeCanvas(); });
-heightBoundSlider.addEventListener('input', () => { updateSliderValue(heightBoundSlider, heightBoundVal); resizeCanvas(); });
-lambdaRateSlider.addEventListener('input', () => updateSliderValue(lambdaRateSlider, lambdaRateVal));
-samplingRateSlider.addEventListener('input', () => updateSliderValue(samplingRateSlider, samplingRateVal));
-thresholdPrecisionSlider.addEventListener('input', () => updateSliderValue(thresholdPrecisionSlider, thresholdPrecisionVal));
-
-// Infinite visibility checkbox logic
-infiniteVisibilityCheckbox.addEventListener('change', () => {
-    visibilityRadiusSlider.disabled = infiniteVisibilityCheckbox.checked;
-    if (infiniteVisibilityCheckbox.checked) {
-         visibilityRadiusVal.textContent = "Inf";
-    } else {
-         updateSliderValue(visibilityRadiusSlider, visibilityRadiusVal); // Restore numeric value
-    }
+[
+  [numRobotsSlider, numRobotsVal], [robotSpeedSlider, robotSpeedVal],
+  [visibilitySlider, visibilityVal], [numFaultsSlider, numFaultsVal],
+  [widthSlider, widthVal], [heightSlider, heightVal],
+  [lambdaSlider, lambdaVal], [sampleSlider, sampleVal],
+  [precisionSlider, precisionVal]
+].forEach(([sl, out]) => {
+  updSlider(sl, out); sl.addEventListener("input", () => updSlider(sl, out));
 });
 
-// Initial setup calls
-updateSliderValue(numRobotsSlider, numRobotsVal);
-updateSliderValue(robotSpeedSlider, robotSpeedVal);
-updateSliderValue(visibilityRadiusSlider, visibilityRadiusVal);
-updateSliderValue(numFaultsSlider, numFaultsVal);
-updateSliderValue(widthBoundSlider, widthBoundVal);
-updateSliderValue(heightBoundSlider, heightBoundVal);
-updateSliderValue(lambdaRateSlider, lambdaRateVal);
-updateSliderValue(samplingRateSlider, samplingRateVal);
-updateSliderValue(thresholdPrecisionSlider, thresholdPrecisionVal);
+infiniteVisChk.addEventListener("change", () => {
+  visibilitySlider.disabled = infiniteVisChk.checked;
+  visibilityVal.textContent = infiniteVisChk.checked ? "Inf" : visibilitySlider.value;
+});
 
-// Disable slider if infinite checked initially
-visibilityRadiusSlider.disabled = infiniteVisibilityCheckbox.checked;
- if (infiniteVisibilityCheckbox.checked) {
-     visibilityRadiusVal.textContent = "Inf";
- }
-
-// Initial canvas setup
-resizeCanvas();
-drawSimulation([]); // Draw empty canvas initially
-
-// --- Load Pyodide ---
+/* First-time layout */
+buildLegend(); 
+resizeCanvas(); 
+drawSimulation([]);
 loadPyodideAndPackages();
+console.log("main.js loaded.");
 
-console.log("main.js loaded and initial setup done.");
 ===== ./robot.py =====
 import math
 from typing import NamedTuple, Callable, List, Dict, Tuple, Union # Keep Union for type hints if needed
@@ -1310,7 +1250,7 @@ from robot import (
     Robot, # The Robot class itself
     SimpleLogger # If needed, or define its own
 )
-# Keep other necessary imports
+from typing import List, Dict, Tuple, Union, Optional
 import numpy as np
 import heapq
 import math
@@ -1427,6 +1367,19 @@ class Scheduler:
 
     # ... (rest of Scheduler methods remain the same, using imported types/constants)
     # Ensure SnapshotDetails, Event, RobotState, Coordinates etc. are used correctly
+    # scheduler.py  – inside class Scheduler
+    # ------------------------------------------------------------
+    def _take_visualization_snapshot(self, time: Time) -> Dict[Id, SnapshotDetails]:
+        """
+        Capture the positions/states of all robots at the given time and
+        store the snapshot in self.visualization_snapshots.
+        Returns the snapshot so the caller can forward it to JS if needed.
+        """
+        snapshot = self.get_snapshot(time)          # current robot data
+        self.visualization_snapshots.append((time, snapshot))
+        return snapshot
+    # ------------------------------------------------------------
+
 
     def get_snapshot(self, time: Time) -> Dict[Id, SnapshotDetails]:
         """ Creates a snapshot of the current state of all robots. """

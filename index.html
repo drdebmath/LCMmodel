@@ -1,127 +1,177 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Robot-SIM (Pyodide)</title>
-
-<!-- modern Google font & icons -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
-
-<link rel="stylesheet" href="style.css" />
-
-<!-- Pyodide runtime -->
-<script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asynchronous Simulator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            dark: { bg: '#1a202c', text: '#e2e8f0' },
+          },
+        },
+      },
+    };
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"></script>
 </head>
-
-<body>
-  <div id="app">
-    <!-- LEFT DRAWER -------------------------------------------------->
-    <aside id="controls">
-      <header>
-        <h2><span class="material-icons-outlined">tune</span> Controls</h2>
-        <p id="status">Loading Pyodide…</p>
+<body class="font-inter bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-50">
+  <div id="app" class="flex h-screen overflow-hidden">
+    <aside class="w-80 max-w-full shrink-0 overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-4 space-y-6">
+      <header class="space-y-1">
+        <h2 class="flex items-center text-lg font-semibold gap-1">
+          <span class="material-icons-outlined text-base">tune</span>
+          Controls
+        </h2>
+        <p id="status" class="text-sm text-gray-500 dark:text-gray-400">Loading Pyodide…</p>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input id="darkModeToggle" type="checkbox" class="sr-only peer">
+          <div class="w-10 h-5 bg-gray-300 rounded-full peer-checked:bg-blue-600
+                      after:content-[''] after:absolute after:top-0.5 after:left-1
+                      after:w-4 after:h-4 after:bg-white after:rounded-full
+                      after:transition-all peer-checked:after:translate-x-5"></div>
+          <span class="ml-2 text-sm">Dark Mode</span>
+        </label>
       </header>
-
-      <section>
-        <label class="field">
-          <span>Algorithm</span>
-          <select id="algorithm">
+      <section class="space-y-4">
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">Algorithm</span>
+          <select id="algorithm"
+                  class="rounded border-gray-300 bg-white text-gray-900
+                         dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100
+                         text-sm p-1.5 focus:ring-blue-500 focus:border-blue-500">
             <option value="Gathering" selected>Center of Gravity</option>
-            <option value="SEC">Smallest Enclosing Circle)</option>
+            <option value="SEC">Smallest Enclosing Circle</option>
           </select>
         </label>
 
-        <label class="field range">
-          <span>Robots <output id="num_robots_val">5</output></span>
-          <input type="range" id="num_robots" min="1" max="50" value="5">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Robots
+          <input id="num_robots" type="range" min="1" max="50" value="5" class="flex-1 accent-blue-600">
+          <output id="num_robots_val">5</output>
         </label>
 
-        <label class="field range">
-          <span>Speed <output id="robot_speed_val">1.0</output></span>
-          <input type="range" id="robot_speed" min="0.1" max="10" step="0.1" value="1.0">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Speed
+          <input id="robot_speed" type="range" min="0.1" max="10" step="0.1" value="1.0" class="flex-1 accent-blue-600">
+          <output id="robot_speed_val">1.0</output>
         </label>
 
-        <!-- visibility with Inf toggle -->
-        <label class="field range">
-          <span>Visibility <output id="visibility_radius_val">150</output></span>
-          <div class="inline">
-            <input type="range" id="visibility_radius" min="10" max="1000" step="10" value="150">
-            <label class="switch">
-              <input type="checkbox" id="infinite_visibility">
-              <span class="slider"></span>Inf
-            </label>
-          </div>
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Visibility
+          <input id="visibility_radius" type="range" min="10" max="1000" step="10" value="150" class="flex-1 accent-blue-600">
+          <output id="visibility_radius_val">150</output>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input id="infinite_visibility" type="checkbox" class="sr-only peer">
+            <div class="w-10 h-5 bg-gray-300 rounded-full peer-checked:bg-blue-600
+                        after:content-[''] after:absolute after:top-0.5 after:left-1
+                        after:w-4 after:h-4 after:bg-white after:rounded-full
+                        after:transition-all peer-checked:after:translate-x-5"></div>
+            <span class="ml-2 text-sm">Inf</span>
+          </label>
         </label>
 
-        <label class="field range">
-          <span>Faulty <output id="num_faults_val">0</output></span>
-          <input type="range" id="num_faults" min="0" max="10" step="1" value="0">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Faulty
+          <input id="num_faults" type="range" min="0" max="10" step="1" value="0" class="flex-1 accent-blue-600">
+          <output id="num_faults_val">0</output>
         </label>
 
-        <label class="field toggle">
-          <input type="checkbox" id="rigid_movement" checked>
-          <span class="slider"></span>
-          <span>Rigid movement</span>
+        <label class="inline-flex items-center gap-3 text-sm font-medium">
+          <input id="rigid_movement" type="checkbox" checked
+                 class="h-4 w-4 text-blue-600 border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700">
+          Rigid movement
         </label>
 
-        <h3>Environment</h3>
+        <h3 class="pt-2 font-semibold">Environment</h3>
 
-        <label class="field range">
-          <span>World W <output id="width_bound_val">600</output></span>
-          <input type="range" id="width_bound" min="50" max="1000" step="10" value="600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          World W
+          <input id="width_bound" type="range" min="50" max="1000" step="10" value="600" class="flex-1 accent-blue-600">
+          <output id="width_bound_val">600</output>
         </label>
 
-        <label class="field range">
-          <span>World H <output id="height_bound_val">600</output></span>
-          <input type="range" id="height_bound" min="50" max="1000" step="10" value="600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          World H
+          <input id="height_bound" type="range" min="50" max="1000" step="10" value="600" class="flex-1 accent-blue-600">
+          <output id="height_bound_val">600</output>
         </label>
 
-        <label class="field range">
-          <span>λ (rate) <output id="lambda_rate_val">5.0</output></span>
-          <input type="range" id="lambda_rate" min="0.1" max="20" step="0.1" value="5.0">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          λ (rate)
+          <input id="lambda_rate" type="range" min="0.1" max="20" step="0.1" value="5.0" class="flex-1 accent-blue-600">
+          <output id="lambda_rate_val">5.0</output>
         </label>
 
-        <label class="field range">
-          <span>Sample s <output id="sampling_rate_val">0.1</output></span>
-          <input type="range" id="sampling_rate" min="0.05" max="1" step="0.05" value="0.1">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Samples
+          <input id="sampling_rate" type="range" min="0.05" max="1" step="0.05" value="0.1" class="flex-1 accent-blue-600">
+          <output id="sampling_rate_val">0.1</output>
         </label>
 
-        <label class="field range">
-          <span>Precision 1e-<output id="threshold_precision_val">5</output></span>
-          <input type="range" id="threshold_precision" min="2" max="10" step="1" value="5">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Precision 1e-
+          <input id="threshold_precision" type="range" min="2" max="10" step="1" value="5" class="flex-1 accent-blue-600">
+          <output id="threshold_precision_val">5</output>
         </label>
 
-        <label class="field">
-          <span>Random seed</span>
-          <input type="number" id="random_seed" value="12345">
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">Random seed</span>
+          <input id="random_seed" type="number" value="12345"
+                 class="rounded border-gray-300 p-1.5 text-sm w-full dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
         </label>
 
-        <div class="buttons">
-          <button id="start_button" disabled>Start</button>
-          <button id="stop_button"  disabled class="secondary">Stop</button>
+        <div class="flex gap-3 pt-2">
+          <button id="start_button" disabled
+                  class="px-4 py-1.5 rounded bg-blue-600 text-white font-medium
+                         dark:bg-blue-500 dark:text-gray-100 disabled:opacity-50">
+            Start
+          </button>
+          <button id="stop_button" disabled
+                  class="px-4 py-1.5 rounded border border-gray-300 dark:border-gray-600
+                         text-gray-800 dark:text-gray-100 disabled:opacity-50">
+            Stop
+          </button>
         </div>
-        <!-- colour legend -------------------------------------------------->
-        <div id="legend" class="legend"></div>
 
-
-        <p id="sim_time">Time: 0.00</p>
-        <p id="sim_message"></p>
+        <div id="legend" class="space-y-1 text-sm text-gray-600 dark:text-gray-300"></div>
+        <p id="sim_time"    class="text-sm text-gray-600 dark:text-gray-300"></p>
+        <p id="sim_message" class="text-sm font-medium text-gray-700 dark:text-gray-200"></p>
       </section>
     </aside>
-
-    <!-- MAIN VISUAL -------------------------------------------------->
-    <div class="buttons zoom">
-      <button id="zoom_in_btn"  title="Zoom in">＋</button>
-      <button id="zoom_out_btn" title="Zoom out">－</button>
-    </div>
-    <main id="visualization">
-      <canvas id="canvas"></canvas>
+    <main id="visualization" class="flex-1 relative bg-gray-100 dark:bg-gray-800">
+      <canvas id="canvas" class="block w-full h-full"></canvas>
+      <div class="absolute top-4 right-4 flex flex-col gap-2">
+        <button id="zoom_in_btn"
+                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold
+                       dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600">＋</button>
+        <button id="zoom_out_btn"
+                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold
+                       dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600">－</button>
+      </div>
     </main>
   </div>
-
-  <!-- your main JS -->
   <script defer src="main.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const saved = localStorage.getItem('darkMode');
+      const html  = document.documentElement;
+      const dark  = saved === 'true';
+      html.classList.toggle('dark', dark);
+      const toggle = document.getElementById('darkModeToggle');
+      toggle.checked = dark;
+      toggle.addEventListener('click', () => {
+        const nowDark = !html.classList.contains('dark');
+        html.classList.toggle('dark', nowDark);
+        localStorage.setItem('darkMode', nowDark.toString());
+      });
+    });
+  </script>
 </body>
 </html>
