@@ -7,190 +7,189 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Robot-SIM (Pyodide)</title>
-
-  <!-- Tailwind (via CDN) –– remove style.css link -->
+  <title>Asynchronous Simulator</title>
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Google font & icons -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            dark: { bg: '#1a202c', text: '#e2e8f0' },
+          },
+        },
+      },
+    };
+  </script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
-
-  <!-- Pyodide runtime -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"></script>
 </head>
-
-<body class="font-inter bg-gray-50 text-gray-900">
+<body class="font-inter bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-50">
   <div id="app" class="flex h-screen overflow-hidden">
-
-    <!-- ========== LEFT DRAWER / CONTROLS ========== -->
-    <aside id="controls" class="w-80 max-w-full shrink-0 overflow-y-auto bg-white border-r border-gray-200 p-4 space-y-6">
+    <aside id="control-panel" class="w-80 max-w-full shrink-0 overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-4 space-y-6 fixed inset-y-0 left-0 z-20 transform transition-transform duration-300 md:static md:transform-none hidden md:block">
       <header class="space-y-1">
         <h2 class="flex items-center text-lg font-semibold gap-1">
           <span class="material-icons-outlined text-base">tune</span>
           Controls
         </h2>
-        <p id="status" class="text-sm text-gray-500">Loading Pyodide…</p>
+        <p id="status" class="text-sm text-gray-500 dark:text-gray-400">Loading Pyodide…</p>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input id="darkModeToggle" type="checkbox" class="sr-only peer">
+          <div class="w-10 h-5 bg-gray-300 rounded-full peer-checked:bg-blue-600
+                      after:content-[''] after:absolute after:top-0.5 after:left-1
+                      after:w-4 after:h-4 after:bg-white after:rounded-full
+                      after:transition-all peer-checked:after:translate-x-5"></div>
+          <span class="ml-2 text-sm">Dark Mode</span>
+        </label>
       </header>
-
-      <!----- Parameters -------------------------------------->
       <section class="space-y-4">
-
-        <!-- select -->
         <label class="flex flex-col gap-1">
           <span class="text-sm font-medium">Algorithm</span>
-          <select id="algorithm" class="rounded border-gray-300 text-sm p-1.5">
+          <select id="algorithm"
+                  class="rounded border-gray-300 bg-white text-gray-900
+                         dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100
+                         text-sm p-1.5 focus:ring-blue-500 focus:border-blue-500">
             <option value="Gathering" selected>Center of Gravity</option>
             <option value="SEC">Smallest Enclosing Circle</option>
           </select>
         </label>
 
-        <!-- sliders (all share the same pattern) -->
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">
-            Robots <output id="num_robots_val">5</output>
-          </span>
-          <input id="num_robots" type="range" min="1" max="50" value="5" class="w-full accent-blue-600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Robots
+          <input id="num_robots" type="range" min="1" max="50" value="5" class="flex-1 accent-blue-600">
+          <output id="num_robots_val">5</output>
         </label>
 
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">
-            Speed <output id="robot_speed_val">1.0</output>
-          </span>
-          <input id="robot_speed" type="range" min="0.1" max="10" step="0.1" value="1.0" class="w-full accent-blue-600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Speed
+          <input id="robot_speed" type="range" min="0.1" max="10" step="0.1" value="1.0" class="flex-1 accent-blue-600">
+          <output id="robot_speed_val">1.0</output>
         </label>
 
-        <!-- Visibility row rewritten with pure Tailwind -->
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">
-            Visibility <output id="visibility_radius_val">150</output>
-          </span>
-
-          <!-- inline flex container -->
-          <div class="flex items-center gap-2">
-            <input
-              id="visibility_radius"
-              type="range"
-              min="10" max="1000" step="10" value="150"
-              class="flex-1 min-w-0 accent-blue-600"
-            >
-
-            <!-- Tailwind-only toggle switch -->
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input id="infinite_visibility" type="checkbox" class="sr-only peer">
-              <div class="w-10 h-5 bg-gray-300 rounded-full peer peer-checked:bg-blue-600
-                          after:content-[''] after:absolute after:top-0.5 after:left-1
-                          after:w-4 after:h-4 after:bg-white after:rounded-full
-                          after:transition-all peer-checked:after:translate-x-5">
-              </div>
-              <span class="ml-2 text-sm">Inf</span>
-            </label>
-          </div>
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Visibility
+          <input id="visibility_radius" type="range" min="10" max="1000" step="10" value="150" class="flex-1 accent-blue-600">
+          <output id="visibility_radius_val">150</output>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input id="infinite_visibility" type="checkbox" class="sr-only peer">
+            <div class="w-10 h-5 bg-gray-300 rounded-full peer-checked:bg-blue-600
+                        after:content-[''] after:absolute after:top-0.5 after:left-1
+                        after:w-4 after:h-4 after:bg-white after:rounded-full
+                        after:transition-all peer-checked:after:translate-x-5"></div>
+            <span class="ml-2 text-sm">Inf</span>
+          </label>
         </label>
 
-        <!-- … repeat pattern for the rest of your sliders / toggles … -->
-        <!-- Faulty -->
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">
-            Faulty <output id="num_faults_val">0</output>
-          </span>
-          <input id="num_faults" type="range" min="0" max="10" step="1" value="0" class="w-full accent-blue-600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Faulty
+          <input id="num_faults" type="range" min="0" max="10" step="1" value="0" class="flex-1 accent-blue-600">
+          <output id="num_faults_val">0</output>
         </label>
 
-        <!-- Rigid movement toggle -->
         <label class="inline-flex items-center gap-3 text-sm font-medium">
-          <input id="rigid_movement" type="checkbox" checked class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+          <input id="rigid_movement" type="checkbox" checked
+                 class="h-4 w-4 text-blue-600 border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700">
           Rigid movement
         </label>
 
-        <!-- World + env sliders (unchanged markup, Tailwind classes analogous) -->
         <h3 class="pt-2 font-semibold">Environment</h3>
 
-        <!-- World width -->
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">
-            World W <output id="width_bound_val">600</output>
-          </span>
-          <input id="width_bound" type="range" min="50" max="1000" step="10" value="600" class="w-full accent-blue-600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          World W
+          <input id="width_bound" type="range" min="50" max="1000" step="10" value="600" class="flex-1 accent-blue-600">
+          <output id="width_bound_val">600</output>
         </label>
 
-        <!-- World height -->
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">
-            World H <output id="height_bound_val">600</output>
-          </span>
-          <input id="height_bound" type="range" min="50" max="1000" step="10" value="600" class="w-full accent-blue-600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          World H
+          <input id="height_bound" type="range" min="50" max="1000" step="10" value="600" class="flex-1 accent-blue-600">
+          <output id="height_bound_val">600</output>
         </label>
 
-        <!-- λ rate -->
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">
-            λ (rate) <output id="lambda_rate_val">5.0</output>
-          </span>
-          <input id="lambda_rate" type="range" min="0.1" max="20" step="0.1" value="5.0" class="w-full accent-blue-600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          λ (rate)
+          <input id="lambda_rate" type="range" min="0.1" max="20" step="0.1" value="5.0" class="flex-1 accent-blue-600">
+          <output id="lambda_rate_val">5.0</output>
         </label>
 
-        <!-- sampling -->
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">
-            Sample s <output id="sampling_rate_val">0.1</output>
-          </span>
-          <input id="sampling_rate" type="range" min="0.05" max="1" step="0.05" value="0.1" class="w-full accent-blue-600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Samples
+          <input id="sampling_rate" type="range" min="0.05" max="1" step="0.05" value="0.1" class="flex-1 accent-blue-600">
+          <output id="sampling_rate_val">0.1</output>
         </label>
 
-        <!-- precision -->
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">
-            Precision 1e-<output id="threshold_precision_val">5</output>
-          </span>
-          <input id="threshold_precision" type="range" min="2" max="10" step="1" value="5" class="w-full accent-blue-600">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          Precision 1e-
+          <input id="threshold_precision" type="range" min="2" max="10" step="1" value="5" class="flex-1 accent-blue-600">
+          <output id="threshold_precision_val">5</output>
         </label>
 
-        <!-- random seed -->
         <label class="flex flex-col gap-1">
           <span class="text-sm font-medium">Random seed</span>
-          <input id="random_seed" type="number" value="12345" class="rounded border-gray-300 p-1.5 text-sm w-full">
+          <input id="random_seed" type="number" value="12345"
+                 class="rounded border-gray-300 p-1.5 text-sm w-full dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
         </label>
 
-        <!-- start / stop -->
         <div class="flex gap-3 pt-2">
           <button id="start_button" disabled
-                  class="px-4 py-1.5 rounded bg-blue-600 text-white font-medium disabled:opacity-50">
+                  class="px-4 py-1.5 rounded bg-blue-600 text-white font-medium
+                         dark:bg-blue-500 dark:text-gray-100 disabled:opacity-50">
             Start
           </button>
           <button id="stop_button" disabled
-                  class="px-4 py-1.5 rounded border border-gray-300 text-gray-800 disabled:opacity-50">
+                  class="px-4 py-1.5 rounded border border-gray-300 dark:border-gray-600
+                         text-gray-800 dark:text-gray-100 disabled:opacity-50">
             Stop
           </button>
         </div>
 
-        <!-- legend -->
-        <div id="legend" class="space-y-1 text-sm"></div>
-
-        <p id="sim_time"     class="text-sm"></p>
-        <p id="sim_message"  class="text-sm font-medium"></p>
+        <div id="legend" class="space-y-1 text-sm text-gray-600 dark:text-gray-300"></div>
+        <p id="sim_time"    class="text-sm text-gray-600 dark:text-gray-300"></p>
+        <p id="sim_message" class="text-sm font-medium text-gray-700 dark:text-gray-200"></p>
       </section>
     </aside>
-
-    <!-- ========== MAIN CANVAS & ZOOM ========== -->
-    <main id="visualization" class="flex-1 relative bg-gray-100">
-      <canvas id="canvas" class="block w-full h-full"></canvas>
-
-      <!-- zoom buttons -->
+    <main id="visualization" class="flex-1 relative bg-gray-100 dark:bg-gray-800">
+      <button id="toggle-controls" class="md:hidden fixed top-4 left-4 z-30 w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow">
+        <span class="material-icons-outlined">menu</span>
+      </button>
+      <div class="overflow-auto w-full h-full">
+        <canvas id="canvas" width="800" height="800" class="block border border-gray-300 dark:border-gray-600"></canvas>
+      </div>
       <div class="absolute top-4 right-4 flex flex-col gap-2">
         <button id="zoom_in_btn"
-                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold">＋</button>
+                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold
+                       dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600">＋</button>
         <button id="zoom_out_btn"
-                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold">－</button>
+                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold
+                       dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600">－</button>
       </div>
     </main>
   </div>
-
-  <!-- main JS -->
   <script defer src="main.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const saved = localStorage.getItem('darkMode');
+      const html  = document.documentElement;
+      const dark  = saved === 'true';
+      html.classList.toggle('dark', dark);
+      const toggle = document.getElementById('darkModeToggle');
+      toggle.checked = dark;
+      toggle.addEventListener('click', () => {
+        const nowDark = !html.classList.contains('dark');
+        html.classList.toggle('dark', nowDark);
+        localStorage.setItem('darkMode', nowDark.toString());
+      });
+
+      const controlPanel = document.getElementById('control-panel');
+      const toggleButton = document.getElementById('toggle-controls');
+      toggleButton.addEventListener('click', () => {
+        controlPanel.classList.toggle('hidden');
+      });
+    });
+  </script>
 </body>
 </html>
-
 ===== ./main.js =====
 /* ================================================================
  *  main.js  —  robots coloured by state, no number labels
@@ -357,24 +356,42 @@ function stopSimulation() {
   updStatus("Simulation stopped."); startBtn.disabled = false; stopBtn.disabled = true;
 }
 
+/* ============================ main.js ============================ */
+/* --- replace the whole simStep() with this version -------------- */
 async function simStep() {
-  if (!simRunning) return;
-  try {
-    const step = JSON.parse(await pythonRunner.run_simulation_step());
-    simTimeDiv.textContent = `Time: ${step.time.toFixed(2)}`;
-    if (step.message) updMsg(step.message);
-    if (step.robots) { drawSimulation(step.robots); lastRobotsFrame = step.robots; }
-    if (step.status !== "running") {
+    if (!simRunning) return;
+    try {
+      const step = JSON.parse(await pythonRunner.run_simulation_step());
+  
+      /* update wall-clock time + UI msg */
+      simTimeDiv.textContent = `Time: ${step.time.toFixed(2)}`;
+      if (step.message) updMsg(step.message);
+  
+      /* redraw **only** on VISUALIZE (exit_code 99) or when simulation stops */
+      const shouldRedraw = step.exit_code === 99 || step.status !== "running";
+      if (shouldRedraw && step.robots) {
+        drawSimulation(step.robots);
+        lastRobotsFrame = step.robots;
+      }
+  
+      /* stop loop if sim finished */
+      if (step.status !== "running") {
+        simRunning = false;
+        updStatus(`Simulation ${step.status}.`);
+        startBtn.disabled = false;
+        stopBtn.disabled  = true;
+        return;
+      }
+    } catch (err) {
+      updStatus("Runtime error!");
+      updMsg(`Error: ${err.message}`);
       simRunning = false;
-      updStatus(`Simulation ${step.status}.`);
-      startBtn.disabled = false; stopBtn.disabled = true;
+      startBtn.disabled = false;
+      stopBtn.disabled  = true;
     }
-  } catch (err) {
-    updStatus("Runtime error!"); updMsg(`Error: ${err.message}`);
-    simRunning = false; startBtn.disabled = false; stopBtn.disabled = true;
+    if (simRunning) animFrameId = requestAnimationFrame(simStep);
   }
-  if (simRunning) animFrameId = requestAnimationFrame(simStep);
-}
+  
 
 /* -------- drawing ------------------------------------------------ */
 const STATE_COLORS = {
@@ -1197,19 +1214,19 @@ def run_simulation_step():
             message = "Simulation Ended (Terminated)"
             log_info("Simulation terminated by scheduler.")
 
+        # ============================ run.py =============================
+        # --- inside run_simulation_step(), replace the step_result build ---
+        visible = (exit_code == 99 or status != "running")  # only send robot data for VISUALIZE or final frame
 
-        # Prepare data for JS
         step_result = {
             "status": status,
             "time": current_simulation_time,
-            # Use the dedicated function to get robot data in JS-friendly format
-            "robots": scheduler_instance.get_all_robot_data_for_js(),
+            "robots": scheduler_instance.get_all_robot_data_for_js() if visible else None,
             "exit_code": exit_code,
             "message": message
-            # Include snapshot if needed for debugging?
-            # "snapshot": snapshot_data # This snapshot might be slightly outdated vs get_all_robot_data
         }
         return json.dumps(step_result)
+
 
     except Exception as e:
         log_error(f"Error during simulation step: {e}")
