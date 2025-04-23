@@ -1,190 +1,172 @@
+import sys
 import json
-import socket
-from enums import Algorithm
-from scheduler import Scheduler
+from robot import RobotState, Algorithm, Coordinates # Only need these specifics here
+from scheduler import Scheduler # Import the main class
 import numpy as np
-import logging
-from flask import Flask, jsonify, request, Response, send_from_directory
-import webbrowser
-import threading
-import json
-from flask_socketio import SocketIO, emit
-from datetime import datetime
-import os
+
+# --- Global state for the simulation ---
+scheduler_instance: Scheduler|None = None
+simulation_params = {}
+is_running = False
+current_simulation_time = 0.0
+max_simulation_time = 1000.0 # Add a safety break
+event_count = 0
+max_events = 10000 # Add safety break
+
+# Simple logging
+def log_info(msg):
+    print(f"INFO: {msg}")
+
+def log_error(msg):
+    print(f"ERROR: {msg}", file=sys.stderr)
+
+# --- Simulation Control Functions (Callable from JS) ---
+
+def setup_simulation(params_json_str):
+    """Initializes the scheduler with parameters from JS."""
+    global scheduler_instance, simulation_params, is_running, current_simulation_time
+    global event_count
+    log_info("Setting up simulation...")
+    try:
+        params = json.loads(params_json_str)
+        simulation_params = params
+        log_info(f"Params: {params}")
+
+        # Generate initial positions if not provided
+        num_robots = int(params.get("num_of_robots", 5))
+        initial_positions = params.get("initial_positions") # Expect list of [x,y]
+
+        if not initial_positions or len(initial_positions) != num_robots:
+            log_info("Generating random initial positions...")
+            width = float(params.get("width_bound", 100))
+            height = float(params.get("height_bound", 100))
+            seed = int(params.get("random_seed", 12345)) # Use seed from params
+            generator = np.random.default_rng(seed=seed) # Use separate generator for init pos?
+            x_positions = generator.uniform(low=-width / 2, high=width / 2, size=(num_robots,))
+            y_positions = generator.uniform(low=-height / 2, high=height / 2, size=(num_robots,))
+            initial_positions = np.column_stack((x_positions, y_positions)).tolist()
+            log_info(f"Generated positions: {initial_positions}")
 
 
-def get_log_name():
-    date = datetime.now()
-    milliseconds = date.microsecond // 1000
-
-    return f"{date.year}-{date.month}-{date.day}-{date.hour}-{date.minute}-{date.second}-{milliseconds}.txt"
-
-
-def setup_logger(simulation_id, algo_name):
-    logger = logging.getLogger(f"app_{simulation_id}")
-    logger.setLevel(logging.INFO)
-
-    # Add a new file handler
-    log_dir = f"./logs/{algo_name}/"
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"{get_log_name()}")
-
-    new_file_handler = logging.FileHandler(log_file)
-    formatter = logging.Formatter("")
-    new_file_handler.setFormatter(formatter)
-    logger.addHandler(new_file_handler)
-
-    return logger
-
-
-def generate_initial_positions(generator, width_bound, height_bound, n):
-    x_positions = generator.uniform(low=-width_bound, high=height_bound, size=(n,))
-    y_positions = generator.uniform(low=-height_bound, high=height_bound, size=(n,))
-
-    positions = np.column_stack((x_positions, y_positions))
-
-    return positions
-
-
-# Disable Flask's default logging to the root logger
-log = logging.getLogger(
-    "werkzeug"
-)  # 'werkzeug' is the logger used by Flask for requests
-log.setLevel(logging.ERROR)  # Set Flask's logging to a different level or disable it
-
-app = Flask(__name__, static_folder="static")
-socketio = SocketIO(app)
-
-simulation_thread = None
-terminate_flag = False
-simulation_id = 0
-logger = None
-
-
-# WebSocket event handler for the simulation
-@socketio.on("start_simulation")
-def handle_simulation_request(data):
-    global simulation_thread, terminate_flag, logger
-
-    # Terminate existing simulation thread
-    if simulation_thread and simulation_thread.is_alive():
-        logger.info("Simulation Interrupted... (A new simulation was requested)")
-        terminate_flag = True
-        simulation_thread.join()
-
-    # Reset the termination flag and start a new simulation thread
-    terminate_flag = False
-
-    seed = data["random_seed"]
-    seed = 2708382154
-    generator = np.random.default_rng(seed=seed)
-    num_robots = data["num_of_robots"]
-    initial_positions: list = data["initial_positions"]
-
-    if len(initial_positions) != 0:
-        # User defined
-        initial_positions = data["initial_positions"]
-        num_robots = len(initial_positions)
-    else:
-        # Random
-        initial_positions = generate_initial_positions(
-            generator, data["width_bound"], data["height_bound"], num_robots
+        # Create Scheduler instance
+        scheduler_instance = Scheduler(
+            seed=int(params.get("random_seed", 12345)),
+            num_of_robots=num_robots,
+            initial_positions=initial_positions,
+            robot_speeds=float(params.get("robot_speeds", 1.0)),
+            rigid_movement=bool(params.get("rigid_movement", True)),
+            threshold_precision=int(params.get("threshold_precision", 5)),
+            sampling_rate=float(params.get("sampling_rate", 0.1)),
+            labmda_rate=float(params.get("lambda_rate", 5.0)),
+            algorithm=params.get("algorithm", Algorithm.GATHERING), # Use string 'Gathering' or 'SEC'
+            visibility_radius=params.get("visibility_radius"), # Pass None or float
+            num_of_faults=int(params.get("num_of_faults", 0)),
+            multiplicity_detection=True # Enable multiplicity always for now? Or add checkbox?
         )
 
-    logger = setup_logger(simulation_id, data["algorithm"])
-    logger.info("Config:\n\n%s\n", json.dumps(data, indent=2))
+        is_running = True
+        current_simulation_time = 0.0
+        event_count = 0
+        log_info("Scheduler initialized successfully.")
+        # Return the very initial state
+        initial_state = {
+            "status": "initialized",
+            "time": 0.0,
+            "robots": scheduler_instance.get_all_robot_data_for_js(),
+             "message": "Simulation Initialized"
+        }
+        return json.dumps(initial_state)
 
-    scheduler = Scheduler(
-        logger=logger,
-        seed=seed,
-        num_of_robots=num_robots,
-        initial_positions=initial_positions,
-        robot_speeds=data["robot_speeds"],
-        rigid_movement=data["rigid_movement"],
-        threshold_precision=data["threshold_precision"],
-        sampling_rate=data["sampling_rate"],
-        labmda_rate=data["labmda_rate"],
-        algorithm=data["algorithm"],
-        visibility_radius=data["visibility_radius"],
-        num_of_faults=data["num_of_faults"],
-    )
-
-    def run_simulation():
-        global terminate_flag, simulation_id
-
-        simulation_id += 1
-
-        with app.app_context():
-            socketio.emit("simulation_start", simulation_id)
-            while terminate_flag != True:
-                exit_code = scheduler.handle_event()
-                if exit_code == 0:
-                    snapshots = scheduler.visualization_snapshots
-                    if len(snapshots) > 0:
-                        socketio.emit(
-                            "simulation_data",
-                            json.dumps(
-                                {
-                                    "simulation_id": simulation_id,
-                                    "snapshot": scheduler.visualization_snapshots[-1],
-                                }
-                            ),
-                        )
-
-                if exit_code < 0:
-                    # Signal the end of the simulation
-                    if scheduler.robots[0].algorithm == Algorithm.SEC:
-                        socketio.emit(
-                            "smallest_enclosing_circle",
-                            json.dumps(
-                                {
-                                    "simulation_id": simulation_id,
-                                    "sec": [
-                                        scheduler.robots[i].sec
-                                        for i in range(num_robots)
-                                    ],
-                                }
-                            ),
-                        )
-                    socketio.emit("simulation_end", "END")
-                    break
-
-    # Start a thread for the simulation to not block websocket
-    simulation_thread = threading.Thread(target=run_simulation)
-    simulation_thread.start()
+    except Exception as e:
+        log_error(f"Error setting up simulation: {e}")
+        is_running = False
+        error_state = {
+            "status": "error",
+            "time": 0.0,
+            "robots": [],
+             "message": f"Setup Error: {e}"
+        }
+        # Propagate error back to JS
+        # Option 1: Return JSON with error
+        return json.dumps(error_state)
+        # Option 2: Raise exception (Pyodide might catch and pass to JS .catch())
+        # raise e
 
 
-@socketio.on("connect")
-def client_connect():
-    print("Client connected")
+def run_simulation_step():
+    """Executes one event from the scheduler queue."""
+    global scheduler_instance, is_running, current_simulation_time, event_count
+    if not scheduler_instance or not is_running:
+        return json.dumps({"status": "idle", "message": "Simulation not running."})
+
+    try:
+        # Safety break conditions
+        if current_simulation_time > max_simulation_time:
+            log_info(f"Simulation stopped: Max time ({max_simulation_time}) reached.")
+            is_running = False
+            return json.dumps({"status": "ended", "time": current_simulation_time, "robots": scheduler_instance.get_all_robot_data_for_js(), "message": "Ended: Max time reached"})
+
+        event_count += 1
+        if event_count > max_events:
+            log_info(f"Simulation stopped: Max events ({max_events}) reached.")
+            is_running = False
+            return json.dumps({"status": "ended", "time": current_simulation_time, "robots": scheduler_instance.get_all_robot_data_for_js(), "message": "Ended: Max events reached"})
 
 
-@socketio.on("disconnect")
-def client_disconnect():
-    print("Client disconnected")
+        exit_code, time, snapshot_data = scheduler_instance.handle_event()
+        current_simulation_time = time # Update global time
+
+        status = "running"
+        message = f"Event handled (code {exit_code})"
+
+        if scheduler_instance.terminate or exit_code == -1:
+            is_running = False
+            status = "ended"
+            message = "Simulation Ended (Terminated)"
+            log_info("Simulation terminated by scheduler.")
 
 
-@app.route("/")
-def serve_frontend():
-    return send_from_directory(app.static_folder, "index.html")
+        # Prepare data for JS
+        step_result = {
+            "status": status,
+            "time": current_simulation_time,
+            # Use the dedicated function to get robot data in JS-friendly format
+            "robots": scheduler_instance.get_all_robot_data_for_js(),
+            "exit_code": exit_code,
+            "message": message
+            # Include snapshot if needed for debugging?
+            # "snapshot": snapshot_data # This snapshot might be slightly outdated vs get_all_robot_data
+        }
+        return json.dumps(step_result)
+
+    except Exception as e:
+        log_error(f"Error during simulation step: {e}")
+        is_running = False
+        # Maybe include stack trace if possible?
+        import traceback
+        error_state = {
+            "status": "error",
+            "time": current_simulation_time,
+            "robots": scheduler_instance.get_all_robot_data_for_js() if scheduler_instance else [],
+             "message": f"Runtime Error: {e}\n{traceback.format_exc()}"
+        }
+        return json.dumps(error_state)
 
 
-def is_port_in_use(port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(("0.0.0.0", port)) == 0
+def stop_simulation():
+    """Stops the simulation loop."""
+    global is_running, scheduler_instance
+    log_info("Stopping simulation...")
+    is_running = False
+    # Maybe clean up scheduler instance?
+    # scheduler_instance = None
+    stopped_state = {
+        "status": "stopped",
+        "time": current_simulation_time,
+        "robots": scheduler_instance.get_all_robot_data_for_js() if scheduler_instance else [],
+        "message": "Simulation stopped by user."
+    }
+    return json.dumps(stopped_state)
 
 
-def open_browser(host, port):
-    # If host is 0.0.0.0, use localhost for browser opening
-    browser_host = "localhost" if host == "0.0.0.0" else host
-    webbrowser.open(f"http://{browser_host}:{port}/")
-
-
-host = "0.0.0.0"  # Change from 127.0.0.1 to 0.0.0.0 to allow external access
-port = 8080
-while is_port_in_use(port):
-    port += 1
-
-# Open the browser after a delay to let the server start
-threading.Timer(1, open_browser, args=(host, port)).start()
-app.run(host=host, port=port, debug=True, use_reloader=False)
+log_info("run.py loaded.")

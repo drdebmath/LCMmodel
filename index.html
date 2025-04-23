@@ -1,13 +1,120 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="styles.css" />
-    <script defer src="main.js"></script>
-    <title>Visualization</title>
-  </head>
-  <body>
-    <canvas id="canvas"></canvas>
-  </body>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Robot-SIM (Pyodide)</title>
+
+<!-- modern Google font & icons -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+
+<link rel="stylesheet" href="styles.css" />
+
+<!-- Pyodide runtime -->
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"></script>
+</head>
+
+<body>
+  <div id="app">
+    <!-- LEFT DRAWER -------------------------------------------------->
+    <aside id="controls">
+      <header>
+        <h2><span class="material-icons-outlined">tune</span> Controls</h2>
+        <p id="status">Loading Pyodide…</p>
+      </header>
+
+      <section>
+        <label class="field">
+          <span>Algorithm</span>
+          <select id="algorithm">
+            <option value="Gathering" selected>Gathering</option>
+            <option value="SEC">SEC (Smallest E.C.)</option>
+          </select>
+        </label>
+
+        <label class="field range">
+          <span>Robots <output id="num_robots_val">5</output></span>
+          <input type="range" id="num_robots" min="1" max="50" value="5">
+        </label>
+
+        <label class="field range">
+          <span>Speed <output id="robot_speed_val">1.0</output></span>
+          <input type="range" id="robot_speed" min="0.1" max="10" step="0.1" value="1.0">
+        </label>
+
+        <!-- visibility with Inf toggle -->
+        <label class="field range">
+          <span>Visibility <output id="visibility_radius_val">150</output></span>
+          <div class="inline">
+            <input type="range" id="visibility_radius" min="10" max="1000" step="10" value="150">
+            <label class="switch">
+              <input type="checkbox" id="infinite_visibility">
+              <span class="slider"></span>Inf
+            </label>
+          </div>
+        </label>
+
+        <label class="field range">
+          <span>Faulty <output id="num_faults_val">0</output></span>
+          <input type="range" id="num_faults" min="0" max="10" step="1" value="0">
+        </label>
+
+        <label class="field toggle">
+          <input type="checkbox" id="rigid_movement" checked>
+          <span class="slider"></span>
+          <span>Rigid movement</span>
+        </label>
+
+        <h3>Environment</h3>
+
+        <label class="field range">
+          <span>World W <output id="width_bound_val">200</output></span>
+          <input type="range" id="width_bound" min="50" max="1000" step="10" value="200">
+        </label>
+
+        <label class="field range">
+          <span>World H <output id="height_bound_val">200</output></span>
+          <input type="range" id="height_bound" min="50" max="1000" step="10" value="200">
+        </label>
+
+        <label class="field range">
+          <span>λ (rate) <output id="lambda_rate_val">5.0</output></span>
+          <input type="range" id="lambda_rate" min="0.1" max="20" step="0.1" value="5.0">
+        </label>
+
+        <label class="field range">
+          <span>Sample s <output id="sampling_rate_val">0.1</output></span>
+          <input type="range" id="sampling_rate" min="0.05" max="1" step="0.05" value="0.1">
+        </label>
+
+        <label class="field range">
+          <span>Precision 1e-<output id="threshold_precision_val">5</output></span>
+          <input type="range" id="threshold_precision" min="2" max="10" step="1" value="5">
+        </label>
+
+        <label class="field">
+          <span>Random seed</span>
+          <input type="number" id="random_seed" value="12345">
+        </label>
+
+        <div class="buttons">
+          <button id="start_button" disabled>Start</button>
+          <button id="stop_button"  disabled class="secondary">Stop</button>
+        </div>
+
+        <p id="sim_time">Time: 0.00</p>
+        <p id="sim_message"></p>
+      </section>
+    </aside>
+
+    <!-- MAIN VISUAL -------------------------------------------------->
+    <main id="visualization">
+      <canvas id="canvas"></canvas>
+    </main>
+  </div>
+
+  <!-- your main JS -->
+  <script defer src="main.js"></script>
+</body>
 </html>
