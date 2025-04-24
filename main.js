@@ -15,7 +15,6 @@ const ctx           = canvas.getContext("2d");
 const simTimeDiv    = document.getElementById("sim_time");
 const simMsgDiv     = document.getElementById("sim_message");
 
-/* sliders / fields (unchanged from previous version) -------------- */
 const algorithmSelect = document.getElementById("algorithm");
 const numRobotsSlider = document.getElementById("num_robots");
 const numRobotsVal    = document.getElementById("num_robots_val");
@@ -208,29 +207,47 @@ const STATE_COLORS = {
   MOVE       : "#34c759",
   DEFAULT    : "#007aff"    // LOOK / WAIT / others
 };
-/* ---------- build legend (once) --------------------------------- */
+function colorForRobot(r) {
+  /* task colour has priority when present */
+  if (r.color) return r.color;
+  if (r.crashed)    return STATE_COLORS.CRASH;
+  if (r.terminated) return STATE_COLORS.TERMINATED;
+  if (r.frozen)     return STATE_COLORS.FROZEN;
+  if (r.state === "MOVE") return STATE_COLORS.MOVE;
+  return STATE_COLORS.DEFAULT;
+}
+/* ——— build legend (state + task) ------------------------------- */
 function buildLegend() {
-    const legendDiv = document.getElementById("legend");
-    if (!legendDiv) return;
-  
-    const LABELS = {
-      DEFAULT   : "Active (LOOK / WAIT)",
-      MOVE      : "Moving",
-      FROZEN    : "Frozen",
-      TERMINATED: "Terminated",
-      CRASH     : "Crashed"
-    };
-  
-    Object.entries(STATE_COLORS).forEach(([key, hex]) => {
-      if (!LABELS[key]) return;                // skip unknown keys
-      const item   = document.createElement("div");
-      item.className = "legend-item";
-      item.innerHTML =
-        `<span class="inline-block mr-2 rounded-sm"
-          style="background:${hex};width:1rem;height:1rem;"></span>${LABELS[key]}`;
-      legendDiv.appendChild(item);
-    });
-  }
+  const legendDiv = document.getElementById("legend");
+  if (!legendDiv) return;
+
+  const LABELS = {
+    DEFAULT   : "Active (LOOK / WAIT)",
+    MOVE      : "Moving",
+    FROZEN    : "Frozen",
+    TERMINATED: "Terminated",
+    CRASH     : "Crashed",
+
+    REDTASK   : "SEC (robot colour – TwoTask)",
+    BLUETASK  : "Go-To-Center (robot colour – TwoTask)"
+  };
+
+  /* state legend */
+  Object.entries(STATE_COLORS).forEach(([key, hex]) => {
+    const label = LABELS[key];
+    if (!label) return;
+    legendDiv.insertAdjacentHTML(
+      "beforeend",
+      `<div class="flex items-center gap-2"><span class="inline-block w-4 h-4 rounded-sm" style="background:${hex}"></span>${label}</div>`
+    );
+  });
+
+  /* task legend (fixed RGB) */
+  legendDiv.insertAdjacentHTML(
+    "beforeend",
+    `<div class="flex items-center gap-2"><span class="inline-block w-4 h-4 rounded-sm bg-red-600"></span>${LABELS.REDTASK}</div>
+     <div class="flex items-center gap-2"><span class="inline-block w-4 h-4 rounded-sm bg-blue-600"></span>${LABELS.BLUETASK}</div>`);
+}
   
 function colorForRobot(r) {
   if (r.crashed)       return STATE_COLORS.CRASH;
@@ -244,32 +261,50 @@ function transform(x, y) { return { x: offsetX + x * scale, y: offsetY - y * sca
 
 function drawSimulation(robots) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  robots.forEach((r) => {
+
+  robots.forEach(r => {
     const p = transform(r.x, r.y);
     const c = colorForRobot(r);
 
-    /* body */
-    ctx.fillStyle = c; ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(p.x, p.y, ROBOT_R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    /* body -------------------------------------------------------- */
+    ctx.fillStyle = c;
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, ROBOT_R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
 
-    /* target line */
+    /* dashed line to target -------------------------------------- */
     if (r.state === "MOVE" && r.target_x != null) {
       const t = transform(r.target_x, r.target_y);
-      ctx.setLineDash([2, 3]); ctx.strokeStyle = c; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(t.x, t.y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = c;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
-    /* SEC (SEC algorithm only) */
-    if (algorithmSelect.value === "SEC" && r.sec) {
+    /* SEC (if robot computed one) -------------------------------- */
+    if (r.sec) {
       const sc = transform(r.sec.center_x, r.sec.center_y);
-      ctx.strokeStyle = "rgba(255,165,0,0.6)"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(sc.x, sc.y, r.sec.radius * scale, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,165,0,0.6)";
+      ctx.lineWidth  = 2;
+      ctx.beginPath();
+      ctx.arc(sc.x, sc.y, r.sec.radius * scale, 0, Math.PI * 2);
+      ctx.stroke();
     }
 
-    /* visibility */
+    /* visibility ------------------------------------------------- */
     if (r.visibility_radius && !r.crashed && !r.terminated) {
-      ctx.strokeStyle = "rgba(100,100,200,.25)"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(p.x, p.y, r.visibility_radius * scale, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = "rgba(100,100,200,.25)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r.visibility_radius * scale, 0, Math.PI * 2);
+      ctx.stroke();
     }
   });
 }

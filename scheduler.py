@@ -79,13 +79,26 @@ class Scheduler:
             except (IndexError, TypeError, ValueError) as e:
                  raise ValueError(f"Invalid format for initial_positions[{i}]: {initial_positions[i]}. Error: {e}")
 
+            if algorithm == Algorithm.TWOTASK:
+                # random assignment using the same generator to stay reproducible
+                if self.generator.random() < 0.5:
+                    task_algo = Algorithm.SEC
+                    colour    = "red"
+                else:
+                    task_algo = Algorithm.GATHERING
+                    colour    = "blue"
+            else:
+                task_algo = algorithm
+                colour    = None
+            
             # Use Robot constructor from robot
             new_robot = Robot(
                 id=i,
                 coordinates=coords,
                 threshold_precision=threshold_precision,
                 speed=robot_speeds_list[i],
-                algorithm=algorithm,
+                algorithm=task_algo,
+                color = colour,
                 visibility_radius=self.visibility_radius, # Pass float or inf
                 rigid_movement=self.rigid_movement,
                 multiplicity_detection=self.multiplicity_detection,
@@ -385,44 +398,40 @@ class Scheduler:
             return self.get_snapshot(self.current_time)
 
 
-    def get_all_robot_data_for_js(self) -> List[Dict]:
-        # ... uses self.robots, RobotState, Coordinates, Circle ...
+    def get_all_robot_data_for_js(self) -> List[dict]:
         robot_data = []
-        latest_snap = self.get_latest_snapshot() # Get snapshot once for multiplicity
+        latest_snap = self.get_latest_snapshot()
 
         for robot in self.robots:
-             pos = robot.get_position(self.current_time) # Returns Coordinates
-             multiplicity = 1 # Default
-             if latest_snap and robot.id in latest_snap:
-                 multiplicity = latest_snap[robot.id].multiplicity or 1
+            pos = robot.get_position(self.current_time)
+            multiplicity = 1
+            if latest_snap and robot.id in latest_snap:
+                multiplicity = latest_snap[robot.id].multiplicity or 1
 
-             # Prepare SEC data if available
-             sec_data = None
-             if robot.sec: # Check if robot.sec (Circle) exists
-                  # Access .center.x, .center.y, .radius
-                 sec_data = {"center_x": robot.sec.center.x, "center_y": robot.sec.center.y, "radius": robot.sec.radius}
+            sec_data = None
+            if robot.sec:
+                sec_data = {"center_x": robot.sec.center.x,
+                            "center_y": robot.sec.center.y,
+                            "radius":   robot.sec.radius}
 
-             # Prepare target data if available
-             target_x = None
-             target_y = None
-             if robot.calculated_position: # Check if Coordinates object exists
-                 target_x = robot.calculated_position.x
-                 target_y = robot.calculated_position.y
+            target_x = robot.calculated_position.x if robot.calculated_position else None
+            target_y = robot.calculated_position.y if robot.calculated_position else None
 
-             robot_data.append({
-                 "id": robot.id,
-                 "x": pos.x, # Access .x
-                 "y": pos.y, # Access .y
-                 "state": robot.state,
-                 "frozen": robot.frozen,
-                 "terminated": robot.terminated,
-                 "crashed": robot.state == RobotState.CRASH,
-                 "multiplicity": multiplicity, # Get from snapshot lookup
-                 "sec": sec_data,
-                 "target_x": target_x,
-                 "target_y": target_y,
-                 "speed": robot.speed,
-                 "visibility_radius": robot.visibility_radius if robot.visibility_radius != float('inf') else None
-             })
-
+            robot_data.append({
+                "id": robot.id,
+                "x": pos.x,
+                "y": pos.y,
+                "state": robot.state,
+                "frozen": robot.frozen,
+                "terminated": robot.terminated,
+                "crashed": robot.state == RobotState.CRASH,
+                "multiplicity": multiplicity,
+                "sec": sec_data,
+                "target_x": target_x,
+                "target_y": target_y,
+                "speed": robot.speed,
+                "color": robot.color,                       # << NEW
+                "visibility_radius": (robot.visibility_radius
+                                      if robot.visibility_radius != float("inf") else None)
+            })
         return robot_data

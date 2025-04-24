@@ -29,6 +29,7 @@ class DistributionType:
 class Algorithm:
     GATHERING = "Gathering"
     SEC = "SEC"
+    TWOTASK = "TwoTask"
 
 
 Time = float
