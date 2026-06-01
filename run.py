@@ -61,7 +61,9 @@ def setup_simulation(params_json_str):
             algorithm=params.get("algorithm", Algorithm.GATHERING), # Use string 'Gathering' or 'SEC'
             visibility_radius=params.get("visibility_radius"), # Pass None or float
             num_of_faults=int(params.get("num_of_faults", 0)),
-            multiplicity_detection=True # Enable multiplicity always for now? Or add checkbox?
+            multiplicity_detection=True, # Enable multiplicity always for now? Or add checkbox?
+            width_bound=float(params.get("width_bound", 0)) or None,
+            height_bound=float(params.get("height_bound", 0)) or None
         )
 
         is_running = True

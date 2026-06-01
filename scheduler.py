@@ -39,7 +39,9 @@ class Scheduler:
         threshold_precision: int = 5,
         sampling_rate: float = 0.2,
         labmda_rate: float = 5,
-        num_of_faults: int = 0
+        num_of_faults: int = 0,
+        width_bound: Union[float, None] = None,
+        height_bound: Union[float, None] = None
     ):
         # ... (rest of __init__ remains the same, using imported types/constants)
         Scheduler._logger.info("--- Initializing Scheduler ---")
@@ -53,6 +55,8 @@ class Scheduler:
         self.multiplicity_detection = multiplicity_detection
         self.visibility_radius = float(visibility_radius) if visibility_radius is not None else float('inf')
         self.threshold_precision = threshold_precision
+        self.width_bound = float(width_bound) if width_bound else None
+        self.height_bound = float(height_bound) if height_bound else None
         self.sampling_rate = sampling_rate
         self.lambda_rate = labmda_rate
         self.robots: List[Robot] = [] # Hint with Robot from robot
@@ -102,6 +106,8 @@ class Scheduler:
                 visibility_radius=self.visibility_radius, # Pass float or inf
                 rigid_movement=self.rigid_movement,
                 multiplicity_detection=self.multiplicity_detection,
+                width_bound=self.width_bound,
+                height_bound=self.height_bound,
             )
             self.robots.append(new_robot)
             Scheduler._logger.info(f"Created Robot: {new_robot}")

@@ -96,6 +96,8 @@ class Robot:
         multiplicity_detection: bool = False,
         rigid_movement: bool = False,
         threshold_precision: float = 5,
+        width_bound: Union[float, None] = None,
+        height_bound: Union[float, None] = None,
     ):
         self.speed = speed
         self.color = color
@@ -104,6 +106,8 @@ class Robot:
         # self.obstructed_visibility = obstructed_visibility
         self.multiplicity_detection = multiplicity_detection
         self.rigid_movement = rigid_movement
+        self.width_bound = float(width_bound) if width_bound else None
+        self.height_bound = float(height_bound) if height_bound else None
         # self.orientation = orientation
         self.start_time: Union[Time, None] = None # Use type alias and Union
         self.end_time: Union[Time, None] = None   # Use type alias and Union
@@ -290,6 +294,7 @@ class Robot:
             Algorithm.SEC:          (self._smallest_enclosing_circle, self._sec_terminal),
             Algorithm.GO_TO_CENTER: (self._go_to_center, self._gtc_terminal),
             Algorithm.CIRCLE:       (self._circle_formation, self._circle_terminal),
+            Algorithm.SPREADING:    (self._spreading, self._spreading_terminal),
         }
         if self.algorithm_type not in table:
             raise ValueError(f"Invalid algorithm type: {self.algorithm_type}")
@@ -695,6 +700,74 @@ class Robot:
         target_gap = TWO_PI / n
         return max(abs(g - target_gap) for g in gaps) < target_gap * 0.02
     # --- End Circle Formation ---
+
+    # --- Spreading / uniform deployment (Lloyd's algorithm; Cortes et al. 2004) ---
+    # Each robot moves to the centroid of its Voronoi cell, approximated by sampling
+    # the region on a grid and assigning each sample to its nearest robot. Iterating
+    # converges to a centroidal Voronoi tessellation -> uniform area coverage. The
+    # region is the world box when known, else a padded bounding box of the swarm.
+    _SPREAD_GRID = 32
+
+    def _spread_region(self, positions: List[Coordinates]) -> Tuple[float, float, float, float]:
+        if self.width_bound and self.height_bound:
+            return (-self.width_bound / 2.0, self.width_bound / 2.0,
+                    -self.height_bound / 2.0, self.height_bound / 2.0)
+        xs = [p.x for p in positions]; ys = [p.y for p in positions]
+        span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+        pad = 0.15 * span
+        return (min(xs) - pad, max(xs) + pad, min(ys) - pad, max(ys) + pad)
+
+    def _spreading(self) -> Tuple[Coordinates, List[any]]:
+        items = [(rid, r.pos) for rid, r in self.snapshot.items()
+                 if r.state != RobotState.CRASH]
+        if len(items) <= 1:
+            return (self.coordinates, [])
+        positions = [p for _, p in items]
+        my_idx = next((k for k, (rid, _) in enumerate(items) if rid == self.id), None)
+        if my_idx is None:
+            return (self.coordinates, [])
+        me = positions[my_idx]
+
+        xmin, xmax, ymin, ymax = self._spread_region(positions)
+        G = Robot._SPREAD_GRID
+        sx = (xmax - xmin) / G; sy = (ymax - ymin) / G
+        tol = 0.004 * math.hypot(xmax - xmin, ymax - ymin)   # region-relative "settled"
+        ax = ay = cnt = 0
+        for i in range(G):
+            px = xmin + (i + 0.5) * sx
+            for j in range(G):
+                py = ymin + (j + 0.5) * sy
+                best = 0; bestd = float('inf')
+                for k, p in enumerate(positions):       # nearest robot to this sample
+                    dd = (p.x - px) ** 2 + (p.y - py) ** 2
+                    if dd < bestd:
+                        bestd = dd; best = k
+                if best == my_idx:                      # sample belongs to my cell
+                    ax += px; ay += py; cnt += 1
+
+        if cnt > 0:
+            return (Coordinates(ax / cnt, ay / cnt), [tol])
+
+        # Starved cell (coincident with / dominated by another robot): step away
+        # from the nearest neighbour so the pair separates and gets distinct cells.
+        nearest = min((p for k, p in enumerate(positions) if k != my_idx),
+                      key=lambda p: (p.x - me.x) ** 2 + (p.y - me.y) ** 2, default=None)
+        if nearest is None:
+            return (self.coordinates, [])
+        dx, dy = me.x - nearest.x, me.y - nearest.y
+        d = math.hypot(dx, dy)
+        if d < 1e-9:                                    # exactly coincident: id-based nudge
+            a = (self.id % 12) * (math.pi / 6.0)
+            dx, dy, d = math.cos(a), math.sin(a), 1.0
+        step = max(sx, sy)
+        return (Coordinates(me.x + dx / d * step, me.y + dy / d * step), [tol])
+
+    def _spreading_terminal(self, coord: Coordinates, args: List[any]) -> bool:
+        # Settled once the robot already sits at its Voronoi-cell centroid.
+        if not args:
+            return False
+        return math.dist(coord, self.coordinates) < args[0]
+    # --- End Spreading ---
 
     def prettify_snapshot(self, snapshot: Dict[Id, SnapshotDetails]) -> str:
         if not snapshot: return " <empty>"
