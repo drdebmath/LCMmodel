@@ -289,6 +289,7 @@ class Robot:
             Algorithm.GATHERING:    (self._midpoint, self._midpoint_terminal),
             Algorithm.SEC:          (self._smallest_enclosing_circle, self._sec_terminal),
             Algorithm.GO_TO_CENTER: (self._go_to_center, self._gtc_terminal),
+            Algorithm.CIRCLE:       (self._circle_formation, self._circle_terminal),
         }
         if self.algorithm_type not in table:
             raise ValueError(f"Invalid algorithm type: {self.algorithm_type}")
@@ -632,6 +633,68 @@ class Robot:
         sec: Circle = args[0]
         return sec.radius < math.pow(10, -self.threshold_precision)
     # --- End GTC ---
+
+    # --- Uniform Circle Formation (Defago & Konagaya 2002; Flocchini et al.) ---
+    # Robots arrange at equal angular spacing on the smallest enclosing circle.
+    #   Phase 1: a robot off the circle projects radially onto it.
+    #   Phase 2: a robot on the circle slides tangentially to the angular bisector
+    #            of its two neighbours (local gap-averaging) -> equal spacing.
+    # Tangential moves preserve the radius, and the spreading widens the angular
+    # span, which together keep the enclosing circle from collapsing.
+    def _circle_formation(self) -> Tuple[Coordinates, List[Union[Circle, None]]]:
+        pts = [r.pos for r in self.snapshot.values() if r.state != RobotState.CRASH]
+        n = len(pts)
+        if n <= 1:
+            return (self.coordinates, [None])
+        sec = self._sec_welzl_coords(pts)
+        self.sec = sec
+        thr = math.pow(10, -self.threshold_precision)
+        if sec is None or sec.radius <= thr:
+            return (self.coordinates, [sec])
+
+        O, rad = sec.center, sec.radius
+        me = self.coordinates
+        on_tol = rad * 1e-3                              # relative "on the circle" tol
+        # Phase 1: snap onto the circle if not already on it.
+        if abs(math.dist(me, O) - rad) > on_tol:
+            return (self._closest_point_on_circle(sec, me), [sec])
+
+        # Phase 2: tangential move to the bisector of the two angular neighbours.
+        TWO_PI = 2.0 * math.pi
+        my_ang = math.atan2(me.y - O.y, me.x - O.x)
+        deltas = [(math.atan2(p.y - O.y, p.x - O.x) - my_ang) % TWO_PI
+                  for p in pts if math.dist(p, me) > 1e-9]
+        if not deltas:
+            return (self.coordinates, [sec])
+        ccw = min(deltas)                               # nearest neighbour CCW
+        cw = TWO_PI - max(deltas)                       # nearest neighbour CW
+        target_ang = my_ang + (ccw - cw) / 2.0
+        target = Coordinates(O.x + rad * math.cos(target_ang),
+                             O.y + rad * math.sin(target_ang))
+        return (target, [sec])
+
+    def _circle_terminal(self, _, args: List[Union[Circle, None]]) -> bool:
+        sec = args[0] if args else None
+        thr = math.pow(10, -self.threshold_precision)
+        if sec is None or sec.radius <= thr:
+            return True
+        pts = [r.pos for r in self.snapshot.values() if r.state != RobotState.CRASH]
+        n = len(pts)
+        if n <= 1:
+            return True
+        O, rad = sec.center, sec.radius
+        on_tol = rad * 1e-3
+        TWO_PI = 2.0 * math.pi
+        angs = []
+        for p in pts:
+            if abs(math.dist(p, O) - rad) > on_tol:
+                return False                            # someone not on the circle
+            angs.append(math.atan2(p.y - O.y, p.x - O.x) % TWO_PI)
+        angs.sort()
+        gaps = [(angs[(i + 1) % n] - angs[i]) % TWO_PI for i in range(n)]
+        target_gap = TWO_PI / n
+        return max(abs(g - target_gap) for g in gaps) < target_gap * 0.02
+    # --- End Circle Formation ---
 
     def prettify_snapshot(self, snapshot: Dict[Id, SnapshotDetails]) -> str:
         if not snapshot: return " <empty>"
