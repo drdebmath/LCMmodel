@@ -168,7 +168,8 @@ class Scheduler:
                 state=robot.state,
                 frozen=robot.frozen,
                 terminated=robot.terminated,
-                multiplicity=1
+                multiplicity=1,
+                light=robot.current_light
             )
 
         if self.multiplicity_detection:
@@ -451,6 +452,7 @@ class Scheduler:
                 "speed": robot.speed,
                 "color": robot.color,                       # << NEW
                 "fault_type": robot.fault_type,
+                "light": robot.current_light,
                 "visibility_radius": (robot.visibility_radius
                                       if robot.visibility_radius != float("inf") else None)
             })

@@ -29,6 +29,7 @@ const numFaultsSlider   = document.getElementById("num_faults");
 const numFaultsVal      = document.getElementById("num_faults_val");
 const faultTypeSelect   = document.getElementById("fault_type");
 const rigidChk          = document.getElementById("rigid_movement");
+const showLightsChk     = document.getElementById("show_lights");
 
 const widthSlider       = document.getElementById("width_bound");
 const widthVal          = document.getElementById("width_bound_val");
@@ -269,6 +270,7 @@ function transform(x, y) { return { x: offsetX + x * scale, y: offsetY - y * sca
 
 function drawSimulation(robots) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const showLights = showLightsChk && showLightsChk.checked;
 
   robots.forEach(r => {
     const p = transform(r.x, r.y);
@@ -282,6 +284,15 @@ function drawSimulation(robots) {
     ctx.arc(p.x, p.y, ROBOT_R, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+
+    /* luminous light ring (LOOK=blue · MOVE=red · WAIT=green) ----- */
+    if (showLights && r.light) {
+      ctx.strokeStyle = r.light;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, ROBOT_R + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     /* dashed line to target -------------------------------------- */
     if (r.state === "MOVE" && r.target_x != null) {
@@ -335,6 +346,10 @@ window.addEventListener("resize", resizeCanvas);
 infiniteVisChk.addEventListener("change", () => {
   visibilitySlider.disabled = infiniteVisChk.checked;
   visibilityVal.textContent = infiniteVisChk.checked ? "Inf" : visibilitySlider.value;
+});
+
+showLightsChk.addEventListener("change", () => {
+  if (lastRobotsFrame.length) drawSimulation(lastRobotsFrame);
 });
 
 /* First-time layout */

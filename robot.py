@@ -65,6 +65,7 @@ class SnapshotDetails(NamedTuple):
     frozen: bool
     terminated: bool
     multiplicity: Union[int, None] # Use Union for type hint clarity
+    light: Union[str, None] = None  # luminous-robot light colour (observable)
 
 class Event(NamedTuple):
     time: Time # Use type alias
@@ -133,6 +134,8 @@ class Robot:
         self.terminated: bool = False
         self.sec: Union[Circle, None] = None # Stores the calculated SEC
         self.fault_type: str = fault_type
+        self.current_light: Union[str, None] = None     # luminous-robot light
+        self.last_light_event_time: float = -1.0
 
         # Assign algorithm type; validate eagerly against the selection table.
         self.algorithm_type = algorithm
@@ -156,6 +159,15 @@ class Robot:
               for k, v in (self.snapshot or {}).items() if k != self.id]
         return max(ds) * 0.5 if ds else 10.0
 
+    def set_light(self, new_color: str, time: float) -> None:
+        # Luminous-robot light: an externally visible colour other robots observe.
+        # The 0.5 time-unit cooldown models a minimum interval between light events.
+        if (new_color != self.current_light
+                and time - self.last_light_event_time >= 0.5):
+            self.current_light = new_color
+            self.last_light_event_time = time
+            Robot._logger.info(f"[{time:.2f}] {{R{self.id}}} LIGHT -> {new_color}")
+
     def look(
         self,
         snapshot: Dict[Id, SnapshotDetails], # Use Dict, Id
@@ -164,6 +176,7 @@ class Robot:
         if self.state == RobotState.CRASH: return
 
         self.state = RobotState.LOOK
+        self.set_light("blue", time)        # LOOK
 
         self.snapshot = {}
         for key, value in snapshot.items():
@@ -176,6 +189,7 @@ class Robot:
                     value.frozen,
                     value.terminated,
                     value.multiplicity,
+                    value.light,
                 )
 
         Robot._logger.info(
@@ -272,6 +286,7 @@ class Robot:
              return
 
         self.state = RobotState.MOVE
+        self.set_light("red", start_time)   # MOVE
         Robot._logger.info(f"[{start_time:.2f}] {{R{self.id}}} MOVE -> {self.calculated_position}")
         self.start_time = start_time
         self.start_position = self.coordinates
@@ -299,6 +314,7 @@ class Robot:
         self.start_time = None
         self.end_time = time
         self.state = RobotState.WAIT
+        self.set_light("green", time)       # WAIT
 
         Robot._logger.info(
             f"[{time:.2f}] {{R{self.id}}} WAIT    -- Pos: {self.coordinates} Dist: {current_distance:.4f} Total: {self.travelled_distance:.4f} Frozen: {self.frozen} Term: {self.terminated}"

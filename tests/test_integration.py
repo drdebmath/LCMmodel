@@ -35,7 +35,8 @@ ALGORITHMS = ["Gathering", "SEC", "GoToCenter", "CircleFormation",
 
 # keys main.js reads off each robot record
 ROBOT_KEYS = ("id", "x", "y", "state", "frozen", "terminated", "crashed",
-              "sec", "target_x", "target_y", "color", "visibility_radius")
+              "sec", "target_x", "target_y", "color", "fault_type", "light",
+              "visibility_radius")
 
 
 def js_params(algo):
