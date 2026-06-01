@@ -276,10 +276,20 @@ class Scheduler:
 
                  move_duration = max(0, move_duration)
                  wait_event_time = time + move_duration
-                 # Use Event constructor
-                 wait_event = Event(wait_event_time, robot_id, RobotState.WAIT)
-                 heapq.heappush(self.priority_queue, wait_event)
-                 Scheduler._logger.info(f"T={time:.4f} R{robot_id}: Scheduled WAIT event at T={wait_event_time:.4f} (duration {move_duration:.4f})")
+                 if wait_event_time <= time:
+                     # Sub-tick move: the distance is so small (or t so large) that
+                     # the arrival time does not advance the clock. Do NOT schedule a
+                     # zero-duration MOVE -- it would strand the robot and livelock
+                     # the simulation. Finalise the move now so it reaches its target.
+                     robot.wait(time)
+                     exit_code = 3
+                     self.generate_event(time, robot_id, robot.state)
+                     Scheduler._logger.info(f"T={time:.4f} R{robot_id}: Sub-tick move finalised immediately (dist={distance_to_target:.3e}).")
+                 else:
+                     # Use Event constructor
+                     wait_event = Event(wait_event_time, robot_id, RobotState.WAIT)
+                     heapq.heappush(self.priority_queue, wait_event)
+                     Scheduler._logger.info(f"T={time:.4f} R{robot_id}: Scheduled WAIT event at T={wait_event_time:.4f} (duration {move_duration:.4f})")
 
         elif event_state == RobotState.WAIT:
              robot.wait(time)

@@ -234,7 +234,17 @@ class Robot:
         self.start_position = self.coordinates
 
     def wait(self, time: Time) -> None:
-        final_pos = self.get_position(time)
+        # When finishing a rigid MOVE, snap straight to the computed target.
+        # The WAIT event is scheduled at the (rigid) arrival time, so the robot is
+        # meant to be there. Re-deriving position from elapsed time is fragile: a
+        # tiny move can make the WAIT event share the MOVE's timestamp (float
+        # underflow / rounding) -> elapsed_time == 0 strands the robot at its start,
+        # which then re-LOOKs forever (the endless-simulation bug).
+        if (self.state == RobotState.MOVE and self.start_time is not None
+                and self.calculated_position is not None and self.rigid_movement):
+            final_pos = self.calculated_position
+        else:
+            final_pos = self.get_position(time)
         current_distance = 0.0
         if self.start_time is not None and self.state == RobotState.MOVE:
              # Make sure start_position is Coordinates type
