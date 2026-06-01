@@ -295,6 +295,7 @@ class Robot:
             Algorithm.GO_TO_CENTER: (self._go_to_center, self._gtc_terminal),
             Algorithm.CIRCLE:       (self._circle_formation, self._circle_terminal),
             Algorithm.SPREADING:    (self._spreading, self._spreading_terminal),
+            Algorithm.PATTERN:      (self._pattern_formation, self._pattern_terminal),
         }
         if self.algorithm_type not in table:
             raise ValueError(f"Invalid algorithm type: {self.algorithm_type}")
@@ -640,26 +641,29 @@ class Robot:
     # --- End GTC ---
 
     # --- Uniform Circle Formation (Defago & Konagaya 2002; Flocchini et al.) ---
-    # Robots arrange at equal angular spacing on the smallest enclosing circle.
+    # Robots arrange at equal angular spacing on a common circle = centroid +
+    # mean-radius of the swarm. (A smooth, stable reference: using the live
+    # smallest-enclosing circle makes the centre hop between its defining pairs
+    # and the robots chase it forever.)
     #   Phase 1: a robot off the circle projects radially onto it.
     #   Phase 2: a robot on the circle slides tangentially to the angular bisector
     #            of its two neighbours (local gap-averaging) -> equal spacing.
-    # Tangential moves preserve the radius, and the spreading widens the angular
-    # span, which together keep the enclosing circle from collapsing.
     def _circle_formation(self) -> Tuple[Coordinates, List[Union[Circle, None]]]:
         pts = [r.pos for r in self.snapshot.values() if r.state != RobotState.CRASH]
         n = len(pts)
         if n <= 1:
             return (self.coordinates, [None])
-        sec = self._sec_welzl_coords(pts)
-        self.sec = sec
+        ox = sum(p.x for p in pts) / n
+        oy = sum(p.y for p in pts) / n
+        rad = sum(math.hypot(p.x - ox, p.y - oy) for p in pts) / n   # mean distance
         thr = math.pow(10, -self.threshold_precision)
-        if sec is None or sec.radius <= thr:
-            return (self.coordinates, [sec])
-
-        O, rad = sec.center, sec.radius
+        if rad <= thr:
+            return (self.coordinates, [None])
+        O = Coordinates(ox, oy)
+        sec = Circle(O, rad)                             # agreed target circle (+ viz)
+        self.sec = sec
         me = self.coordinates
-        on_tol = rad * 1e-3                              # relative "on the circle" tol
+        on_tol = rad * 1e-2                              # relative "on the circle" tol
         # Phase 1: snap onto the circle if not already on it.
         if abs(math.dist(me, O) - rad) > on_tol:
             return (self._closest_point_on_circle(sec, me), [sec])
@@ -688,7 +692,7 @@ class Robot:
         if n <= 1:
             return True
         O, rad = sec.center, sec.radius
-        on_tol = rad * 1e-3
+        on_tol = rad * 2e-2
         TWO_PI = 2.0 * math.pi
         angs = []
         for p in pts:
@@ -698,7 +702,7 @@ class Robot:
         angs.sort()
         gaps = [(angs[(i + 1) % n] - angs[i]) % TWO_PI for i in range(n)]
         target_gap = TWO_PI / n
-        return max(abs(g - target_gap) for g in gaps) < target_gap * 0.02
+        return max(abs(g - target_gap) for g in gaps) < target_gap * 0.06
     # --- End Circle Formation ---
 
     # --- Spreading / uniform deployment (Lloyd's algorithm; Cortes et al. 2004) ---
@@ -768,6 +772,96 @@ class Robot:
             return False
         return math.dist(coord, self.coordinates) < args[0]
     # --- End Spreading ---
+
+    # --- Pattern Formation (Suzuki & Yamashita, SIAM J. Comput. 1999) ---
+    # Robots form a target geometric pattern. Each robot deterministically derives a
+    # common reference frame from the snapshot -- origin = centroid, scale = distance
+    # of the farthest robot, orientation = world axes (this sim shares a global frame,
+    # which sidesteps the orientation-symmetry obstruction) -- embeds the (normalised)
+    # target pattern in it, matches robots to target points by a consistent angular
+    # ordering, and moves to its matched point. The frame is centroid-based so it does
+    # not collapse the way an SEC-based frame can.
+    def _pattern_unit_points(self, n: int) -> List[List[float]]:
+        # n points spread evenly along a 5-pointed star outline, centred at the
+        # centroid and scaled so the farthest point sits at distance 1.
+        spikes, inner = 5, 0.382
+        verts = []
+        for i in range(2 * spikes):
+            ang = math.pi / 2 + i * math.pi / spikes
+            rad = 1.0 if i % 2 == 0 else inner
+            verts.append((rad * math.cos(ang), rad * math.sin(ang)))
+        m = len(verts)
+        segs = []; total = 0.0
+        for i in range(m):
+            a, b = verts[i], verts[(i + 1) % m]
+            L = math.hypot(b[0] - a[0], b[1] - a[1]); segs.append(L); total += L
+        pts = []
+        for k in range(n):
+            d = (k / n) * total; acc = 0.0
+            for i, L in enumerate(segs):
+                if acc + L >= d or i == m - 1:
+                    t = (d - acc) / L if L > 1e-12 else 0.0
+                    a, b = verts[i], verts[(i + 1) % m]
+                    pts.append([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])])
+                    break
+                acc += L
+        cx = sum(p[0] for p in pts) / n; cy = sum(p[1] for p in pts) / n
+        pts = [[p[0] - cx, p[1] - cy] for p in pts]
+        rms = math.sqrt(sum(p[0] ** 2 + p[1] ** 2 for p in pts) / n) or 1.0
+        return [[p[0] / rms, p[1] / rms] for p in pts]
+
+    def _pattern_embed(self) -> Union[Tuple, None]:
+        items = [(rid, r.pos) for rid, r in self.snapshot.items()
+                 if r.state != RobotState.CRASH]
+        n = len(items)
+        if n <= 1:
+            return None
+        positions = [p for _, p in items]
+        my_idx = next((k for k, (rid, _) in enumerate(items) if rid == self.id), None)
+        if my_idx is None:
+            return None
+        ox = sum(p.x for p in positions) / n
+        oy = sum(p.y for p in positions) / n
+        R = math.sqrt(sum((p.x - ox) ** 2 + (p.y - oy) ** 2 for p in positions) / n)
+        if R < math.pow(10, -self.threshold_precision):
+            return None
+        unit = self._pattern_unit_points(n)
+        targets = [Coordinates(ox + R * u[0], oy + R * u[1]) for u in unit]
+
+        def ang_rad(p):
+            return (math.atan2(p.y - oy, p.x - ox), math.hypot(p.x - ox, p.y - oy))
+        robot_order = sorted(range(n), key=lambda k: ang_rad(positions[k]) + (items[k][0],))
+        target_order = sorted(range(n), key=lambda k: ang_rad(targets[k]))
+        rp = [positions[k] for k in robot_order]
+        tp = [targets[k] for k in target_order]
+        # Pick the cyclic rotation that best aligns robots to targets. This removes
+        # the rotational ambiguity of two angle-sorted rings that would otherwise let
+        # the matching flip between rounds and oscillate forever. Tie-break to the
+        # smallest offset for determinism.
+        best_s, best_cost = 0, None
+        for s in range(n):
+            cost = sum((rp[i].x - tp[(i + s) % n].x) ** 2 +
+                       (rp[i].y - tp[(i + s) % n].y) ** 2 for i in range(n))
+            if best_cost is None or cost < best_cost - 1e-9:
+                best_cost, best_s = cost, s
+        my_rank = robot_order.index(my_idx)
+        my_target = tp[(my_rank + best_s) % n]
+        err = max(math.dist(rp[i], tp[(i + best_s) % n]) for i in range(n))
+        return my_target, R, err
+
+    def _pattern_formation(self) -> Tuple[Coordinates, List[any]]:
+        emb = self._pattern_embed()
+        if emb is None:
+            return (self.coordinates, [None])
+        my_target, R, err = emb
+        return (my_target, [R, err])
+
+    def _pattern_terminal(self, _, args: List[any]) -> bool:
+        if not args or args[0] is None:
+            return True
+        R, err = args[0], args[1]
+        return err < max(R * 0.03, math.pow(10, -self.threshold_precision))
+    # --- End Pattern Formation ---
 
     def prettify_snapshot(self, snapshot: Dict[Id, SnapshotDetails]) -> str:
         if not snapshot: return " <empty>"
