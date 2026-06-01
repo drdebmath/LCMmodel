@@ -30,6 +30,10 @@ class Algorithm:
     GATHERING = "Gathering"
     SEC = "SEC"
     TWOTASK = "TwoTask"
+    GO_TO_CENTER = "GoToCenter"
+    CIRCLE = "CircleFormation"
+    SPREADING = "Spreading"
+    PATTERN = "PatternFormation"
 
 
 Time = float
@@ -116,13 +120,9 @@ class Robot:
         self.terminated: bool = False
         self.sec: Union[Circle, None] = None # Stores the calculated SEC
 
-        # Assign algorithm type based on the input string constant
-        if algorithm == Algorithm.GATHERING:
-             self.algorithm_type = Algorithm.GATHERING
-        elif algorithm == Algorithm.SEC:
-             self.algorithm_type = Algorithm.SEC
-        else:
-             raise ValueError(f"Unknown algorithm: {algorithm}")
+        # Assign algorithm type; validate eagerly against the selection table.
+        self.algorithm_type = algorithm
+        self._select_algorithm()  # raises ValueError for an unknown algorithm
 
 
     def set_faulty(self, faulty: bool) -> None:
@@ -284,13 +284,15 @@ class Robot:
             return interpolated_coords
 
 
-    def _select_algorithm(self) -> Tuple[Callable, Callable]: # Return types are complex, using Tuple[Callable, Callable]
-        if self.algorithm_type == Algorithm.GATHERING:
-            return (self._midpoint, self._midpoint_terminal)
-        elif self.algorithm_type == Algorithm.SEC:
-            return (self._smallest_enclosing_circle, self._sec_terminal)
-        else:
+    def _select_algorithm(self) -> Tuple[Callable, Callable]:
+        table = {
+            Algorithm.GATHERING:    (self._midpoint, self._midpoint_terminal),
+            Algorithm.SEC:          (self._smallest_enclosing_circle, self._sec_terminal),
+            Algorithm.GO_TO_CENTER: (self._go_to_center, self._gtc_terminal),
+        }
+        if self.algorithm_type not in table:
             raise ValueError(f"Invalid algorithm type: {self.algorithm_type}")
+        return table[self.algorithm_type]
 
     def _interpolate(
         self, start: Coordinates, end: Coordinates, t: float
@@ -574,6 +576,62 @@ class Robot:
         return Circle(center, radius) # Use constructor
 
     # --- End SEC ---
+
+    # --- Go-To-Center (Ando, Suzuki & Yamashita, IEEE T-RA 1999) ---
+    # Limited-visibility point convergence: move toward the centre of the smallest
+    # enclosing circle of the visible robots, but cap the step so every robot now
+    # within visibility range V stays within V (connectivity is never broken). The
+    # per-neighbour cap keeps the robot inside the disk of radius V/2 around the
+    # midpoint of the pair, which guarantees the visibility edge survives. With
+    # unlimited visibility this reduces to "go to the SEC centre".
+    def _go_to_center(self) -> Tuple[Coordinates, List[Union[Circle, None]]]:
+        pts = [r.pos for r in self.snapshot.values() if r.state != RobotState.CRASH]
+        if len(pts) <= 1:
+            return (self.coordinates, [None])
+
+        sec = self._sec_welzl_coords(pts)
+        self.sec = sec
+        if sec is None or sec.radius < 0:
+            return (self.coordinates, [None])
+
+        me = self.coordinates
+        gx, gy = sec.center.x - me.x, sec.center.y - me.y
+        goal_dist = math.hypot(gx, gy)
+        if goal_dist < math.pow(10, -self.threshold_precision):
+            return (self.coordinates, [sec])            # already at the centre
+
+        ux, uy = gx / goal_dist, gy / goal_dist         # unit vector toward centre
+        step = goal_dist
+
+        V = self.visibility_radius
+        if V != float('inf'):
+            R = V / 2.0
+            for r in self.snapshot.values():
+                if r.state == RobotState.CRASH:
+                    continue
+                jx, jy = r.pos.x - me.x, r.pos.y - me.y
+                d = math.hypot(jx, jy)
+                if d <= 1e-12 or d > V:                  # self, or not actually visible
+                    continue
+                # theta = angle between direction-to-centre and direction-to-j
+                cos_t = max(-1.0, min(1.0, (ux * jx + uy * jy) / d))
+                sin_t = math.sqrt(max(0.0, 1.0 - cos_t * cos_t))
+                r0 = d / 2.0
+                # farthest point of the ray that stays inside B(midpoint_ij, V/2)
+                limit_j = r0 * cos_t + math.sqrt(max(0.0, R * R - (r0 * sin_t) ** 2))
+                step = min(step, limit_j)
+
+        step = max(0.0, min(goal_dist, step))
+        target = Coordinates(me.x + ux * step, me.y + uy * step)
+        return (target, [sec])
+
+    def _gtc_terminal(self, _, args: List[Union[Circle, None]]) -> bool:
+        # Converged once the visible robots have collapsed to (essentially) a point.
+        if not args or args[0] is None:
+            return True
+        sec: Circle = args[0]
+        return sec.radius < math.pow(10, -self.threshold_precision)
+    # --- End GTC ---
 
     def prettify_snapshot(self, snapshot: Dict[Id, SnapshotDetails]) -> str:
         if not snapshot: return " <empty>"
