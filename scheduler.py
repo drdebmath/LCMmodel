@@ -1,6 +1,6 @@
 # Replaces scheduler.py
 from robot import (
-    RobotState, Algorithm, DistributionType, SchedulerType, # Enums
+    RobotState, Algorithm, FaultType, DistributionType, SchedulerType, # Enums
     Coordinates, Circle, SnapshotDetails, Event, Time, Id, # Typedefs
     Robot, # The Robot class itself
     SimpleLogger # If needed, or define its own
@@ -41,7 +41,8 @@ class Scheduler:
         labmda_rate: float = 5,
         num_of_faults: int = 0,
         width_bound: Union[float, None] = None,
-        height_bound: Union[float, None] = None
+        height_bound: Union[float, None] = None,
+        fault_type: str = FaultType.CRASH
     ):
         # ... (rest of __init__ remains the same, using imported types/constants)
         Scheduler._logger.info("--- Initializing Scheduler ---")
@@ -57,6 +58,7 @@ class Scheduler:
         self.threshold_precision = threshold_precision
         self.width_bound = float(width_bound) if width_bound else None
         self.height_bound = float(height_bound) if height_bound else None
+        self.fault_type = fault_type
         self.sampling_rate = sampling_rate
         self.lambda_rate = labmda_rate
         self.robots: List[Robot] = [] # Hint with Robot from robot
@@ -113,19 +115,19 @@ class Scheduler:
             Scheduler._logger.info(f"Created Robot: {new_robot}")
 
 
-        # Assign faulty robots (using RobotState.CRASH from robot)
+        # Assign faults to a reproducible random subset of robots.
         if self.num_of_faults > 0 and num_of_robots > 0:
-             num_faulty_to_set = min(self.num_of_faults, num_of_robots)
-             if num_faulty_to_set > 0:
-                 faulty_robot_indices = random.sample(range(num_of_robots), num_faulty_to_set)
-                 Scheduler._logger.info(f"Setting {num_faulty_to_set} robots to faulty state: {faulty_robot_indices}")
-                 for faulty_robot_index in faulty_robot_indices:
-                     self.robots[faulty_robot_index].set_faulty(True) # Uses method from Robot class
-                     Scheduler._logger.info(f"  -> R{faulty_robot_index} marked as faulty.")
-             else:
-                 Scheduler._logger.info("Number of faults requested is 0 or invalid, no robots set to faulty.")
+             k = min(self.num_of_faults, num_of_robots)
+             faulty_indices = [int(i) for i in
+                               self.generator.choice(num_of_robots, size=k, replace=False)]
+             Scheduler._logger.info(f"Assigning fault '{self.fault_type}' to robots: {faulty_indices}")
+             for n, idx in enumerate(faulty_indices):
+                 ft = (FaultType.ALL[n % len(FaultType.ALL)]
+                       if self.fault_type == "mixed" else self.fault_type)
+                 self.robots[idx].set_fault(ft)
+                 Scheduler._logger.info(f"  -> R{idx} fault = {ft}")
         else:
-             Scheduler._logger.info("No faults requested or no robots to make faulty.")
+             Scheduler._logger.info("No faults requested.")
 
 
         self.visualization_snapshots: List[Tuple[Time, Dict[Id, SnapshotDetails]]] = [] # Use imported types
@@ -350,7 +352,8 @@ class Scheduler:
         num_non_crashed = 0
         all_terminated = True
         for robot in self.robots:
-            if robot.state != RobotState.CRASH:
+            # Byzantine robots never settle; correct robots must gather despite them.
+            if robot.state != RobotState.CRASH and robot.fault_type != FaultType.BYZANTINE:
                 num_non_crashed += 1
                 if not robot.terminated:
                     all_terminated = False
@@ -447,6 +450,7 @@ class Scheduler:
                 "target_y": target_y,
                 "speed": robot.speed,
                 "color": robot.color,                       # << NEW
+                "fault_type": robot.fault_type,
                 "visibility_radius": (robot.visibility_radius
                                       if robot.visibility_radius != float("inf") else None)
             })

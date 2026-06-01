@@ -35,6 +35,14 @@ class Algorithm:
     SPREADING = "Spreading"
     PATTERN = "PatternFormation"
 
+class FaultType:
+    NONE = "none"
+    CRASH = "crash"            # stops permanently
+    BYZANTINE = "byzantine"    # moves arbitrarily/adversarially, never settles
+    OMISSION = "omission"      # intermittently fails to move when activated
+    DELAY = "delay"            # sluggish: moves at reduced speed
+    ALL = ("crash", "byzantine", "omission", "delay")
+
 
 Time = float
 Id = int
@@ -98,6 +106,7 @@ class Robot:
         threshold_precision: float = 5,
         width_bound: Union[float, None] = None,
         height_bound: Union[float, None] = None,
+        fault_type: str = FaultType.NONE,
     ):
         self.speed = speed
         self.color = color
@@ -123,15 +132,29 @@ class Robot:
         self.frozen: bool = False
         self.terminated: bool = False
         self.sec: Union[Circle, None] = None # Stores the calculated SEC
+        self.fault_type: str = fault_type
 
         # Assign algorithm type; validate eagerly against the selection table.
         self.algorithm_type = algorithm
         self._select_algorithm()  # raises ValueError for an unknown algorithm
 
 
-    def set_faulty(self, faulty: bool) -> None:
-        if faulty:
+    def set_fault(self, fault_type: str) -> None:
+        self.fault_type = fault_type
+        if fault_type == FaultType.CRASH:
             self.state = RobotState.CRASH
+        elif fault_type == FaultType.DELAY:
+            self.speed *= 0.4                          # sluggish actuation
+
+    def set_faulty(self, faulty: bool) -> None:        # backwards-compatible alias
+        if faulty:
+            self.set_fault(FaultType.CRASH)
+
+    def _byzantine_reach(self) -> float:
+        # how far a Byzantine robot wanders: ~half the spread of what it sees
+        ds = [math.dist(self.coordinates, v.pos)
+              for k, v in (self.snapshot or {}).items() if k != self.id]
+        return max(ds) * 0.5 if ds else 10.0
 
     def look(
         self,
@@ -158,6 +181,19 @@ class Robot:
         Robot._logger.info(
             f"[{time:.2f}] {{R{self.id}}} LOOK    -- Snapshot {self.prettify_snapshot(self.snapshot)}"
         )
+
+        if self.fault_type == FaultType.BYZANTINE:
+            # Adversarial: wander to an erratic nearby point and never settle, so the
+            # correct robots (which observe its true, misleading position) are disrupted.
+            reach = self._byzantine_reach()
+            ang = float(Robot._generator.uniform(0, 2 * math.pi)) if Robot._generator else 0.0
+            self.calculated_position = Coordinates(
+                self.coordinates.x + reach * math.cos(ang),
+                self.coordinates.y + reach * math.sin(ang))
+            self.frozen = False
+            self.terminated = False
+            Robot._logger.info(f"[{time:.2f}] {{R{self.id}}} BYZANTINE -- erratic move")
+            return
 
         active_visible_robots = [r for r_id, r in self.snapshot.items() if not r.terminated and r.state != RobotState.CRASH]
 
@@ -186,10 +222,13 @@ class Robot:
              self.wait(time)
              return
 
-        if self.calculated_position is None or \
+        omit = (self.fault_type == FaultType.OMISSION and Robot._generator is not None
+                and float(Robot._generator.random()) < 0.5)
+        if omit or self.calculated_position is None or \
            math.dist(self.calculated_position, self.coordinates) < 10**-self.threshold_precision:
             self.frozen = True
-            Robot._logger.info(f"[{time:.2f}] {{R{self.id}}} FROZEN (target reached or no movement)")
+            reason = "OMISSION (skipped move)" if omit else "FROZEN (target reached or no movement)"
+            Robot._logger.info(f"[{time:.2f}] {{R{self.id}}} {reason}")
             self.wait(time)
         else:
             self.frozen = False

@@ -27,6 +27,7 @@ const infiniteVisChk    = document.getElementById("infinite_visibility");
 
 const numFaultsSlider   = document.getElementById("num_faults");
 const numFaultsVal      = document.getElementById("num_faults_val");
+const faultTypeSelect   = document.getElementById("fault_type");
 const rigidChk          = document.getElementById("rigid_movement");
 
 const widthSlider       = document.getElementById("width_bound");
@@ -128,6 +129,7 @@ function params() {
     robot_speeds       : +robotSpeedSlider.value,
     visibility_radius  : infiniteVisChk.checked ? null : +visibilitySlider.value,
     num_of_faults      : +numFaultsSlider.value,
+    fault_type         : faultTypeSelect.value,
     rigid_movement     : rigidChk.checked,
     width_bound        : +widthSlider.value,
     height_bound       : +heightSlider.value,
@@ -207,10 +209,15 @@ const STATE_COLORS = {
   MOVE       : "#34c759",
   DEFAULT    : "#007aff"    // LOOK / WAIT / others
 };
+const FAULT_COLORS = {
+  byzantine: "#e0115f",   // ruby
+  omission : "#00bcd4",   // cyan
+  delay    : "#9c27b0"    // purple
+};
 function colorForRobot(r) {
-  /* task colour has priority when present */
-  if (r.color) return r.color;
-  if (r.crashed)    return STATE_COLORS.CRASH;
+  if (r.crashed) return STATE_COLORS.CRASH;                   // crash fault -> grey
+  if (r.fault_type && FAULT_COLORS[r.fault_type]) return FAULT_COLORS[r.fault_type];
+  if (r.color) return r.color;                                // TwoTask task colour
   if (r.terminated) return STATE_COLORS.TERMINATED;
   if (r.frozen)     return STATE_COLORS.FROZEN;
   if (r.state === "MOVE") return STATE_COLORS.MOVE;
@@ -228,8 +235,8 @@ function buildLegend() {
     TERMINATED: "Terminated",
     CRASH     : "Crashed",
 
-    REDTASK   : "SEC (robot colour – TwoTask)",
-    BLUETASK  : "Go-To-Center (robot colour – TwoTask)"
+    REDTASK   : "SEC (TwoTask robot)",
+    BLUETASK  : "Gathering (TwoTask robot)"
   };
 
   /* state legend */
@@ -247,15 +254,16 @@ function buildLegend() {
     "beforeend",
     `<div class="flex items-center gap-2"><span class="inline-block w-4 h-4 rounded-sm bg-red-600"></span>${LABELS.REDTASK}</div>
      <div class="flex items-center gap-2"><span class="inline-block w-4 h-4 rounded-sm bg-blue-600"></span>${LABELS.BLUETASK}</div>`);
+
+  /* fault legend */
+  legendDiv.insertAdjacentHTML(
+    "beforeend",
+    Object.entries(FAULT_COLORS).map(([k, hex]) =>
+      `<div class="flex items-center gap-2"><span class="inline-block w-4 h-4 rounded-sm" style="background:${hex}"></span>${k[0].toUpperCase() + k.slice(1)} fault</div>`
+    ).join(""));
 }
   
-function colorForRobot(r) {
-  if (r.crashed)       return STATE_COLORS.CRASH;
-  if (r.terminated)    return STATE_COLORS.TERMINATED;
-  if (r.frozen)        return STATE_COLORS.FROZEN;
-  if (r.state === "MOVE") return STATE_COLORS.MOVE;
-  return STATE_COLORS.DEFAULT;
-}
+/* (single colorForRobot is defined above: crash > fault > task colour > state) */
 
 function transform(x, y) { return { x: offsetX + x * scale, y: offsetY - y * scale }; }
 

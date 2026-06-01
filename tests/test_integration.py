@@ -46,6 +46,7 @@ def js_params(algo):
         "robot_speeds": 2.0,
         "visibility_radius": None,          # "Inf" toggle on
         "num_of_faults": 0,
+        "fault_type": "crash",
         "rigid_movement": True,
         "width_bound": 600,
         "height_bound": 600,
@@ -94,6 +95,31 @@ def main():
             if not colours & {"red", "blue"}:
                 fails.append(f"{algo}: expected red/blue robot colours, got {colours}")
         print(f"  {algo:16} setup+run ok (ended={ended}, saw_running={saw_running})")
+
+    # fault model: every fault type must initialise, expose fault_type, and run
+    # without raising (byzantine/mixed need not converge -- they disrupt gathering).
+    for ft in ("crash", "byzantine", "omission", "delay", "mixed"):
+        p = js_params("Gathering")
+        p["num_of_faults"] = 3
+        p["fault_type"] = ft
+        setup = json.loads(sim.setup_simulation(json.dumps(p)))
+        if setup.get("status") != "initialized":
+            fails.append(f"fault {ft}: setup failed: {setup.get('message')}")
+            continue
+        faulty = [r for r in setup["robots"] if r.get("fault_type") not in (None, "none")]
+        if len(faulty) != 3:
+            fails.append(f"fault {ft}: expected 3 faulty robots, got {len(faulty)}")
+        err = False
+        for _ in range(3000):
+            step = json.loads(sim.run_simulation_step())
+            if step.get("status") == "error":
+                fails.append(f"fault {ft}: runtime error: {step.get('message')}")
+                err = True
+                break
+            if step.get("status") == "ended":
+                break
+        if not err:
+            print(f"  fault:{ft:11} ok ({len(faulty)} faulty robots, ran cleanly)")
 
     if fails:
         print("\nFAIL:")
