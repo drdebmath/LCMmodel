@@ -101,12 +101,45 @@ function applyZoom(factor) {
 zoomInBtn .addEventListener("click", () => applyZoom(ZOOM_STEP));
 zoomOutBtn.addEventListener("click", () => applyZoom(1 / ZOOM_STEP));
 
-/* -------- Pyodide bootstrap -------------------------------------- */
+/* -------- Pyodide bootstrap (CDN first, vendored local fallback) -- */
+const PYODIDE_CDN   = "https://cdn.jsdelivr.net/pyodide/v0.27.5/full/";
+const PYODIDE_LOCAL = "./pyodide/";
+
+function injectScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`failed to load ${src}`));
+    document.head.appendChild(s);
+  });
+}
+
+/* Load the pyodide.js loader from baseURL, then init with packages from there. */
+async function bootPyodide(baseURL) {
+  await injectScript(baseURL + "pyodide.js");
+  const py = await loadPyodide({ indexURL: baseURL });
+  await py.loadPackage(["numpy", "micropip"]);
+  return py;
+}
+
 async function loadPyodideAndPackages() {
-  updStatus("Loading Pyodide…");
+  /* Try the CDN first; on any failure fall back to the vendored ./pyodide/ copy. */
   try {
-    pyodide = await loadPyodide();
-    await pyodide.loadPackage(["numpy", "micropip"]);
+    updStatus("Loading Pyodide (CDN)…");
+    pyodide = await bootPyodide(PYODIDE_CDN);
+  } catch (cdnErr) {
+    console.warn("CDN Pyodide unavailable, using vendored local copy:", cdnErr);
+    try {
+      updStatus("CDN unavailable — loading local Pyodide…");
+      pyodide = await bootPyodide(PYODIDE_LOCAL);
+    } catch (localErr) {
+      updStatus(`Pyodide init error: ${localErr.message}`);
+      return;
+    }
+  }
+
+  try {
     const files = ["robot.py", "scheduler.py", "run.py"];
     for (const f of files) {
       const code = await (await fetch(`./${f}`)).text();
