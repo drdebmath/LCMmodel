@@ -117,4 +117,4 @@ venv.bak/
 
 logs/
 
-llm.txt
+llm.txt/target

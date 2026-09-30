@@ -1,0 +1,46 @@
+//! LCM algorithms and the registry that names them.
+//!
+//! Each algorithm is a port of the matching `Robot._<name>` method pair
+//! (compute + terminal check) in `robot.py`, keeping its operation order.
+//! Adding an algorithm: implement [`Algorithm`] in a new module and add one
+//! line to [`REGISTRY`].
+//!
+//! Only Gathering is ported for now: it drives the core's parity tests.
+
+mod gathering;
+
+pub use gathering::Gathering;
+
+use lcm_core::{Algorithm, ConfigError, Plan, SimConfig, Simulation};
+
+/// A selectable entry: key (as sent by the UI), display name, plan builder.
+pub struct Entry {
+    pub key: &'static str,
+    pub name: &'static str,
+    pub build: fn() -> Plan,
+}
+
+fn one<A: Algorithm + Default + 'static>() -> Plan {
+    Plan::single(Box::new(A::default()))
+}
+
+pub const REGISTRY: &[Entry] = &[Entry {
+    key: "Gathering",
+    name: "Center of Gravity",
+    build: one::<Gathering>,
+}];
+
+#[must_use]
+pub fn plan(key: &str) -> Option<Plan> {
+    REGISTRY.iter().find(|e| e.key == key).map(|e| (e.build)())
+}
+
+/// Builds a simulation for `config.algorithm`.
+///
+/// # Errors
+/// An unknown algorithm or an invalid configuration.
+pub fn simulation(config: &SimConfig) -> Result<Simulation, ConfigError> {
+    let plan = plan(&config.algorithm)
+        .ok_or_else(|| ConfigError::UnknownAlgorithm(config.algorithm.clone()))?;
+    Simulation::new(config, plan)
+}

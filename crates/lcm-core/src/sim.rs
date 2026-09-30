@@ -1,0 +1,529 @@
+//! The event loop: Python `Scheduler.handle_event` and `Robot.look/move/wait`
+//! (docs/core-schema.md §5).
+
+use crate::algorithm::{Algorithm, Assignment, Look, Model, OverlayUpdate, Plan, Scratch, View};
+use crate::config::{ConfigError, FaultSelection, SimConfig};
+use crate::event::{Event, EventKind, EventQueue};
+use crate::geom::{dist, Point};
+use crate::pyfloat::pow10_neg;
+use crate::rng::Rng;
+use crate::robots::{FaultKind, Light, RobotState, Robots};
+
+/// What handling one event did. Mirrors `handle_event`'s exit codes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StepOutcome {
+    Ignored,
+    Moved,
+    Frozen,
+    Terminated,
+    Crashed,
+    Visualize,
+    Ended,
+}
+
+impl StepOutcome {
+    #[must_use]
+    pub const fn code(self) -> i32 {
+        match self {
+            Self::Ignored => 0,
+            Self::Moved => 2,
+            Self::Frozen => 3,
+            Self::Terminated => 4,
+            Self::Crashed => 5,
+            Self::Visualize => 99,
+            Self::Ended => -1,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct StepInfo {
+    pub time: f64,
+    pub robot: i32,
+    pub kind: Option<EventKind>,
+    pub outcome: StepOutcome,
+}
+
+/// How much `advance` may do before returning.
+#[derive(Clone, Copy, Debug)]
+pub struct Budget {
+    pub max_events: u64,
+    /// Stop before the first event later than this.
+    pub until_time: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StopReason {
+    /// `max_events` of the budget handled.
+    Budget,
+    /// The next event is after `until_time`.
+    UntilTime,
+    /// Global termination or an empty queue.
+    Ended,
+    /// The configured `max_events` limit.
+    MaxEvents,
+    /// The configured `max_time` limit.
+    MaxTime,
+}
+
+pub struct Simulation {
+    model: Model,
+    rigid: bool,
+    lambda: f64,
+    sampling: f64,
+    multiplicity: bool,
+    max_events: Option<u64>,
+    max_time: Option<f64>,
+    algorithms: Vec<Box<dyn Algorithm>>,
+    robots: Robots,
+    queue: EventQueue,
+    rng: Rng,
+    now: f64,
+    ended: bool,
+    events: u64,
+    view: View,
+    scratch: Scratch,
+}
+
+const ALL_FAULTS: [FaultKind; 4] = [
+    FaultKind::Crash,
+    FaultKind::Byzantine,
+    FaultKind::Omission,
+    FaultKind::Delay,
+];
+
+impl Simulation {
+    /// Builds robots, faults and the initial event queue, drawing random
+    /// numbers in the order of `Scheduler.__init__`.
+    ///
+    /// # Errors
+    /// An invalid configuration, or a plan with no algorithms.
+    pub fn new(config: &SimConfig, plan: Plan) -> Result<Self, ConfigError> {
+        config.validate()?;
+        if plan.algorithms.is_empty() {
+            return Err(ConfigError::UnknownAlgorithm(config.algorithm.clone()));
+        }
+        let positions = config.resolve_positions();
+        let n = positions.len();
+        let (width_bound, height_bound) = config.bounds();
+        let precision = config.threshold_precision;
+        let model = Model {
+            precision,
+            eps: pow10_neg(precision),
+            visibility: config.visibility_radius.unwrap_or(f64::INFINITY),
+            width_bound,
+            height_bound,
+        };
+        let mut rng = Rng::new(config.random_seed);
+        let mut robots = Robots::new(&positions, config.robot_speeds);
+
+        if let Assignment::Random(choices) = &plan.assignment {
+            for i in 0..n {
+                let u = rng.random();
+                let &(_, algo, task) = choices
+                    .iter()
+                    .find(|(cumulative, _, _)| u < *cumulative)
+                    .unwrap_or(&choices[choices.len() - 1]);
+                robots.algo[i] = u8::try_from(algo).unwrap_or(0);
+                robots.task[i] = task;
+            }
+        }
+
+        if config.num_of_faults > 0 {
+            let k = (config.num_of_faults as usize).min(n);
+            for (j, i) in rng.choice(n, k).into_iter().enumerate() {
+                let fault = match config.fault_type {
+                    FaultSelection::Crash => FaultKind::Crash,
+                    FaultSelection::Byzantine => FaultKind::Byzantine,
+                    FaultSelection::Omission => FaultKind::Omission,
+                    FaultSelection::Delay => FaultKind::Delay,
+                    FaultSelection::Mixed => ALL_FAULTS[j % ALL_FAULTS.len()],
+                };
+                robots.fault[i] = fault;
+                match fault {
+                    FaultKind::Crash => robots.state[i] = RobotState::Crash,
+                    FaultKind::Delay => robots.speed[i] *= 0.4,
+                    _ => {}
+                }
+            }
+        }
+
+        let mut queue = EventQueue::default();
+        for i in 0..n {
+            let time = rng.exponential(1.0 / config.lambda_rate).max(0.0);
+            let kind = if robots.state[i] == RobotState::Crash {
+                EventKind::Crash
+            } else {
+                EventKind::Look
+            };
+            queue.push(Event {
+                time,
+                robot: robot_id(i),
+                kind,
+            });
+        }
+        queue.push(Event {
+            time: config.sampling_rate,
+            robot: -1,
+            kind: EventKind::Visualize,
+        });
+
+        Ok(Self {
+            model,
+            rigid: config.rigid_movement,
+            lambda: config.lambda_rate,
+            sampling: config.sampling_rate,
+            multiplicity: config.multiplicity_detection,
+            max_events: config.max_events,
+            max_time: config.max_time,
+            algorithms: plan.algorithms,
+            robots,
+            queue,
+            rng,
+            now: 0.0,
+            ended: false,
+            events: 0,
+            view: View::default(),
+            scratch: Scratch::default(),
+        })
+    }
+
+    #[must_use]
+    pub fn time(&self) -> f64 {
+        self.now
+    }
+
+    #[must_use]
+    pub fn ended(&self) -> bool {
+        self.ended
+    }
+
+    /// Events handled so far (including visualize and ignored events).
+    #[must_use]
+    pub fn event_count(&self) -> u64 {
+        self.events
+    }
+
+    #[must_use]
+    pub fn robots(&self) -> &Robots {
+        &self.robots
+    }
+
+    #[must_use]
+    pub fn model(&self) -> &Model {
+        &self.model
+    }
+
+    #[must_use]
+    pub fn multiplicity_detection(&self) -> bool {
+        self.multiplicity
+    }
+
+    /// Registry key of the algorithm robot `i` runs.
+    #[must_use]
+    pub fn algorithm_key(&self, i: usize) -> &'static str {
+        self.algorithms[usize::from(self.robots.algo[i])].key()
+    }
+
+    #[must_use]
+    pub fn position_at(&self, i: usize, t: f64) -> Point {
+        self.robots.position_at(i, t, self.model.eps)
+    }
+
+    /// Handles events until the budget, a limit or the end is reached.
+    pub fn advance(&mut self, budget: Budget) -> StopReason {
+        let mut handled = 0;
+        loop {
+            if self.ended {
+                return StopReason::Ended;
+            }
+            if self.max_time.is_some_and(|limit| self.now > limit) {
+                return StopReason::MaxTime;
+            }
+            if self.max_events.is_some_and(|limit| self.events >= limit) {
+                return StopReason::MaxEvents;
+            }
+            if handled >= budget.max_events {
+                return StopReason::Budget;
+            }
+            if self
+                .queue
+                .peek()
+                .is_some_and(|e| e.time > budget.until_time)
+            {
+                return StopReason::UntilTime;
+            }
+            self.step();
+            handled += 1;
+        }
+    }
+
+    /// Handles the next event.
+    pub fn step(&mut self) -> StepInfo {
+        let ended = StepInfo {
+            time: self.now,
+            robot: -1,
+            kind: None,
+            outcome: StepOutcome::Ended,
+        };
+        if self.ended {
+            return ended;
+        }
+        let Some(event) = self.queue.pop() else {
+            self.ended = true;
+            return ended;
+        };
+        self.events += 1;
+        let info = |outcome| StepInfo {
+            time: event.time,
+            robot: event.robot,
+            kind: Some(event.kind),
+            outcome,
+        };
+        if event.time < self.now {
+            return StepInfo {
+                time: self.now,
+                ..info(StepOutcome::Ignored)
+            };
+        }
+        let t = event.time;
+        self.now = t;
+
+        if event.robot < 0 {
+            if event.kind == EventKind::Visualize {
+                self.queue.push(Event {
+                    time: t + self.sampling,
+                    robot: -1,
+                    kind: EventKind::Visualize,
+                });
+                return info(StepOutcome::Visualize);
+            }
+            return info(StepOutcome::Ignored);
+        }
+        let i = usize::try_from(event.robot).unwrap_or(usize::MAX);
+        if i >= self.robots.len() {
+            return info(StepOutcome::Ignored);
+        }
+        if self.robots.state[i] == RobotState::Crash && event.kind != EventKind::Crash {
+            self.schedule_activation(t, i);
+            return info(StepOutcome::Ignored);
+        }
+        if self.robots.terminated[i] {
+            return info(StepOutcome::Ignored);
+        }
+
+        let outcome = match event.kind {
+            EventKind::Look => self.look(i, t),
+            EventKind::Wait => {
+                self.wait(i, t);
+                self.schedule_activation(t, i);
+                StepOutcome::Frozen
+            }
+            EventKind::Crash => {
+                self.robots.fault[i] = FaultKind::Crash;
+                self.robots.state[i] = RobotState::Crash;
+                StepOutcome::Crashed
+            }
+            EventKind::Visualize => StepOutcome::Ignored,
+        };
+
+        if self.globally_terminated() {
+            self.ended = true;
+            return info(StepOutcome::Ended);
+        }
+        info(outcome)
+    }
+
+    /// The snapshot robot `i` takes at `t`, filtered by its visibility.
+    fn build_view(&mut self, i: usize, t: f64) -> usize {
+        let me = self.robots.pos[i];
+        let visibility = self.model.visibility;
+        let unlimited = visibility == f64::INFINITY;
+        self.view.clear();
+        let mut me_index = 0;
+        for j in 0..self.robots.len() {
+            let p = self.robots.position_at(j, t, self.model.eps);
+            if unlimited || dist(me, p) <= visibility {
+                if j == i {
+                    me_index = self.view.len();
+                }
+                let r = &self.robots;
+                self.view
+                    .push(robot_id_u32(j), p, r.state[j], r.terminated[j], r.frozen[j]);
+            }
+        }
+        me_index
+    }
+
+    /// `Robot.look` followed by the LOOK branch of `handle_event`.
+    fn look(&mut self, i: usize, t: f64) -> StepOutcome {
+        let me_index = self.build_view(i, t);
+        let r = &mut self.robots;
+        r.state[i] = RobotState::Look;
+        r.set_light(i, Light::Blue, t);
+        let position = r.pos[i];
+
+        if r.fault[i] == FaultKind::Byzantine {
+            let reach = self
+                .view
+                .id
+                .iter()
+                .zip(&self.view.pos)
+                .filter(|(id, _)| **id as usize != i)
+                .map(|(_, p)| dist(position, *p))
+                .fold(None, |best: Option<f64>, d| {
+                    Some(best.map_or(d, |b| if d > b { d } else { b }))
+                })
+                .map_or(10.0, |d| d * 0.5);
+            let angle = self.rng.uniform(0.0, 2.0 * std::f64::consts::PI);
+            r.target[i] = Some(Point::new(
+                position.x + reach * libm::cos(angle),
+                position.y + reach * libm::sin(angle),
+            ));
+            r.frozen[i] = false;
+            r.terminated[i] = false;
+        } else {
+            let active = (0..self.view.len())
+                .filter(|&k| !self.view.terminated[k] && self.view.state[k] != RobotState::Crash)
+                .count();
+            if active <= 1 {
+                r.frozen[i] = true;
+                r.terminated[i] = true;
+                self.wait(i, t);
+            } else {
+                let look = Look {
+                    me: robot_id_u32(i),
+                    me_index,
+                    position,
+                    view: &self.view,
+                    model: &self.model,
+                };
+                let algorithm = &self.algorithms[usize::from(self.robots.algo[i])];
+                let decision = algorithm.compute(&look, &mut self.rng, &mut self.scratch);
+                let r = &mut self.robots;
+                r.target[i] = Some(decision.target);
+                match decision.overlay {
+                    OverlayUpdate::Keep => {}
+                    OverlayUpdate::Set(c) => r.overlay[i] = Some(c),
+                    OverlayUpdate::Clear => r.overlay[i] = None,
+                }
+                if decision.terminate {
+                    r.terminated[i] = true;
+                }
+                if r.terminated[i] {
+                    self.wait(i, t);
+                } else {
+                    let omit = r.fault[i] == FaultKind::Omission && self.rng.random() < 0.5;
+                    if omit || dist(decision.target, position) < self.model.eps {
+                        self.robots.frozen[i] = true;
+                        self.wait(i, t);
+                    } else {
+                        self.robots.frozen[i] = false;
+                    }
+                }
+            }
+        }
+
+        let r = &self.robots;
+        if r.state[i] == RobotState::Crash {
+            return StepOutcome::Crashed;
+        }
+        if r.terminated[i] {
+            return StepOutcome::Terminated;
+        }
+        if r.frozen[i] {
+            self.schedule_activation(t, i);
+            return StepOutcome::Frozen;
+        }
+        self.begin_move(i, t)
+    }
+
+    /// `Robot.move` and the WAIT scheduling that follows it.
+    fn begin_move(&mut self, i: usize, t: f64) -> StepOutcome {
+        let r = &mut self.robots;
+        let Some(target) = r.target[i] else {
+            r.state[i] = RobotState::Wait;
+            self.schedule_activation(t, i);
+            return StepOutcome::Frozen;
+        };
+        r.state[i] = RobotState::Move;
+        r.set_light(i, Light::Red, t);
+        r.start_time[i] = Some(t);
+        r.start_pos[i] = r.pos[i];
+        let distance = dist(r.start_pos[i], target);
+        let duration = if r.speed[i] > 1e-9 {
+            distance / r.speed[i]
+        } else {
+            0.0
+        };
+        let arrival = t + duration.max(0.0);
+        if arrival <= t {
+            // Sub-tick move: finish it now rather than schedule a WAIT at the same instant.
+            self.wait(i, t);
+            self.schedule_activation(t, i);
+            StepOutcome::Frozen
+        } else {
+            self.queue.push(Event {
+                time: arrival,
+                robot: robot_id(i),
+                kind: EventKind::Wait,
+            });
+            StepOutcome::Moved
+        }
+    }
+
+    /// `Robot.wait`.
+    fn wait(&mut self, i: usize, t: f64) {
+        let eps = self.model.eps;
+        let r = &mut self.robots;
+        let moving = r.state[i] == RobotState::Move;
+        let snap_to_target = match (moving, r.start_time[i], r.target[i]) {
+            (true, Some(start), Some(target)) if self.rigid || t <= start + 1e-12 => Some(target),
+            _ => None,
+        };
+        let end = snap_to_target.unwrap_or_else(|| r.position_at(i, t, eps));
+        if moving && r.start_time[i].is_some() {
+            r.travelled[i] += dist(r.start_pos[i], end);
+        }
+        r.pos[i] = end;
+        r.start_time[i] = None;
+        r.state[i] = RobotState::Wait;
+        r.set_light(i, Light::Green, t);
+    }
+
+    /// `Scheduler.generate_event`: the random delay is drawn even when a
+    /// terminated robot gets no new activation.
+    fn schedule_activation(&mut self, previous: f64, i: usize) {
+        let delay = self.rng.exponential(1.0 / self.lambda);
+        let time = previous + delay.max(1e-9);
+        let kind = if self.robots.state[i] == RobotState::Crash {
+            EventKind::Crash
+        } else if self.robots.terminated[i] {
+            return;
+        } else {
+            EventKind::Look
+        };
+        self.queue.push(Event {
+            time,
+            robot: robot_id(i),
+            kind,
+        });
+    }
+
+    /// `Scheduler._check_global_termination`: every robot that is neither
+    /// crashed nor Byzantine has terminated (vacuously true if none are left).
+    fn globally_terminated(&self) -> bool {
+        let r = &self.robots;
+        (0..r.len())
+            .filter(|&i| r.state[i] != RobotState::Crash && r.fault[i] != FaultKind::Byzantine)
+            .all(|i| r.terminated[i])
+    }
+}
+
+fn robot_id(i: usize) -> i32 {
+    i32::try_from(i).unwrap_or(i32::MAX)
+}
+
+fn robot_id_u32(i: usize) -> u32 {
+    u32::try_from(i).unwrap_or(u32::MAX)
+}

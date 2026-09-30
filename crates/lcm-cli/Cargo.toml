@@ -1,0 +1,18 @@
+[package]
+name = "lcm-cli"
+description = "Native runner and benchmark for the LCM core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "lcm"
+path = "src/main.rs"
+
+[dependencies]
+lcm-core = { workspace = true, features = ["serde"] }
+lcm-algorithms.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

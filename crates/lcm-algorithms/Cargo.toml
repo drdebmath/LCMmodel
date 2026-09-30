@@ -1,0 +1,18 @@
+[package]
+name = "lcm-algorithms"
+description = "LCM robot algorithms and the registry that names them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lcm-core.workspace = true
+libm.workspace = true
+
+[dev-dependencies]
+lcm-core = { workspace = true, features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

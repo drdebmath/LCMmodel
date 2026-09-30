@@ -1,0 +1,16 @@
+[package]
+name = "lcm-core"
+description = "Deterministic Look-Compute-Move simulation core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+libm.workspace = true
+serde = { workspace = true, optional = true }
+
+[lints]
+workspace = true
