@@ -512,13 +512,16 @@ def tone(label):
     return "yes" if head == "yes" else "no" if head == "no" else "plain"
 
 
+# Each kind's icon is a small copy of its classic flowchart shape (the same
+# shapes the Mermaid version uses): oval = start or finish, rectangle = step,
+# diamond = question, slanted box = another way this pass ends.
+OVAL = '<rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/>'
 ICONS = {
-    "entry": '<circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-2.2,-3.6 L3.8,0 L-2.2,3.6 Z" class="ic-fg"/>',
-    "step": '<circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/>',
-    "decision": '<rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/>'
-                '<text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text>',
-    "end": '<circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3.2,0.2 L-0.9,2.6 L3.4,-2.4" class="ic-line"/>',
-    "out": '<circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3,0 H3 M0.6,-2.6 L3,0 L0.6,2.6" class="ic-line"/>',
+    "entry": OVAL,
+    "step": '<rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/>',
+    "decision": '<path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/>',
+    "end": OVAL,
+    "out": '<path d="M-4.3,-4.8 H8 L4.3,4.8 H-8 Z" class="ic-bg"/>',
 }
 
 
@@ -706,11 +709,11 @@ PAGE = """<!DOCTYPE html>
       __NAV__
       <div class="nav-title">Legend</div>
       <ul class="legend-list">
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-entry">__IC_ENTRY__</svg>Where the chart starts</li>
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-step">__IC_STEP__</svg>A step</li>
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-decision">__IC_DECISION__</svg>A question with branches</li>
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-end">__IC_END__</svg>The run or cycle finishes</li>
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-out">__IC_OUT__</svg>Another way this pass ends</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-entry">__IC_ENTRY__</svg>Oval: where the chart starts</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-step">__IC_STEP__</svg>Rectangle: a step</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-decision">__IC_DECISION__</svg>Diamond: a question with branches</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-end">__IC_END__</svg>Oval: the run or cycle finishes</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-out">__IC_OUT__</svg>Slanted box: another way this pass ends</li>
         <li><span class="tag">&lt;/&gt;</span>Opens the function's code</li>
       </ul>
       <p class="nav-foot">Generated from the source: the code shown is the code that runs.</p>

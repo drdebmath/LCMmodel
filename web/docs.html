@@ -37,11 +37,11 @@
       <a class="nav-item" href="#browser" data-chart="browser"><span class="nav-num">4</span><span><span class="nav-name">In the browser</span><span class="nav-short">Page, worker and Rust core working together</span></span></a>
       <div class="nav-title">Legend</div>
       <ul class="legend-list">
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-entry"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-2.2,-3.6 L3.8,0 L-2.2,3.6 Z" class="ic-fg"/></svg>Where the chart starts</li>
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-step"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></svg>A step</li>
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-decision"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></svg>A question with branches</li>
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-end"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3.2,0.2 L-0.9,2.6 L3.4,-2.4" class="ic-line"/></svg>The run or cycle finishes</li>
-        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-out"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3,0 H3 M0.6,-2.6 L3,0 L0.6,2.6" class="ic-line"/></svg>Another way this pass ends</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-entry"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></svg>Oval: where the chart starts</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-step"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></svg>Rectangle: a step</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-decision"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></svg>Diamond: a question with branches</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-end"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></svg>Oval: the run or cycle finishes</li>
+        <li><svg width="18" height="18" viewBox="-9 -9 18 18" class="k-out"><path d="M-4.3,-4.8 H8 L4.3,4.8 H-8 Z" class="ic-bg"/></svg>Slanted box: another way this pass ends</li>
         <li><span class="tag">&lt;/&gt;</span>Opens the function's code</li>
       </ul>
       <p class="nav-foot">Generated from the source: the code shown is the code that runs.</p>
@@ -88,7 +88,7 @@
 <g class="node k-entry has-code" data-id="adv" tabindex="0" role="button" aria-label="Step 1: Run the simulation">
 <rect class="card" x="538.7" y="31.0" width="212.2" height="56.0" rx="12"/>
 <rect class="bar" x="538.7" y="41.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(560.7,59.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-2.2,-3.6 L3.8,0 L-2.2,3.6 Z" class="ic-fg"/></g>
+<g class="icon" transform="translate(560.7,59.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="578.7" y="50.5" dominant-baseline="middle">Run the simulation</text>
 <text class="sub" x="578.7" y="67.5" dominant-baseline="middle">advance(budget)</text>
 <g class="code-tag" transform="translate(732.9,44.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -96,21 +96,21 @@
 <g class="node k-decision" data-id="lim" tabindex="0" role="button" aria-label="Step 2: Time to stop?">
 <rect class="card" x="520.1" y="125.0" width="249.4" height="56.0" rx="12"/>
 <rect class="bar" x="520.1" y="135.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(542.1,153.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(542.1,153.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="560.1" y="144.5" dominant-baseline="middle">Time to stop?</text>
 <text class="sub" x="560.1" y="161.5" dominant-baseline="middle">ended · limit · budget · time</text>
 </g>
 <g class="node k-out" data-id="ret" tabindex="0" role="button" aria-label="Step 3: Return why it stopped">
 <rect class="card" x="823.4" y="31.0" width="202.9" height="56.0" rx="12"/>
 <rect class="bar" x="823.4" y="41.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(845.4,59.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3,0 H3 M0.6,-2.6 L3,0 L0.6,2.6" class="ic-line"/></g>
+<g class="icon" transform="translate(845.4,59.0)"><path d="M-4.3,-4.8 H8 L4.3,4.8 H-8 Z" class="ic-bg"/></g>
 <text class="title" x="863.4" y="50.5" dominant-baseline="middle">Return why it stopped</text>
 <text class="sub" x="863.4" y="67.5" dominant-baseline="middle">StopReason</text>
 </g>
 <g class="node k-step has-code" data-id="pop" tabindex="0" role="button" aria-label="Step 4: Take the earliest event">
 <rect class="card" x="521.5" y="219.0" width="246.7" height="56.0" rx="12"/>
 <rect class="bar" x="521.5" y="229.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(543.5,247.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(543.5,247.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="561.5" y="238.5" dominant-baseline="middle">Take the earliest event</text>
 <text class="sub" x="561.5" y="255.5" dominant-baseline="middle">step()</text>
 <g class="code-tag" transform="translate(750.2,232.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -118,53 +118,53 @@
 <g class="node k-decision" data-id="emp" tabindex="0" role="button" aria-label="Step 5: Queue empty?">
 <rect class="card" x="556.8" y="315.0" width="176.0" height="52.0" rx="12"/>
 <rect class="bar" x="556.8" y="325.0" width="4" height="32.0" rx="2"/>
-<g class="icon" transform="translate(578.8,341.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(578.8,341.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="596.8" y="341.0" dominant-baseline="middle">Queue empty?</text>
 </g>
 <g class="node k-end" data-id="end1" tabindex="0" role="button" aria-label="Step 6: Ended">
 <rect class="card" x="836.8" y="313.0" width="176.0" height="56.0" rx="12"/>
 <rect class="bar" x="836.8" y="323.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(858.8,341.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3.2,0.2 L-0.9,2.6 L3.4,-2.4" class="ic-line"/></g>
+<g class="icon" transform="translate(858.8,341.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="876.8" y="332.5" dominant-baseline="middle">Ended</text>
 <text class="sub" x="876.8" y="349.5" dominant-baseline="middle">queue empty</text>
 </g>
 <g class="node k-decision" data-id="old" tabindex="0" role="button" aria-label="Step 7: Earlier than the clock?">
 <rect class="card" x="536.5" y="409.0" width="216.7" height="52.0" rx="12"/>
 <rect class="bar" x="536.5" y="419.0" width="4" height="32.0" rx="2"/>
-<g class="icon" transform="translate(558.5,435.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(558.5,435.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="576.5" y="435.0" dominant-baseline="middle">Earlier than the clock?</text>
 </g>
 <g class="node k-out" data-id="ign" tabindex="0" role="button" aria-label="Step 8: Skip the event">
 <rect class="card" x="276.8" y="407.0" width="176.0" height="56.0" rx="12"/>
 <rect class="bar" x="276.8" y="417.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(298.8,435.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3,0 H3 M0.6,-2.6 L3,0 L0.6,2.6" class="ic-line"/></g>
+<g class="icon" transform="translate(298.8,435.0)"><path d="M-4.3,-4.8 H8 L4.3,4.8 H-8 Z" class="ic-bg"/></g>
 <text class="title" x="316.8" y="426.5" dominant-baseline="middle">Skip the event</text>
 <text class="sub" x="316.8" y="443.5" dominant-baseline="middle">clock unchanged</text>
 </g>
 <g class="node k-decision" data-id="vis" tabindex="0" role="button" aria-label="Step 9: Visualize tick?">
 <rect class="card" x="556.8" y="503.0" width="176.0" height="52.0" rx="12"/>
 <rect class="bar" x="556.8" y="513.0" width="4" height="32.0" rx="2"/>
-<g class="icon" transform="translate(578.8,529.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(578.8,529.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="596.8" y="529.0" dominant-baseline="middle">Visualize tick?</text>
 </g>
 <g class="node k-step" data-id="vis2" tabindex="0" role="button" aria-label="Step 10: Schedule the next tick">
 <rect class="card" x="259.9" y="501.0" width="209.8" height="56.0" rx="12"/>
 <rect class="bar" x="259.9" y="511.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(281.9,529.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(281.9,529.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="299.9" y="520.5" dominant-baseline="middle">Schedule the next tick</text>
 <text class="sub" x="299.9" y="537.5" dominant-baseline="middle">t + sampling_rate</text>
 </g>
 <g class="node k-decision" data-id="dead" tabindex="0" role="button" aria-label="Step 11: Robot out of play?">
 <rect class="card" x="518.8" y="595.0" width="252.0" height="56.0" rx="12"/>
 <rect class="bar" x="518.8" y="605.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(540.8,623.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(540.8,623.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="558.8" y="614.5" dominant-baseline="middle">Robot out of play?</text>
 <text class="sub" x="558.8" y="631.5" dominant-baseline="middle">terminated · or crashed, not a crash event</text>
 </g>
 <g class="node k-out has-code" data-id="ign2" tabindex="0" role="button" aria-label="Step 12: Skip the event">
 <rect class="card" x="241.6" y="595.0" width="246.4" height="56.0" rx="12"/>
 <rect class="bar" x="241.6" y="605.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(263.6,623.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3,0 H3 M0.6,-2.6 L3,0 L0.6,2.6" class="ic-line"/></g>
+<g class="icon" transform="translate(263.6,623.0)"><path d="M-4.3,-4.8 H8 L4.3,4.8 H-8 Z" class="ic-bg"/></g>
 <text class="title" x="281.6" y="614.5" dominant-baseline="middle">Skip the event</text>
 <text class="sub" x="281.6" y="631.5" dominant-baseline="middle">crashed ones rescheduled</text>
 <g class="code-tag" transform="translate(470.0,608.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -172,13 +172,13 @@
 <g class="node k-decision" data-id="kind" tabindex="0" role="button" aria-label="Step 13: Which kind of event?">
 <rect class="card" x="546.8" y="691.0" width="196.0" height="52.0" rx="12"/>
 <rect class="bar" x="546.8" y="701.0" width="4" height="32.0" rx="2"/>
-<g class="icon" transform="translate(568.8,717.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(568.8,717.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="586.8" y="717.0" dominant-baseline="middle">Which kind of event?</text>
 </g>
 <g class="node k-step has-code" data-id="look" tabindex="0" role="button" aria-label="Step 14: Look, compute, move">
 <rect class="card" x="255.3" y="783.0" width="219.1" height="56.0" rx="12"/>
 <rect class="bar" x="255.3" y="793.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(277.3,811.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(277.3,811.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="295.3" y="802.5" dominant-baseline="middle">Look, compute, move</text>
 <text class="sub" x="295.3" y="819.5" dominant-baseline="middle">look() · chart 2</text>
 <g class="code-tag" transform="translate(456.4,796.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -186,7 +186,7 @@
 <g class="node k-step has-code" data-id="wait" tabindex="0" role="button" aria-label="Step 15: Finish the move">
 <rect class="card" x="524.9" y="783.0" width="239.8" height="56.0" rx="12"/>
 <rect class="bar" x="524.9" y="793.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(546.9,811.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(546.9,811.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="564.9" y="802.5" dominant-baseline="middle">Finish the move</text>
 <text class="sub" x="564.9" y="819.5" dominant-baseline="middle">wait() · then next LOOK</text>
 <g class="code-tag" transform="translate(746.7,796.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -194,14 +194,14 @@
 <g class="node k-step" data-id="crash" tabindex="0" role="button" aria-label="Step 16: Record the crash">
 <rect class="card" x="836.8" y="783.0" width="176.0" height="56.0" rx="12"/>
 <rect class="bar" x="836.8" y="793.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(858.8,811.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(858.8,811.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="876.8" y="802.5" dominant-baseline="middle">Record the crash</text>
 <text class="sub" x="876.8" y="819.5" dominant-baseline="middle">crash fault</text>
 </g>
 <g class="node k-decision has-code" data-id="glob" tabindex="0" role="button" aria-label="Step 17: Every live robot terminated?">
 <rect class="card" x="531.5" y="868.5" width="226.6" height="73.0" rx="12"/>
 <rect class="bar" x="531.5" y="878.5" width="4" height="53.0" rx="2"/>
-<g class="icon" transform="translate(553.5,905.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(553.5,905.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="571.5" y="888.0" dominant-baseline="middle">Every live robot</text>
 <text class="title" x="571.5" y="905.0" dominant-baseline="middle">terminated?</text>
 <text class="sub" x="571.5" y="922.0" dominant-baseline="middle">globally_terminated()</text>
@@ -210,7 +210,7 @@
 <g class="node k-end" data-id="end2" tabindex="0" role="button" aria-label="Step 18: Ended">
 <rect class="card" x="556.8" y="971.0" width="176.0" height="56.0" rx="12"/>
 <rect class="bar" x="556.8" y="981.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(578.8,999.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3.2,0.2 L-0.9,2.6 L3.4,-2.4" class="ic-line"/></g>
+<g class="icon" transform="translate(578.8,999.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="596.8" y="990.5" dominant-baseline="middle">Ended</text>
 <text class="sub" x="596.8" y="1007.5" dominant-baseline="middle">all terminated</text>
 </g>
@@ -250,7 +250,7 @@
 <g class="node k-entry has-code" data-id="start" tabindex="0" role="button" aria-label="Step 1: Robot activates">
 <rect class="card" x="370.1" y="31.0" width="213.4" height="56.0" rx="12"/>
 <rect class="bar" x="370.1" y="41.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(392.1,59.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-2.2,-3.6 L3.8,0 L-2.2,3.6 Z" class="ic-fg"/></g>
+<g class="icon" transform="translate(392.1,59.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="410.1" y="50.5" dominant-baseline="middle">Robot activates</text>
 <text class="sub" x="410.1" y="67.5" dominant-baseline="middle">LOOK event · look()</text>
 <g class="code-tag" transform="translate(565.5,44.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -258,7 +258,7 @@
 <g class="node k-step has-code" data-id="view" tabindex="0" role="button" aria-label="Step 2: Take a snapshot">
 <rect class="card" x="381.1" y="125.0" width="191.5" height="56.0" rx="12"/>
 <rect class="bar" x="381.1" y="135.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(403.1,153.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(403.1,153.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="421.1" y="144.5" dominant-baseline="middle">Take a snapshot</text>
 <text class="sub" x="421.1" y="161.5" dominant-baseline="middle">build_view()</text>
 <g class="code-tag" transform="translate(554.5,138.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -266,40 +266,40 @@
 <g class="node k-step" data-id="lit" tabindex="0" role="button" aria-label="Step 3: Light turns blue">
 <rect class="card" x="388.8" y="219.0" width="176.0" height="56.0" rx="12"/>
 <rect class="bar" x="388.8" y="229.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(410.8,247.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(410.8,247.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="428.8" y="238.5" dominant-baseline="middle">Light turns blue</text>
 <text class="sub" x="428.8" y="255.5" dominant-baseline="middle">state = Look</text>
 </g>
 <g class="node k-decision" data-id="byz" tabindex="0" role="button" aria-label="Step 4: Byzantine robot?">
 <rect class="card" x="388.8" y="315.0" width="176.0" height="52.0" rx="12"/>
 <rect class="bar" x="388.8" y="325.0" width="4" height="32.0" rx="2"/>
-<g class="icon" transform="translate(410.8,341.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(410.8,341.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="428.8" y="341.0" dominant-baseline="middle">Byzantine robot?</text>
 </g>
 <g class="node k-step" data-id="byzt" tabindex="0" role="button" aria-label="Step 5: Pick an erratic target">
 <rect class="card" x="651.9" y="313.0" width="209.8" height="56.0" rx="12"/>
 <rect class="bar" x="651.9" y="323.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(673.9,341.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(673.9,341.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="691.9" y="332.5" dominant-baseline="middle">Pick an erratic target</text>
 <text class="sub" x="691.9" y="349.5" dominant-baseline="middle">random direction</text>
 </g>
 <g class="node k-decision" data-id="alone" tabindex="0" role="button" aria-label="Step 6: Only itself still active?">
 <rect class="card" x="361.6" y="409.0" width="230.5" height="52.0" rx="12"/>
 <rect class="bar" x="361.6" y="419.0" width="4" height="32.0" rx="2"/>
-<g class="icon" transform="translate(383.6,435.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(383.6,435.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="401.6" y="435.0" dominant-baseline="middle">Only itself still active?</text>
 </g>
 <g class="node k-end" data-id="term1" tabindex="0" role="button" aria-label="Step 7: Terminate">
 <rect class="card" x="108.4" y="407.0" width="176.8" height="56.0" rx="12"/>
 <rect class="bar" x="108.4" y="417.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(130.4,435.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3.2,0.2 L-0.9,2.6 L3.4,-2.4" class="ic-line"/></g>
+<g class="icon" transform="translate(130.4,435.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="148.4" y="426.5" dominant-baseline="middle">Terminate</text>
 <text class="sub" x="148.4" y="443.5" dominant-baseline="middle">nobody left to see</text>
 </g>
 <g class="node k-step has-code" data-id="comp" tabindex="0" role="button" aria-label="Step 8: Algorithm computes a target">
 <rect class="card" x="363.8" y="492.5" width="226.0" height="73.0" rx="12"/>
 <rect class="bar" x="363.8" y="502.5" width="4" height="53.0" rx="2"/>
-<g class="icon" transform="translate(385.8,529.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(385.8,529.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="403.8" y="512.0" dominant-baseline="middle">Algorithm computes a</text>
 <text class="title" x="403.8" y="529.0" dominant-baseline="middle">target</text>
 <text class="sub" x="403.8" y="546.0" dominant-baseline="middle">compute() · chart 3</text>
@@ -308,27 +308,27 @@
 <g class="node k-decision" data-id="tdec" tabindex="0" role="button" aria-label="Step 9: Algorithm says terminate?">
 <rect class="card" x="361.6" y="597.0" width="230.5" height="52.0" rx="12"/>
 <rect class="bar" x="361.6" y="607.0" width="4" height="32.0" rx="2"/>
-<g class="icon" transform="translate(383.6,623.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(383.6,623.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="401.6" y="623.0" dominant-baseline="middle">Algorithm says terminate?</text>
 </g>
 <g class="node k-end" data-id="term2" tabindex="0" role="button" aria-label="Step 10: Terminate">
 <rect class="card" x="108.8" y="595.0" width="176.0" height="56.0" rx="12"/>
 <rect class="bar" x="108.8" y="605.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(130.8,623.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3.2,0.2 L-0.9,2.6 L3.4,-2.4" class="ic-line"/></g>
+<g class="icon" transform="translate(130.8,623.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="148.8" y="614.5" dominant-baseline="middle">Terminate</text>
 <text class="sub" x="148.8" y="631.5" dominant-baseline="middle">for good</text>
 </g>
 <g class="node k-decision" data-id="frz" tabindex="0" role="button" aria-label="Step 11: Skip, or already there?">
 <rect class="card" x="355.4" y="689.0" width="242.8" height="56.0" rx="12"/>
 <rect class="bar" x="355.4" y="699.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(377.4,717.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(377.4,717.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="395.4" y="708.5" dominant-baseline="middle">Skip, or already there?</text>
 <text class="sub" x="395.4" y="725.5" dominant-baseline="middle">omission ½ · target within ε</text>
 </g>
 <g class="node k-out has-code" data-id="frozen" tabindex="0" role="button" aria-label="Step 12: Stay put, look again later">
 <rect class="card" x="63.1" y="689.0" width="267.4" height="56.0" rx="12"/>
 <rect class="bar" x="63.1" y="699.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(85.1,717.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3,0 H3 M0.6,-2.6 L3,0 L0.6,2.6" class="ic-line"/></g>
+<g class="icon" transform="translate(85.1,717.0)"><path d="M-4.3,-4.8 H8 L4.3,4.8 H-8 Z" class="ic-bg"/></g>
 <text class="title" x="103.1" y="708.5" dominant-baseline="middle">Stay put, look again later</text>
 <text class="sub" x="103.1" y="725.5" dominant-baseline="middle">frozen</text>
 <g class="code-tag" transform="translate(312.5,702.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -336,7 +336,7 @@
 <g class="node k-step has-code" data-id="mv" tabindex="0" role="button" aria-label="Step 13: Start moving">
 <rect class="card" x="353.6" y="783.0" width="246.4" height="56.0" rx="12"/>
 <rect class="bar" x="353.6" y="793.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(375.6,811.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(375.6,811.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="393.6" y="802.5" dominant-baseline="middle">Start moving</text>
 <text class="sub" x="393.6" y="819.5" dominant-baseline="middle">begin_move() · light red</text>
 <g class="code-tag" transform="translate(582.0,796.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -344,27 +344,27 @@
 <g class="node k-decision" data-id="sub" tabindex="0" role="button" aria-label="Step 14: Arrival later than now?">
 <rect class="card" x="368.4" y="879.0" width="216.7" height="52.0" rx="12"/>
 <rect class="bar" x="368.4" y="889.0" width="4" height="32.0" rx="2"/>
-<g class="icon" transform="translate(390.4,905.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(390.4,905.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="408.4" y="905.0" dominant-baseline="middle">Arrival later than now?</text>
 </g>
 <g class="node k-out" data-id="subt" tabindex="0" role="button" aria-label="Step 15: Finish the tiny move now">
 <rect class="card" x="85.0" y="877.0" width="223.6" height="56.0" rx="12"/>
 <rect class="bar" x="85.0" y="887.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(107.0,905.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3,0 H3 M0.6,-2.6 L3,0 L0.6,2.6" class="ic-line"/></g>
+<g class="icon" transform="translate(107.0,905.0)"><path d="M-4.3,-4.8 H8 L4.3,4.8 H-8 Z" class="ic-bg"/></g>
 <text class="title" x="125.0" y="896.5" dominant-baseline="middle">Finish the tiny move now</text>
 <text class="sub" x="125.0" y="913.5" dominant-baseline="middle">look again later</text>
 </g>
 <g class="node k-step" data-id="sched" tabindex="0" role="button" aria-label="Step 16: Schedule WAIT at arrival">
 <rect class="card" x="365.0" y="971.0" width="223.6" height="56.0" rx="12"/>
 <rect class="bar" x="365.0" y="981.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(387.0,999.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(387.0,999.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="405.0" y="990.5" dominant-baseline="middle">Schedule WAIT at arrival</text>
 <text class="sub" x="405.0" y="1007.5" dominant-baseline="middle">t + distance / speed</text>
 </g>
 <g class="node k-end has-code" data-id="arr" tabindex="0" role="button" aria-label="Step 17: Arrive">
 <rect class="card" x="336.8" y="1065.0" width="280.0" height="56.0" rx="12"/>
 <rect class="bar" x="336.8" y="1075.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(358.8,1093.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3.2,0.2 L-0.9,2.6 L3.4,-2.4" class="ic-line"/></g>
+<g class="icon" transform="translate(358.8,1093.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="376.8" y="1084.5" dominant-baseline="middle">Arrive</text>
 <text class="sub" x="376.8" y="1101.5" dominant-baseline="middle">wait() · light green · next LOOK</text>
 <g class="code-tag" transform="translate(598.8,1078.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -390,7 +390,7 @@
 <g class="node k-entry has-code" data-id="a" tabindex="0" role="button" aria-label="Step 1: Compute">
 <rect class="card" x="366.8" y="31.0" width="220.0" height="56.0" rx="12"/>
 <rect class="bar" x="366.8" y="41.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(388.8,59.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-2.2,-3.6 L3.8,0 L-2.2,3.6 Z" class="ic-fg"/></g>
+<g class="icon" transform="translate(388.8,59.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="406.8" y="50.5" dominant-baseline="middle">Compute</text>
 <text class="sub" x="406.8" y="67.5" dominant-baseline="middle">Gathering::compute()</text>
 <g class="code-tag" transform="translate(568.8,44.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -398,28 +398,28 @@
 <g class="node k-step" data-id="b" tabindex="0" role="button" aria-label="Step 2: Average of visible robots">
 <rect class="card" x="361.6" y="125.0" width="230.5" height="56.0" rx="12"/>
 <rect class="bar" x="361.6" y="135.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(383.6,153.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(383.6,153.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="401.6" y="144.5" dominant-baseline="middle">Average of visible robots</text>
 <text class="sub" x="401.6" y="161.5" dominant-baseline="middle">crashed ones included</text>
 </g>
 <g class="node k-decision" data-id="c" tabindex="0" role="button" aria-label="Step 3: All live robots within ε?">
 <rect class="card" x="361.6" y="219.0" width="230.5" height="56.0" rx="12"/>
 <rect class="bar" x="361.6" y="229.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(383.6,247.0)"><rect x="-5.3" y="-5.3" width="10.6" height="10.6" rx="2" transform="rotate(45)" class="ic-bg"/><text x="0" y="0.5" class="ic-q" dominant-baseline="middle">?</text></g>
+<g class="icon" transform="translate(383.6,247.0)"><path d="M0,-7.2 L7.2,0 L0,7.2 L-7.2,0 Z" class="ic-bg"/></g>
 <text class="title" x="401.6" y="238.5" dominant-baseline="middle">All live robots within ε?</text>
 <text class="sub" x="401.6" y="255.5" dominant-baseline="middle">ε = 10^-precision</text>
 </g>
 <g class="node k-end" data-id="d" tabindex="0" role="button" aria-label="Step 4: Terminate">
 <rect class="card" x="108.8" y="313.0" width="176.0" height="56.0" rx="12"/>
 <rect class="bar" x="108.8" y="323.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(130.8,341.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3.2,0.2 L-0.9,2.6 L3.4,-2.4" class="ic-line"/></g>
+<g class="icon" transform="translate(130.8,341.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="148.8" y="332.5" dominant-baseline="middle">Terminate</text>
 <text class="sub" x="148.8" y="349.5" dominant-baseline="middle">gathered</text>
 </g>
 <g class="node k-out" data-id="e" tabindex="0" role="button" aria-label="Step 5: Move to the average">
 <rect class="card" x="662.3" y="313.0" width="189.1" height="56.0" rx="12"/>
 <rect class="bar" x="662.3" y="323.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(684.3,341.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3,0 H3 M0.6,-2.6 L3,0 L0.6,2.6" class="ic-line"/></g>
+<g class="icon" transform="translate(684.3,341.0)"><path d="M-4.3,-4.8 H8 L4.3,4.8 H-8 Z" class="ic-bg"/></g>
 <text class="title" x="702.3" y="332.5" dominant-baseline="middle">Move to the average</text>
 <text class="sub" x="702.3" y="349.5" dominant-baseline="middle">target = average</text>
 </g>
@@ -448,7 +448,7 @@
 <g class="node k-entry has-code" data-id="raf" tabindex="0" role="button" aria-label="Step 1: Every screen frame">
 <rect class="card" x="90.7" y="49.0" width="212.2" height="56.0" rx="12"/>
 <rect class="bar" x="90.7" y="59.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(112.7,77.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-2.2,-3.6 L3.8,0 L-2.2,3.6 Z" class="ic-fg"/></g>
+<g class="icon" transform="translate(112.7,77.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="130.7" y="68.5" dominant-baseline="middle">Every screen frame</text>
 <text class="sub" x="130.7" y="85.5" dominant-baseline="middle">startPulling()</text>
 <g class="code-tag" transform="translate(284.9,62.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -456,7 +456,7 @@
 <g class="node k-step has-code" data-id="ask" tabindex="0" role="button" aria-label="Step 2: Ask for the latest frame">
 <rect class="card" x="70.0" y="143.0" width="253.6" height="56.0" rx="12"/>
 <rect class="bar" x="70.0" y="153.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(92.0,171.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(92.0,171.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="110.0" y="162.5" dominant-baseline="middle">Ask for the latest frame</text>
 <text class="sub" x="110.0" y="179.5" dominant-baseline="middle">requestFrame()</text>
 <g class="code-tag" transform="translate(305.6,156.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -464,7 +464,7 @@
 <g class="node k-entry has-code" data-id="slice" tabindex="0" role="button" aria-label="Step 3: Simulate for ~6 ms">
 <rect class="card" x="370.7" y="49.0" width="212.2" height="56.0" rx="12"/>
 <rect class="bar" x="370.7" y="59.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(392.7,77.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-2.2,-3.6 L3.8,0 L-2.2,3.6 Z" class="ic-fg"/></g>
+<g class="icon" transform="translate(392.7,77.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="410.7" y="68.5" dominant-baseline="middle">Simulate for ~6 ms</text>
 <text class="sub" x="410.7" y="85.5" dominant-baseline="middle">slice()</text>
 <g class="code-tag" transform="translate(564.9,62.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -472,7 +472,7 @@
 <g class="node k-step has-code" data-id="adv" tabindex="0" role="button" aria-label="Step 4: Handle events">
 <rect class="card" x="650.1" y="49.0" width="213.4" height="56.0" rx="12"/>
 <rect class="bar" x="650.1" y="59.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(672.1,77.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(672.1,77.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="690.1" y="68.5" dominant-baseline="middle">Handle events</text>
 <text class="sub" x="690.1" y="85.5" dominant-baseline="middle">advance() · chart 1</text>
 <g class="code-tag" transform="translate(845.5,62.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -480,7 +480,7 @@
 <g class="node k-step has-code" data-id="post" tabindex="0" role="button" aria-label="Step 5: Send the frame">
 <rect class="card" x="384.5" y="237.0" width="184.6" height="56.0" rx="12"/>
 <rect class="bar" x="384.5" y="247.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(406.5,265.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(406.5,265.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="424.5" y="256.5" dominant-baseline="middle">Send the frame</text>
 <text class="sub" x="424.5" y="273.5" dominant-baseline="middle">postFrame()</text>
 <g class="code-tag" transform="translate(551.1,250.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -488,7 +488,7 @@
 <g class="node k-step has-code" data-id="fill" tabindex="0" role="button" aria-label="Step 6: Fill the arrays">
 <rect class="card" x="661.1" y="237.0" width="191.5" height="56.0" rx="12"/>
 <rect class="bar" x="661.1" y="247.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(683.1,265.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(683.1,265.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="701.1" y="256.5" dominant-baseline="middle">Fill the arrays</text>
 <text class="sub" x="701.1" y="273.5" dominant-baseline="middle">fill_frame()</text>
 <g class="code-tag" transform="translate(834.6,250.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -496,7 +496,7 @@
 <g class="node k-step has-code" data-id="draw" tabindex="0" role="button" aria-label="Step 7: Draw the swarm">
 <rect class="card" x="83.5" y="331.0" width="226.6" height="56.0" rx="12"/>
 <rect class="bar" x="83.5" y="341.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(105.5,359.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><circle cx="0" cy="0" r="2.6" class="ic-fg"/></g>
+<g class="icon" transform="translate(105.5,359.0)"><rect x="-7" y="-4.8" width="14" height="9.6" rx="1" class="ic-bg"/></g>
 <text class="title" x="123.5" y="350.5" dominant-baseline="middle">Draw the swarm</text>
 <text class="sub" x="123.5" y="367.5" dominant-baseline="middle">draw() · CPU Canvas2D</text>
 <g class="code-tag" transform="translate(292.1,344.0)"><rect x="-12" y="-8" width="24" height="16" rx="5"/><text x="0" y="0.5" dominant-baseline="middle">&lt;/&gt;</text></g>
@@ -504,7 +504,7 @@
 <g class="node k-end" data-id="stats" tabindex="0" role="button" aria-label="Step 8: Update stats and legend">
 <rect class="card" x="88.5" y="425.0" width="216.7" height="56.0" rx="12"/>
 <rect class="bar" x="88.5" y="435.0" width="4" height="36.0" rx="2"/>
-<g class="icon" transform="translate(110.5,453.0)"><circle cx="0" cy="0" r="7" class="ic-bg"/><path d="M-3.2,0.2 L-0.9,2.6 L3.4,-2.4" class="ic-line"/></g>
+<g class="icon" transform="translate(110.5,453.0)"><rect x="-7.5" y="-4.5" width="15" height="9" rx="4.5" class="ic-bg"/></g>
 <text class="title" x="128.4" y="444.5" dominant-baseline="middle">Update stats and legend</text>
 <text class="sub" x="128.4" y="461.5" dominant-baseline="middle">a few times a second</text>
 </g>
