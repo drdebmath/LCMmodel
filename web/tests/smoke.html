@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>LCM worker smoke test</title>
+<script type="module">
+// Drives web/worker.js the way app.js does (play, then pull frames), for a fixed wall time, then
+// reports what arrived. Run by scripts/browser-smoke.py in headless Chrome.
+const N = Number(new URLSearchParams(location.search).get("robots") ?? 10000);
+const SECONDS = Number(new URLSearchParams(location.search).get("seconds") ?? 5);
+const worker = new Worker(new URL("../worker.js", import.meta.url), { type: "module" });
+const result = { robots: N, frames: 0, errors: [], maxMainThreadGapMs: 0 };
+let t0 = 0, first = null, lastTick = performance.now();
+setInterval(() => {                       // main-thread responsiveness probe
+  const now = performance.now();
+  result.maxMainThreadGapMs = Math.max(result.maxMainThreadGapMs, now - lastTick);
+  lastTick = now;
+}, 10);
+const report = () => fetch("/__result", { method: "POST", body: JSON.stringify(result) });
+worker.onerror = (e) => { result.errors.push(`worker: ${e.message}`); report(); };
+worker.onmessage = ({ data }) => {
+  if (data.type === "error") { result.errors.push(data.message); report(); return; }
+  if (data.type === "ready") {
+    result.algorithms = data.algorithms.map((a) => a.key);
+    t0 = performance.now();
+    worker.postMessage({ type: "start", config: { algorithm: "Gathering", num_of_robots: N, random_seed: 1 } });
+    worker.postMessage({ type: "play" });
+    return;
+  }
+  if (data.type !== "frame") return;
+  result.frames++;
+  first ??= data;
+  const checks = [
+    ["xy", data.xy.length === 2 * N], ["flags", data.flags.length === N], ["light", data.light.length === N],
+    ["target", data.target.length === 2 * N], ["circle", data.circle.length === 3 * N],
+    ["finite xy", data.xy.every(Number.isFinite)],
+  ];
+  for (const [name, ok] of checks) if (!ok && !result.errors.includes(name)) result.errors.push(`bad ${name}`);
+  const elapsed = (performance.now() - t0) / 1000;
+  if (elapsed >= SECONDS || data.stop !== "running") {
+    Object.assign(result, {
+      seconds: elapsed, events: data.events, simTime: data.time, terminated: data.terminated,
+      eventsPerSecond: Math.round(data.events / elapsed), framesPerSecond: +(result.frames / elapsed).toFixed(1),
+      workerBusy: +data.busy.toFixed(2), stop: data.stop,
+      firstXY: Array.from(first.xy.slice(0, 4)),
+    });
+    report();
+    return;
+  }
+  requestAnimationFrame(() => worker.postMessage({ type: "frame" }));
+};
+worker.postMessage({ type: "hello" });
+</script>

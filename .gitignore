@@ -15,6 +15,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!scripts/lib/
 lib64/
 parts/
 sdist/
@@ -117,4 +118,4 @@ venv.bak/
 
 logs/
 
-llm.txt
+llm.txt/target

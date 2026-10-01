@@ -103,7 +103,7 @@ zoomOutBtn.addEventListener("click", () => applyZoom(1 / ZOOM_STEP));
 
 /* -------- Pyodide bootstrap (CDN first, vendored local fallback) -- */
 const PYODIDE_CDN   = "https://cdn.jsdelivr.net/pyodide/v0.27.5/full/";
-const PYODIDE_LOCAL = "./pyodide/";
+const PYODIDE_LOCAL = new URL("./pyodide/", document.baseURI).href; // absolute, so it also works from /old/
 
 function injectScript(src) {
   return new Promise((resolve, reject) => {
