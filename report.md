@@ -1,7 +1,7 @@
 # LCM Simulator: Rust + WebAssembly Port — Progress Report
 
 **Dates:** 29 September – 1 October 2026
-**Repository:** LCMmodel (clone of `github.com/drdebmath/LCMmodel`), branch `rust-core`, on the fork `github.com/imstillsamarth/LCMmodel` (nothing sent to the original repository). Live: <https://imstillsamarth.github.io/LCMmodel/> (original page: `/old/`)
+**Repository:** LCMmodel (`github.com/drdebmath/LCMmodel`), branch `rust-core`. Live preview: <https://imstillsamarth.github.io/LCMmodel/> (original page: `/old/`)
 **Goal:** Port the Look-Compute-Move robot simulator from Python/Pyodide to Rust compiled to WebAssembly, so that around **10,000 robots can be simulated entirely in the browser on the CPU (no GPU)**, **without changing the original math**, as the base for a one-stop simulator for many algorithms.
 
 ---
