@@ -5,7 +5,7 @@
 // the GPU is disabled, so drawing is CPU-only.
 import { spawn, execSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 
@@ -14,7 +14,9 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/ja
   ".wasm": "application/wasm", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml" };
 
 const server = createServer((req, res) => {
-  const path = normalize(join(ROOT, decodeURIComponent(new URL(req.url, "http://x").pathname)));
+  let path = normalize(join(ROOT, decodeURIComponent(new URL(req.url, "http://x").pathname)));
+  // A folder serves its index.html, as GitHub Pages does.
+  if (path.startsWith(ROOT) && existsSync(path) && statSync(path).isDirectory()) path = join(path, "index.html");
   if (!path.startsWith(ROOT) || !existsSync(path)) { res.writeHead(404).end(); return; }
   res.writeHead(200, { "content-type": TYPES[extname(path)] ?? "application/octet-stream" }).end(readFileSync(path));
 });

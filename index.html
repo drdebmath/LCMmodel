@@ -1,216 +1,131 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Asynchronous Simulator</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LCM Simulator</title>
+  <meta name="description" content="Look-Compute-Move robot swarm simulator running a Rust core in your browser.">
   <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            dark: { bg: '#1a202c', text: '#e2e8f0' },
-          },
-        },
-      },
-    };
+    // Theme before first paint: "system" (default), "light" or "dark".
+    (() => {
+      let t = "system";
+      try { t = localStorage.getItem("lcm-theme") || "system"; } catch {}
+      if (t !== "system") document.documentElement.dataset.theme = t;
+    })();
   </script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
-  <!-- Pyodide is loaded by main.js: CDN first, vendored ./pyodide/ as fallback -->
+  <link rel="stylesheet" href="web/styles.css">
 </head>
-<body class="font-inter bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-50">
-  <div id="app" class="flex h-screen overflow-hidden">
-    <aside id="control-panel" class="w-80 max-w-full shrink-0 overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-4 space-y-6 fixed inset-y-0 left-0 z-20 transform transition-transform duration-300 md:static md:transform-none hidden md:block">
-      <div class="flex justify-end mb-4">
-        <a href="https://drdebmath.github.io/" class="px-4 py-1.5 rounded bg-blue-600 text-white font-medium hover:bg-blue-700">Home</a>
-      </div>
-      <header class="space-y-1">
-        <h2 class="flex items-center text-lg font-semibold gap-1">
-          <span class="material-icons-outlined text-base">tune</span>
-          Controls
-        </h2>
-        <p id="status" class="text-sm text-gray-500 dark:text-gray-400">Loading Pyodide…</p>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input id="darkModeToggle" type="checkbox" class="sr-only peer">
-          <div class="w-10 h-5 bg-gray-300 rounded-full peer-checked:bg-blue-600
-                      after:content-[''] after:absolute after:top-0.5 after:left-1
-                      after:w-4 after:h-4 after:bg-white after:rounded-full
-                      after:transition-all peer-checked:after:translate-x-5"></div>
-          <span class="ml-2 text-sm">Dark Mode</span>
-        </label>
-      </header>
-      <section class="space-y-4">
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">Algorithm</span>
-          <select id="algorithm"
-                  class="rounded border-gray-300 bg-white text-gray-900
-                         dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100
-                         text-sm p-1.5 focus:ring-blue-500 focus:border-blue-500">
-            <option value="Gathering" selected>Center of Gravity</option>
-            <option value="SEC">Smallest Enclosing Circle</option>
-            <option value="GoToCenter">Go-To-Center (limited visibility)</option>
-            <option value="CircleFormation">Uniform Circle Formation</option>
-            <option value="Spreading">Spreading / Coverage (Lloyd)</option>
-            <option value="PatternFormation">Pattern Formation (star)</option>
-            <option value="TwoTask">Two Tasks</option>
-          </select>
-        </label>
+<body>
+  <div id="stage"><canvas id="canvas" aria-label="Simulation view"></canvas></div>
 
-        <label class="flex items-center gap-2 text-sm font-medium">
-          Robots
-          <input id="num_robots" type="range" min="1" max="50" value="5" class="flex-1 accent-blue-600">
-          <output id="num_robots_val">5</output>
-        </label>
-
-        <label class="flex items-center gap-2 text-sm font-medium">
-          Speed
-          <input id="robot_speed" type="range" min="0.1" max="10" step="0.1" value="1.0" class="flex-1 accent-blue-600">
-          <output id="robot_speed_val">1.0</output>
-        </label>
-
-        <label class="flex items-center gap-2 text-sm font-medium">
-          Visibility
-          <input id="visibility_radius" type="range" min="10" max="1000" step="10" value="150" class="flex-1 accent-blue-600">
-          <output id="visibility_radius_val">150</output>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input id="infinite_visibility" type="checkbox" class="sr-only peer" checked>
-            <div class="w-10 h-5 bg-gray-300 rounded-full peer-checked:bg-blue-600
-                        after:content-[''] after:absolute after:top-0.5 after:left-1
-                        after:w-4 after:h-4 after:bg-white after:rounded-full
-                        after:transition-all peer-checked:after:translate-x-5"></div>
-            <span class="ml-2 text-sm">Inf</span>
-          </label>
-        </label>
-
-        <label class="flex items-center gap-2 text-sm font-medium">
-          Faulty
-          <input id="num_faults" type="range" min="0" max="10" step="1" value="0" class="flex-1 accent-blue-600">
-          <output id="num_faults_val">0</output>
-        </label>
-
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">Fault type</span>
-          <select id="fault_type"
-                  class="rounded border-gray-300 bg-white text-gray-900
-                         dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100
-                         text-sm p-1.5 focus:ring-blue-500 focus:border-blue-500">
-            <option value="crash" selected>Crash (stops)</option>
-            <option value="byzantine">Byzantine (adversarial)</option>
-            <option value="omission">Omission (skips moves)</option>
-            <option value="delay">Delay (sluggish)</option>
-            <option value="mixed">Mixed</option>
-          </select>
-        </label>
-
-        <label class="inline-flex items-center gap-3 text-sm font-medium">
-          <input id="rigid_movement" type="checkbox" checked
-                 class="h-4 w-4 text-blue-600 border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700">
-          Rigid movement
-        </label>
-
-        <label class="inline-flex items-center gap-3 text-sm font-medium">
-          <input id="show_lights" type="checkbox"
-                 class="h-4 w-4 text-blue-600 border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700">
-          Show lights (luminous robots)
-        </label>
-
-        <h3 class="pt-2 font-semibold">Environment</h3>
-
-        <label class="flex items-center gap-2 text-sm font-medium">
-          World W
-          <input id="width_bound" type="range" min="50" max="1000" step="10" value="600" class="flex-1 accent-blue-600">
-          <output id="width_bound_val">600</output>
-        </label>
-
-        <label class="flex items-center gap-2 text-sm font-medium">
-          World H
-          <input id="height_bound" type="range" min="50" max="1000" step="10" value="600" class="flex-1 accent-blue-600">
-          <output id="height_bound_val">600</output>
-        </label>
-
-        <label class="flex items-center gap-2 text-sm font-medium">
-          λ (rate)
-          <input id="lambda_rate" type="range" min="0.1" max="20" step="0.1" value="5.0" class="flex-1 accent-blue-600">
-          <output id="lambda_rate_val">5.0</output>
-        </label>
-
-        <label class="flex items-center gap-2 text-sm font-medium">
-          Samples
-          <input id="sampling_rate" type="range" min="0.05" max="1" step="0.05" value="0.1" class="flex-1 accent-blue-600">
-          <output id="sampling_rate_val">0.1</output>
-        </label>
-
-        <label class="flex items-center gap-2 text-sm font-medium">
-          Precision 1e-
-          <input id="threshold_precision" type="range" min="2" max="10" step="1" value="5" class="flex-1 accent-blue-600">
-          <output id="threshold_precision_val">5</output>
-        </label>
-
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">Random seed</span>
-          <input id="random_seed" type="number" value="12345"
-                 class="rounded border-gray-300 p-1.5 text-sm w-full dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
-        </label>
-
-        <div class="flex gap-3 pt-2">
-          <button id="start_button" disabled
-                  class="px-4 py-1.5 rounded bg-blue-600 text-white font-medium
-                         dark:bg-blue-500 dark:text-gray-100 disabled:opacity-50">
-            Start
-          </button>
-          <button id="stop_button" disabled
-                  class="px-4 py-1.5 rounded border border-gray-300 dark:border-gray-600
-                         text-gray-800 dark:text-gray-100 disabled:opacity-50">
-            Stop
-          </button>
-        </div>
-
-        <div id="legend" class="space-y-1 text-sm text-gray-600 dark:text-gray-300"></div>
-        <p id="sim_time"    class="text-sm text-gray-600 dark:text-gray-300"></p>
-        <p id="sim_message" class="text-sm font-medium text-gray-700 dark:text-gray-200"></p>
-      </section>
-    </aside>
-    <main id="visualization" class="flex-1 relative bg-gray-100 dark:bg-gray-800">
-      <button id="toggle-controls" class="md:hidden fixed top-4 left-4 z-30 w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow">
-        <span class="material-icons-outlined">menu</span>
-      </button>
-      <div class="overflow-auto w-full h-full">
-        <canvas id="canvas" width="800" height="800" class="block border border-gray-300 dark:border-gray-600"></canvas>
-      </div>
-      <div class="absolute bottom-4 left-4 flex flex-col gap-2">
-        <button id="zoom_in_btn"
-                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold
-                       dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600">＋</button>
-        <button id="zoom_out_btn"
-                class="w-10 h-10 rounded-full bg-white shadow border text-lg font-semibold
-                       dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600">－</button>
-      </div>
-    </main>
+  <!-- Toolbar -->
+  <div id="toolbar" class="panel keep" role="toolbar" aria-label="Simulation controls">
+    <div class="brand"><span data-icon="logo" data-size="20"></span><span>LCM</span></div>
+    <select id="algorithm" aria-label="Algorithm" title="Algorithm"></select>
+    <div class="divider"></div>
+    <button id="play" class="btn primary" title="Play (Space)" aria-label="Play"><span data-icon="play"></span><span class="label">Play</span></button>
+    <button id="step_event" class="btn" title="Step one event (→)" aria-label="Step one event"><span data-icon="stepEvent"></span></button>
+    <button id="step_time" class="btn" title="Step one time unit (Shift + →)" aria-label="Step one time unit"><span data-icon="stepTime"></span></button>
+    <button id="reset" class="btn" title="Reset with current settings (R)" aria-label="Reset"><span data-icon="reset"></span><span class="label">Reset</span></button>
+    <select id="playback" aria-label="Playback speed" title="Simulated time per second">
+      <option value="1">1×</option>
+      <option value="5">5×</option>
+      <option value="20" selected>20×</option>
+      <option value="100">100×</option>
+      <option value="Infinity">Max</option>
+    </select>
+    <div class="divider"></div>
+    <button id="toggle_settings" class="btn" aria-pressed="true" title="Settings (S)" aria-label="Settings"><span data-icon="sliders"></span></button>
+    <div class="divider"></div>
+    <a id="docs_link" class="btn" href="web/docs.html" title="How it works: interactive flowcharts of the simulator"><span data-icon="book"></span><span class="label">How it works</span></a>
   </div>
-  <script defer src="main.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const saved = localStorage.getItem('darkMode');
-      const html  = document.documentElement;
-      const dark  = saved === 'true';
-      html.classList.toggle('dark', dark);
-      const toggle = document.getElementById('darkModeToggle');
-      toggle.checked = dark;
-      toggle.addEventListener('click', () => {
-        const nowDark = !html.classList.contains('dark');
-        html.classList.toggle('dark', nowDark);
-        localStorage.setItem('darkMode', nowDark.toString());
-      });
 
-      const controlPanel = document.getElementById('control-panel');
-      const toggleButton = document.getElementById('toggle-controls');
-      toggleButton.addEventListener('click', () => {
-        controlPanel.classList.toggle('hidden');
-      });
-    });
-  </script>
+  <!-- Settings -->
+  <section id="settings" class="panel" aria-label="Settings">
+    <div class="panel-head">
+      <h2>Settings</h2>
+      <span class="spacer"></span>
+      <span id="dirty" class="badge warn" hidden title="The running simulation still uses the old settings">Reset to apply</span>
+    </div>
+    <div id="settings_body" class="panel-body"></div>
+    <div class="panel-foot">
+      <span>Changes restart a new run.</span>
+      <button id="defaults" class="btn small outline">Defaults</button>
+    </div>
+  </section>
+
+  <!-- HUD -->
+  <section id="hud" class="panel" aria-label="Simulation status" aria-live="polite">
+    <div class="hud-row"><span class="k">Time</span><span id="hud_status" class="hud-status">Loading…</span></div>
+    <div id="hud_time" class="hud-time">0.00</div>
+    <div class="hud-row"><span class="k">Terminated</span><span class="v" id="hud_term">0 / 0</span></div>
+    <div class="progress" aria-hidden="true"><div id="hud_bar"></div></div>
+    <div class="hud-row"><span class="k">Events</span><span class="v" id="hud_events">0</span></div>
+    <div class="hud-row"><span class="k">Events / s</span><span class="v" id="hud_rate">—</span></div>
+    <div id="hud_last" class="last-event" hidden></div>
+    <div id="hud_perf" class="hud-perf">—</div>
+  </section>
+
+  <!-- Inspector -->
+  <section id="inspector" class="panel" hidden aria-label="Selected robot">
+    <h3><span data-field="title">Robot</span><span data-field="status"></span><span class="spacer"></span>
+      <button class="btn small" data-action="center" title="Center view on this robot" aria-label="Center view"><span data-icon="target" data-size="15"></span></button>
+      <button class="btn small" data-action="close" title="Close (Esc)" aria-label="Close"><span data-icon="close" data-size="15"></span></button>
+    </h3>
+    <dl></dl>
+  </section>
+
+  <!-- Legend -->
+  <div id="legend" class="panel" aria-label="Legend"></div>
+
+  <!-- View tools -->
+  <div id="tools" class="panel" role="toolbar" aria-label="View">
+    <button id="zoom_in" class="btn" title="Zoom in (+)" aria-label="Zoom in"><span data-icon="plus"></span></button>
+    <button id="zoom_out" class="btn" title="Zoom out (−)" aria-label="Zoom out"><span data-icon="minus"></span></button>
+    <button id="fit" class="btn" title="Fit the world in view (F)" aria-label="Fit the world in view"><span data-icon="fit"></span></button>
+    <button id="fullscreen" class="btn" title="Full screen (Shift + F)" aria-label="Full screen" aria-pressed="false"><span data-icon="fullscreen"></span></button>
+    <button id="lights" class="btn" aria-pressed="false" title="Show lights (L)" aria-label="Show lights"><span data-icon="light"></span></button>
+    <button id="export" class="btn" title="Export" aria-label="Export" aria-haspopup="menu"><span data-icon="download"></span></button>
+    <button id="theme" class="btn" title="Theme (T)" aria-label="Theme"><span data-icon="moon"></span></button>
+    <button id="help" class="btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><span data-icon="keyboard"></span></button>
+  </div>
+
+  <div id="export_menu" class="panel menu" role="menu" hidden>
+    <button class="btn" role="menuitem" data-export="png"><span data-icon="image"></span>Image of the view (PNG)</button>
+    <button class="btn" role="menuitem" data-export="csv"><span data-icon="table"></span>Robot data (CSV)</button>
+  </div>
+
+  <div id="tip" hidden></div>
+  <div id="toast" hidden role="status"></div>
+
+  <div id="loading" class="overlay plain">
+    <div class="panel dialog"><div class="loading"><span class="spinner"></span><span id="loading_text">Starting the Rust core…</span></div></div>
+  </div>
+
+  <div id="shortcuts" class="overlay" hidden>
+    <div class="panel dialog" role="dialog" aria-modal="true" aria-labelledby="shortcuts_title">
+      <button class="btn small close" data-action="close" aria-label="Close"><span data-icon="close" data-size="15"></span></button>
+      <h2 id="shortcuts_title">Keyboard shortcuts</h2>
+      <div class="keys">
+        <span class="combo"><kbd>Space</kbd></span><span>Play / pause</span>
+        <span class="combo"><kbd>→</kbd></span><span>Step one event</span>
+        <span class="combo"><kbd>Shift + →</kbd></span><span>Step one unit of simulated time</span>
+        <span class="combo"><kbd>R</kbd></span><span>Reset with the current settings</span>
+        <span class="combo"><kbd>F</kbd></span><span>Fit the world in view</span>
+        <span class="combo"><kbd>Shift + F</kbd></span><span>Full screen on / off</span>
+        <span class="combo"><kbd>+</kbd> / <kbd>−</kbd></span><span>Zoom in / out (or scroll)</span>
+        <span class="combo"><kbd>Drag</kbd></span><span>Pan · click a robot to inspect it</span>
+        <span class="combo"><kbd>L</kbd></span><span>Show lights</span>
+        <span class="combo"><kbd>S</kbd></span><span>Show / hide settings</span>
+        <span class="combo"><kbd>H</kbd></span><span>Hide panels (clean view)</span>
+        <span class="combo"><kbd>E</kbd> / <kbd>Shift + E</kbd></span><span>Export PNG / CSV</span>
+        <span class="combo"><kbd>T</kbd></span><span>Theme: system → light → dark</span>
+        <span class="combo"><kbd>Esc</kbd></span><span>Deselect / close</span>
+        <span class="combo"><kbd>?</kbd></span><span>This help</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="web/app.js"></script>
 </body>
 </html>

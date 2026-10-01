@@ -33,12 +33,21 @@
  *       continue, otherwise why it stopped
  *   {type: "error", message}
  */
-import init, { WasmSimulation, algorithms } from "./pkg/lcm_wasm.js";
+// The page passes the package's build id (web/pkg/build.json) as ?v=…, and the
+// package is loaded with the same id, so cached files of another build are
+// never used.
+const version = new URL(self.location.href).searchParams.get("v");
+const suffix = version ? `?v=${encodeURIComponent(version)}` : "";
+let wasm = null;
 
 const STOP = ["budget", "until-time", "ended", "max-events", "max-time"];
 const SLICE_MS = 6;
 const IDLE_MS = 4;
-const ready = init();
+const ready = (async () => {
+  const module = await import(`./pkg/lcm_wasm.js${suffix}`);
+  await module.default(`./pkg/lcm_wasm_bg.wasm${suffix}`);
+  wasm = module;
+})();
 let sim = null;
 let playing = false;
 let stop = "running";
@@ -138,11 +147,11 @@ self.onmessage = async ({ data }) => {
     await ready;
     switch (data.type) {
       case "hello":
-        self.postMessage({ type: "ready", algorithms: JSON.parse(algorithms()) });
+        self.postMessage({ type: "ready", version, algorithms: JSON.parse(wasm.algorithms()) });
         break;
       case "start":
         sim?.free();
-        sim = new WasmSimulation(JSON.stringify(data.config));
+        sim = new wasm.WasmSimulation(JSON.stringify(data.config));
         run = data.run ?? run + 1;
         playing = false;
         stop = "running";

@@ -690,15 +690,15 @@ PAGE = """<!DOCTYPE html>
 </head>
 <body class="docs">
   <header class="docs-bar">
-    <a class="btn" href="index.html" title="Back to the simulator"><span data-icon="logo" data-size="20"></span><span class="brand-name">LCM</span></a>
+    <a class="btn" href="../" title="Back to the simulator"><span data-icon="logo" data-size="20"></span><span class="brand-name">LCM</span></a>
     <span class="crumb">How it works</span>
     <span class="spacer"></span>
     <button id="theme" class="btn" title="Theme" aria-label="Theme"><span data-icon="moon"></span></button>
-    <a class="btn outline" href="index.html"><span data-icon="play" data-size="14"></span>Open the simulator</a>
+    <a class="btn outline" href="../"><span data-icon="play" data-size="14"></span>Open the simulator</a>
   </header>
   <div class="docs-main">
     <nav class="docs-nav" aria-label="Charts">
-      <a class="sim-card" href="index.html">
+      <a class="sim-card" href="../">
         <span class="sim-card-icon" data-icon="play" data-size="16"></span>
         <span><span class="sim-card-title">Open the simulator</span><span class="sim-card-sub">Run the swarm these charts describe</span></span>
       </a>

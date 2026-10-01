@@ -13,6 +13,7 @@ pub mod pyfloat;
 mod rng;
 mod robots;
 mod sim;
+pub mod start;
 
 pub use algorithm::{
     Algorithm, Assignment, Decision, Look, Model, OverlayUpdate, Plan, Scratch, TaskColor, View,
@@ -24,3 +25,4 @@ pub use geom::{Circle, Point};
 pub use rng::Rng;
 pub use robots::{FaultKind, Light, RobotState, Robots, LIGHT_COOLDOWN};
 pub use sim::{Budget, Simulation, StepInfo, StepOutcome, StopReason};
+pub use start::{Arrangement, Distribution, Pattern, StartSpec};

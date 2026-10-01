@@ -129,7 +129,7 @@ body.clean .panel:not(.keep) { display: none !important; }
 .field { display: grid; gap: 4px; }
 .field-top { display: flex; align-items: center; gap: 8px; }
 .field-top label { flex: 1; color: var(--text); }
-.field-top .hint { color: var(--text-3); cursor: help; }
+.field-top label.has-hint { flex: 0 1 auto; margin-right: auto; cursor: help; text-decoration: underline dotted var(--text-3); text-underline-offset: 3px; }
 .field.disabled { opacity: 0.45; }
 .field .sub { color: var(--text-3); font-size: 11.5px; }
 
@@ -140,10 +140,24 @@ input[type="number"], select {
 input[type="number"] { width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
 input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 select { padding-right: 24px; }
-input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible {
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 1px;
 }
 
+textarea {
+  width: 100%; resize: vertical; min-height: 96px; padding: 6px 8px; border-radius: 7px;
+  border: 1px solid var(--border-strong); background: var(--surface-solid); color: var(--text);
+  font: 12px/1.5 var(--mono); tab-size: 4;
+}
+.field .sub.error { color: var(--danger); }
+.field .sub.note { margin-top: -2px; }
+.start-summary { margin: 0; padding: 8px 10px; border-radius: 7px; background: var(--surface-2); color: var(--text-2); font-size: 12px; line-height: 1.45; }
+.more > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); font-size: 12px; padding: 2px 0; }
+.more > summary::-webkit-details-marker { display: none; }
+.more > summary:hover { color: var(--text); }
+.more > summary .chev { transition: transform 0.15s; color: var(--text-3); }
+.more[open] > summary .chev { transform: rotate(90deg); }
+.more-body { display: grid; gap: 10px; padding: 8px 0 0 10px; margin-top: 4px; border-left: 2px solid var(--border); }
 input[type="range"] { width: 100%; height: 18px; margin: 0; background: transparent; accent-color: var(--accent); cursor: pointer; }
 
 /* switch */
@@ -218,6 +232,14 @@ a.btn { text-decoration: none; }
 .dialog { position: relative; width: min(460px, calc(100vw - 32px)); padding: 18px 20px; pointer-events: auto; }
 .dialog h2 { margin: 0 0 12px; font-size: 15px; }
 .dialog .close { position: absolute; top: 12px; right: 12px; }
+.dialog.wide { width: min(560px, calc(100vw - 32px)); display: grid; gap: 10px; }
+.dialog.wide h2 { margin: 0; }
+.dialog p.sub { margin: 0; color: var(--text-2); font-size: 12px; line-height: 1.5; }
+.dialog code { font-family: var(--mono); font-size: 11.5px; }
+.dialog-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dialog-foot .sub { font-size: 12px; color: var(--text-3); }
+.dialog-foot .sub.error { color: var(--danger); }
+#coords textarea { min-height: 240px; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: center; }
 .keys .combo { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); white-space: nowrap; }
 kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--border-strong); background: var(--surface-2); white-space: nowrap; }

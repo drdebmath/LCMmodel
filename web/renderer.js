@@ -53,7 +53,9 @@ export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d", { alpha: false });
-    this.world = { w: 600, h: 600 };
+    // The region "Fit" frames (world units), and the start-area outline to draw.
+    this.world = { w: 600, h: 600, cx: 0, cy: 0 };
+    this.outline = null;
     this.zoom = 1;
     this.pan = { x: 0, y: 0 };
     // CSS px covered by floating panels; the world is fitted into what's left.
@@ -102,18 +104,36 @@ export class Renderer {
   }
 
   setFrame(frame) { this.frame = frame; this.requestDraw(); }
-  setWorld(w, h) { this.world = { w, h }; this.requestDraw(); }
-  /** Fit the world into the area the panels leave free. */
-  resetView() {
+  /** The region "Fit" frames: w × h world units centred on (cx, cy). */
+  setView(w, h, cx = 0, cy = 0) {
+    const fitted = this.isFitted();
+    this.world = { w: Math.max(1e-6, w), h: Math.max(1e-6, h), cx, cy };
+    if (fitted) this.resetView(); else this.requestDraw();
+  }
+  /** The start-area outline (see startOutline in start.js), or null for none. */
+  setOutline(outline) { this.outline = outline; this.requestDraw(); }
+
+  fittedPan() {
     const { left, right, top, bottom } = this.insets;
+    const zoom = this.zoom;
     this.zoom = 1;
-    this.pan = { x: (left - right) / 2, y: (top - bottom) / 2 };
+    const s = this.scale;
+    this.zoom = zoom;
+    return { x: (left - right) / 2 - this.world.cx * s, y: (top - bottom) / 2 + this.world.cy * s };
+  }
+  isFitted() {
+    const p = this.fittedPan();
+    return this.zoom === 1 && Math.abs(this.pan.x - p.x) < 0.5 && Math.abs(this.pan.y - p.y) < 0.5;
+  }
+  /** Fit the view region into the area the panels leave free. */
+  resetView() {
+    this.zoom = 1;
+    this.pan = this.fittedPan();
     this.requestDraw();
   }
 
   setInsets(insets) {
-    const fitted = this.zoom === 1 && this.pan.x === (this.insets.left - this.insets.right) / 2
-      && this.pan.y === (this.insets.top - this.insets.bottom) / 2;
+    const fitted = this.isFitted();
     this.insets = insets;
     if (fitted) this.resetView(); // keep a fitted view fitted; leave a zoomed one alone
   }
@@ -212,12 +232,34 @@ export class Renderer {
     const X = (x) => ox + x * s;
     const Y = (y) => oy - y * s;
 
-    // World bounds.
-    ctx.strokeStyle = this.theme.bounds;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
-    ctx.strokeRect(X(-this.world.w / 2), Y(this.world.h / 2), this.world.w * s, this.world.h * s);
-    ctx.setLineDash([]);
+    // Start area (a drawing guide, not a wall: robots can move past it).
+    const o = this.outline;
+    if (o) {
+      ctx.strokeStyle = this.theme.bounds;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      const rot = ((o.rotation ?? 0) * Math.PI) / 180;
+      const P = (x, y) => [X(x * Math.cos(rot) - y * Math.sin(rot)), Y(x * Math.sin(rot) + y * Math.cos(rot))];
+      if (o.kind === "rect") {
+        const corners = [[-o.w / 2, -o.h / 2], [o.w / 2, -o.h / 2], [o.w / 2, o.h / 2], [-o.w / 2, o.h / 2]].map(([x, y]) => P(x, y));
+        corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.closePath();
+      } else if (o.kind === "circle" || o.kind === "ring") {
+        ctx.moveTo(X(o.r), Y(0)); ctx.arc(X(0), Y(0), o.r * s, 0, 2 * Math.PI);
+        if (o.kind === "ring" && o.inner > 0) { ctx.moveTo(X(o.inner), Y(0)); ctx.arc(X(0), Y(0), o.inner * s, 0, 2 * Math.PI); }
+      } else if (o.kind === "line") {
+        ctx.moveTo(...P(-o.length / 2, 0)); ctx.lineTo(...P(o.length / 2, 0));
+      } else if (o.kind === "polygon") {
+        for (let i = 0; i <= o.sides; i++) {
+          const a = Math.PI / 2 + (2 * Math.PI * i) / o.sides;
+          const [x, y] = P(o.r * Math.cos(a), o.r * Math.sin(a));
+          if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+        }
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     if (!frame) { this.lastDrawMs = performance.now() - t0; return; }
 
     const { xy, flags, fault, task, light, target, circle } = frame;

@@ -7,7 +7,8 @@ const ARRAYS = ["xy", "flags", "light", "fault", "task", "target", "circle"];
 
 export class SimClient {
   constructor(url) {
-    this.worker = new Worker(url, { type: "module" });
+    this.worker = null;
+    this.queue = []; // messages posted before the worker exists
     this.handlers = {};
     this.pending = false;
     this.pulling = false;
@@ -16,18 +17,39 @@ export class SimClient {
     this.csvWaiters = [];
     this.inspectSeq = 0;
     this.run = 0;        // id of the current run; frames from earlier runs are dropped
+    this.version = null;
+    // Fetch the build id fresh (never from cache), then load the worker and,
+    // through it, the core with that id: a browser cannot mix builds.
+    fetch(new URL("./pkg/build.json", url), { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : {}))
+      .catch(() => ({}))
+      .then(({ id }) => {
+        const workerUrl = new URL(url);
+        if (id) workerUrl.searchParams.set("v", id);
+        this.version = id ?? null;
+        this.startWorker(workerUrl);
+      });
+  }
+
+  startWorker(url) {
+    this.worker = new Worker(url, { type: "module" });
     this.worker.onmessage = ({ data }) => this.receive(data);
     this.worker.onerror = (e) => this.emit("error", e.message || "The simulation worker failed to load.");
-    this.post({ type: "hello" });
+    this.worker.postMessage({ type: "hello" });
+    for (const [message, transfer] of this.queue) this.worker.postMessage(message, transfer ?? []);
+    this.queue = [];
   }
 
   on(name, fn) { this.handlers[name] = fn; return this; }
   emit(name, value) { this.handlers[name]?.(value); }
-  post(message, transfer) { this.worker.postMessage(message, transfer ?? []); }
+  post(message, transfer) {
+    if (this.worker) this.worker.postMessage(message, transfer ?? []);
+    else this.queue.push([message, transfer]);
+  }
 
   receive(data) {
     switch (data.type) {
-      case "ready": this.emit("ready", data.algorithms); break;
+      case "ready": this.loadedVersion = data.version; this.emit("ready", data.algorithms); break;
       case "frame": {
         // A frame of an earlier run (in flight when a new run started) must not
         // overwrite the new one, or mark it ended.

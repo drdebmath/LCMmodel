@@ -10,6 +10,7 @@ import { COLORS, LOD, Renderer } from "./renderer.js";
 import { SimClient } from "./client.js";
 import { Inspector } from "./inspector.js";
 import { buildSettings, readConfig } from "./settings.js";
+import { parseCoordinates, startOutline } from "./start.js";
 
 const $ = (id) => document.getElementById(id);
 renderIcons();
@@ -25,23 +26,35 @@ let firstFrame = true;
 
 const settings = buildSettings($("settings_body"), onSettingChange);
 renderIcons($("settings_body"));
+renderIcons($("coords"));
 const inspector = new Inspector({
   card: $("inspector"), tip: $("tip"), renderer, client,
   onCenter: (x, y) => renderer.centerOn(x, y),
 });
 
 let resolveReady;
-window.lcm = { renderer, client, settings, stats: {}, ready: new Promise((r) => { resolveReady = r; }),
+window.lcm = { renderer, client, settings, parseCoordinates, stats: {}, ready: new Promise((r) => { resolveReady = r; }),
   get state() { return state; } };
 
 /* ------------------------------------------------------------ run control */
-function config() { return readConfig(settings.values, $("algorithm").value); }
+function config() { return readConfig(settings.values, $("algorithm").value, settings.customPoints); }
 
-function newRun() {
+let fitPending = false; // fit the view to the new run's first frame
+
+/** Builds a new run from the settings; returns false if they can't make one. */
+function newRun({ quiet = false } = {}) {
   clearTimeout(restartTimer);
   restartTimer = 0;
+  const problem = settings.problem;
+  if (problem) {
+    if (!quiet) toast(`Fix the coordinates first: line ${problem[0].line}, ${problem[0].message}`, true);
+    return false;
+  }
   const c = config();
-  renderer.setWorld(c.width_bound, c.height_bound);
+  const v = settings.values;
+  renderer.setOutline(v.open_world ? startOutline(v) : { kind: "rect", w: v.width_bound, h: v.height_bound, rotation: 0 });
+  fitPending = true;
+  inspector.leave(); // the robot under the pointer belonged to the old run
   renderer.options.visibility = c.visibility_radius;
   inspector.select(-1);
   $("hud_last").hidden = true;
@@ -51,13 +64,39 @@ function newRun() {
   client.speed(Number($("playback").value));
   client.start(c);
   setState("ready");
+  return true;
+}
+
+/** Frame the new run: its robots, plus the world box in World mode. */
+function fitToStart(f) {
+  const xy = f.xy, n = f.flags.length, v = settings.values;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const x = xy[2 * i], y = xy[2 * i + 1];
+    if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  if (!v.open_world) {
+    minX = Math.min(minX, -v.width_bound / 2); maxX = Math.max(maxX, v.width_bound / 2);
+    minY = Math.min(minY, -v.height_bound / 2); maxY = Math.max(maxY, v.height_bound / 2);
+  }
+  const pad = 20;
+  let w = maxX - minX, h = maxY - minY;
+  const size = Math.max(w, h, 1);
+  w = Math.max(w, size * 0.25) + 2 * pad; // a line still gets some height
+  h = Math.max(h, size * 0.25) + 2 * pad;
+  const region = { w, h, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+  const old = renderer.world;
+  const same = Math.abs(old.w - region.w) < old.w * 0.02 && Math.abs(old.h - region.h) < old.h * 0.02
+    && Math.abs(old.cx - region.cx) < old.w * 0.02 && Math.abs(old.cy - region.cy) < old.h * 0.02;
+  renderer.setView(region.w, region.h, region.cx, region.cy);
+  if (!same) renderer.resetView(); // a new start shape: show all of it; same shape: keep the user's view
 }
 
 function onSettingChange() {
   if (state === "loading") return;
   if (state === "ready") {
     clearTimeout(restartTimer);
-    restartTimer = setTimeout(newRun, 120); // debounce slider drags
+    restartTimer = setTimeout(() => newRun({ quiet: true }), 120); // debounce slider drags and typing
   } else {
     dirty = true;
     $("dirty").hidden = false;
@@ -80,13 +119,14 @@ function setState(next) {
 }
 
 function play() {
-  if (restartTimer) newRun(); // a setting was just changed: play the run it describes
+  // A setting was just changed: play the run it describes (not if it is invalid).
+  if (restartTimer && !newRun()) return;
   if (state === "ready" || state === "paused") { client.play(); setState("running"); }
   else if (state === "running") { client.pause(); setState("paused"); }
 }
 
 function step(unit) {
-  if (restartTimer) newRun();
+  if (restartTimer && !newRun()) return;
   if (!(state === "ready" || state === "paused" || state === "running")) return;
   client.step(unit, 1);
   setState("paused");
@@ -101,6 +141,7 @@ client.on("ready", (list) => {
 
 client.on("frame", (f) => {
   frame = f;
+  if (fitPending) { fitPending = false; fitToStart(f); }
   renderer.setFrame(f);
   if (firstFrame) { firstFrame = false; $("loading").hidden = true; resolveReady(); }
   if (f.lastEvent) showLastEvent(f.lastEvent);
@@ -114,6 +155,13 @@ client.on("frame", (f) => {
 });
 
 client.on("error", (message) => {
+  if (/unknown field|unknown variant|missing field/.test(message)) {
+    // The core and the page come from different builds (a stale cache).
+    $("loading_text").textContent = "The page and the simulator core are from different versions.";
+    toast("The simulator files are out of date in your browser. Reload the page (Ctrl + Shift + R).", true);
+    if (state === "running") setState("paused");
+    return;
+  }
   $("loading_text").textContent = "Could not start the simulation.";
   toast(message.includes("pkg") || message.includes("worker") ? `${message} — build the core with ./scripts/build-wasm.sh` : message, true);
   if (state === "running") setState("paused");
@@ -181,7 +229,7 @@ function updateLegend() {
 $("play").addEventListener("click", play);
 $("step_event").addEventListener("click", () => step("event"));
 $("step_time").addEventListener("click", () => step("time"));
-$("reset").addEventListener("click", newRun);
+$("reset").addEventListener("click", () => newRun());
 $("algorithm").addEventListener("change", onSettingChange);
 $("playback").addEventListener("change", (e) => client.speed(Number(e.target.value)));
 $("defaults").addEventListener("click", () => settings.reset());
@@ -342,7 +390,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   const typing = e.target.closest?.("input, select, textarea");
-  if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (settings.editor.isOpen || typing || e.ctrlKey || e.metaKey || e.altKey) return;
   // Space/Enter on a focused button already clicks it; don't toggle twice.
   if ((e.key === " " || e.key === "Enter") && e.target.closest?.("button, a, summary")) return;
   const actions = {

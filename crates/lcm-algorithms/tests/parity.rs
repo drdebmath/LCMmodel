@@ -112,7 +112,7 @@ fn compare(sim: &Simulation, step: &StepInfo, rec: &[Option<f64>]) -> Result<(),
 }
 
 #[test]
-fn rust_core_replays_python_fixtures() {
+fn rust_core_matches_python_fixtures() {
     let mut failures = Vec::new();
     for path in fixtures() {
         let text = std::fs::read_to_string(&path).unwrap();

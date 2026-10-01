@@ -829,7 +829,7 @@ flowchart TD
 | Draw the swarm | Tiny robots are drawn as rectangles, larger ones as pre-drawn sprites per colour; at most one draw per screen frame. 10,000 robots take about 4–6 ms without a GPU. |
 | Update stats and legend | Time, events per second, terminated count and the legend counts, refreshed at most every 200 ms so the page stays light. |
 
-`startPulling` — [`web/client.js:70`](../web/client.js#L70)
+`startPulling` — [`web/client.js:92`](../web/client.js#L92)
 
 ```js
 startPulling() {
@@ -844,7 +844,7 @@ startPulling() {
 }
 ```
 
-`requestFrame` — [`web/client.js:61`](../web/client.js#L61)
+`requestFrame` — [`web/client.js:83`](../web/client.js#L83)
 
 ```js
 requestFrame() {
@@ -857,7 +857,7 @@ requestFrame() {
 }
 ```
 
-`slice` — [`web/worker.js:63`](../web/worker.js#L63)
+`slice` — [`web/worker.js:72`](../web/worker.js#L72)
 
 ```js
 function slice(gen) {
@@ -898,7 +898,7 @@ pub fn advance(&mut self, max_events: u32, until_time: f64) -> Stop {
 }
 ```
 
-`postFrame` — [`web/worker.js:93`](../web/worker.js#L93)
+`postFrame` — [`web/worker.js:102`](../web/worker.js#L102)
 
 ```js
 function postFrame(extra = {}) {
@@ -955,7 +955,7 @@ pub fn fill_frame(
 }
 ```
 
-`draw` — [`web/renderer.js:202`](../web/renderer.js#L202)
+`draw` — [`web/renderer.js:222`](../web/renderer.js#L222)
 
 ```js
 draw(ctx = this.ctx, dpr = this.dpr) {
@@ -971,12 +971,34 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   const X = (x) => ox + x * s;
   const Y = (y) => oy - y * s;
 
-  // World bounds.
-  ctx.strokeStyle = this.theme.bounds;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([5, 5]);
-  ctx.strokeRect(X(-this.world.w / 2), Y(this.world.h / 2), this.world.w * s, this.world.h * s);
-  ctx.setLineDash([]);
+  // Start area (a drawing guide, not a wall: robots can move past it).
+  const o = this.outline;
+  if (o) {
+    ctx.strokeStyle = this.theme.bounds;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    const rot = ((o.rotation ?? 0) * Math.PI) / 180;
+    const P = (x, y) => [X(x * Math.cos(rot) - y * Math.sin(rot)), Y(x * Math.sin(rot) + y * Math.cos(rot))];
+    if (o.kind === "rect") {
+      const corners = [[-o.w / 2, -o.h / 2], [o.w / 2, -o.h / 2], [o.w / 2, o.h / 2], [-o.w / 2, o.h / 2]].map(([x, y]) => P(x, y));
+      corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.closePath();
+    } else if (o.kind === "circle" || o.kind === "ring") {
+      ctx.moveTo(X(o.r), Y(0)); ctx.arc(X(0), Y(0), o.r * s, 0, 2 * Math.PI);
+      if (o.kind === "ring" && o.inner > 0) { ctx.moveTo(X(o.inner), Y(0)); ctx.arc(X(0), Y(0), o.inner * s, 0, 2 * Math.PI); }
+    } else if (o.kind === "line") {
+      ctx.moveTo(...P(-o.length / 2, 0)); ctx.lineTo(...P(o.length / 2, 0));
+    } else if (o.kind === "polygon") {
+      for (let i = 0; i <= o.sides; i++) {
+        const a = Math.PI / 2 + (2 * Math.PI * i) / o.sides;
+        const [x, y] = P(o.r * Math.cos(a), o.r * Math.sin(a));
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
   if (!frame) { this.lastDrawMs = performance.now() - t0; return; }
 
   const { xy, flags, fault, task, light, target, circle } = frame;

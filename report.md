@@ -1,7 +1,7 @@
 # LCM Simulator: Rust + WebAssembly Port — Progress Report
 
-**Dates:** 29–30 September 2026
-**Repository:** LCMmodel (clone of `github.com/drdebmath/LCMmodel`), branch `rust-core` (uncommitted)
+**Dates:** 29 September – 1 October 2026
+**Repository:** LCMmodel (clone of `github.com/drdebmath/LCMmodel`), branch `rust-core`, on the fork `github.com/imstillsamarth/LCMmodel` (nothing sent to the original repository). Live: <https://imstillsamarth.github.io/LCMmodel/> (original page: `/old/`)
 **Goal:** Port the Look-Compute-Move robot simulator from Python/Pyodide to Rust compiled to WebAssembly, so that around **10,000 robots can be simulated entirely in the browser on the CPU (no GPU)**, **without changing the original math**, as the base for a one-stop simulator for many algorithms.
 
 ---
@@ -16,9 +16,11 @@
 | Algorithms                                                                               | Gathering ported (1 of 7); the others are deliberately postponed |
 | Foundation (Rust core running in the browser, in a background worker)                    | Done and verified bit for bit against native                     |
 | Simulator page, first version (full controls, CPU canvas for 10,000 robots)              | Done (29 Sep); replaced by the redesign below                    |
-| Simulator UI redesign (full-screen canvas, floating panels, inspector, stepping, export) | Done (30 Sep): 41 automated browser checks pass                  |
-| Flowcharts: Markdown for GitHub + interactive page with the source of every step         | Done, redesigned (30 Sep): 17 automated browser checks pass      |
-| Core speed work, analysis dashboard, remaining algorithms, switch-over                   | Not started (planned)                                            |
+| Simulator UI redesign (full-screen canvas, floating panels, inspector, stepping, export) | Done (30 Sep); 65 automated browser checks pass (1 Oct)          |
+| Start settings: open world, pattern / arrangement / distribution, your own positions     | Done (1 Oct): §5.10                                              |
+| Flowcharts: Markdown for GitHub + interactive page with the source of every step         | Done, redesigned (30 Sep); 19 automated browser checks pass      |
+| Hosting: GitHub Pages, new simulator at the main address, original at `/old/`            | Done (1 Oct): §5.10                                              |
+| Core speed work, analysis dashboard, remaining algorithms, removing Pyodide              | Not started (planned)                                            |
 
 **Key results**
 
@@ -27,7 +29,7 @@
 - On identical runs, Rust is **135×–784× faster natively** and **99×–357× faster in the browser** than the Python engine (20–100 robots), and the gap grows with the number of robots.
 - The new simulator page shows **10,000 robots at 60 fps using only the CPU**, drawing a frame in **3.7–6 ms** (2.4× faster than its first version).
 - The page loads nothing from the internet: no CSS framework, fonts or icon fonts; the first swarm appears ≈130 ms after the page opens.
-- The browser download shrinks from **≈16 MB (Pyodide)** to **≈350 KB** (239 KB WebAssembly + 18 KB bindings + 96 KB page code and styles).
+- The browser download shrinks from **≈16 MB (Pyodide)** to **≈400 KB** (274 KB WebAssembly + 18 KB bindings + 107 KB page code and styles).
 - Four behaviours of the original were found and documented (§4), including a crash of SEC/GoToCenter at 1,000+ robots.
 
 ---
@@ -138,15 +140,18 @@ crates/lcm-core/            the simulation engine (no browser, file or GPU depen
 crates/lcm-algorithms/      algorithms + registry (Gathering only for now) + parity tests
 crates/lcm-cli/             native runner and benchmark (`lcm run`, `lcm bench`)
 crates/lcm-wasm/            browser bridge (WebAssembly bindings)
-web/                        simulator: index.html, styles.css, app.js, settings.js, client.js, worker.js,
-                            renderer.js, inspector.js, icons.js · flowcharts: docs.html (generated), docs.css, docs.js
+index.html                  the simulator page (served at the site's main address); its files are in web/
+old/index.html              the original Pyodide page, served at /old/
+web/                        simulator: styles.css, app.js, settings.js, start.js, client.js, worker.js,
+                            renderer.js, inspector.js, icons.js, pkg/ (built core + build.json)
+                            · flowcharts: docs.html (generated), docs.css, docs.js · index.html: redirect to /
 reference/                  Python harness: portable random generator + fixture generator
 fixtures/                   9 recorded Python runs + 5,000 CPython round() results
 scripts/                    build-wasm.sh, check-wasm-parity.mjs, compare-speed.py, gen-flowcharts.py,
                             ui-check.mjs, docs-check.mjs, browser-smoke.py, lib/browser.mjs (headless-Chrome driver)
 ```
 
-About 6,500 lines of new code, tests and scripts. The original files (`robot.py`, `scheduler.py`, `run.py`, `main.js`, `index.html`) are **unchanged**.
+About 6,500 lines of new code, tests and scripts. The original Python files (`robot.py`, `scheduler.py`, `run.py`) are **unchanged**. The original page moved from `index.html` to `old/index.html` with one added line (`<base href="../">`, so it still loads its files from the root), and one line of `main.js` changed so the bundled Pyodide fallback is found from `/old/` too (§5.10).
 
 Toolchain: Rust 1.98.1 (+ `wasm32-unknown-unknown`), wasm-bindgen 0.2.129, Node 24.14.1, Python 3.12.3, Google Chrome (headless tests).
 
@@ -264,6 +269,34 @@ Rebuilt from scratch after choosing, with the project owner: a full-screen canva
 - **Links to a single step** (e.g. `docs.html#look-compute-move/view`); number keys switch charts.
 - **"Open the simulator":** a prominent card at the top of the sidebar, and a button in the top bar.
 
+### 5.10 Start settings, cache fix and new addresses (1 October)
+
+**Where robots start.** Before, robots always started at random inside the 600 × 600 world box, which made the start look like a closed square (and a square start gathers in an X pattern). The Start group of the settings now has:
+
+- **Open world** (on by default): no world box; robots start wherever the pattern puts them. Off: the original world box and its width/height. In both cases robots are never kept inside the box, exactly as in the original.
+- Three settings, each answering one question:
+
+| Setting      | Question                   | Choices                                                                                                                                                       |
+| ------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pattern      | What shape?                | Cloud (no shape), Square, Rectangle, Circle, Polygon, Line, Groups (clusters), My own positions; with Open world off also "Original: random in the world box" |
+| Arrangement  | Inside it, or on its edge? | Filled, Edge only, Ring (circles); shown only when the pattern has more than one                                                                              |
+| Distribution | How are robots spaced?     | Random, Evenly spaced, Evenly spaced a bit messy, Bunched in the middle (Gaussian); only those that fit                                                       |
+
+- Only the main slider for the shape is shown (named for it: Side length, Width, Diameter, Length); rotation, hole size, aspect, messiness and similar are under "More options". A sentence under the settings says what the choice gives, e.g. *"500 robots evenly spaced on the edge of a circle 400 wide."* Help texts appear on hovering a label.
+- **My own positions:** an editor window for typed or pasted coordinates: one `x, y` per line (comma, space, tab or `;`), `#` comments, a header row (so the simulator's own CSV export pastes back), or JSON `[[x, y], …]`. Errors are reported by line and never start a broken run; the robot count follows the number of positions.
+
+The generator is in `crates/lcm-core/src/start.rs` (36 combinations; documented in `docs/core-schema.md` §4.3). It has its own random generator seeded from the run's seed, so a start is reproducible and independent of the activation draws, and "evenly spaced" uses no randomness at all. These starts are new: the original has no equivalent, and the original start (Open world off, Original pattern) still matches the Python exactly. Even spacing uses a grid (squares, rectangles), a sunflower pattern (circles, rings), equal arc lengths (edges, lines) and a Fibonacci lattice over the polygon's centre triangles (filled polygons).
+
+The page went through two simplifications after review: the first version (two drop-downs, a row of presets, every parameter visible) was too crowded; the second (fewer controls) still used unclear words. The three-question layout above replaced both.
+
+**Fix: an old cached core with a new page.** After an update, a browser could keep the previous WebAssembly file and run it with the new page code, failing with *"unknown field `open_world`"*. The build now writes an id (a hash of the core files) to `web/pkg/build.json`; the page loads the worker and the core with that id in their address, so a new build is always fetched in full. The page also explains the error if it ever happens.
+
+**Fix:** the hover tooltip of a robot stayed on screen after its run was replaced.
+
+**Addresses.** The new simulator is now the main address, <https://imstillsamarth.github.io/LCMmodel/>; the original is at `/old/`; old links to `/web/` redirect to the main address.
+
+**Wording.** The README said the Rust core "replays recorded runs of the Python simulator". It does not: it runs its own simulations from the settings. The recorded Python runs are only used by the tests to compare against. The README and the test's name (`rust_core_matches_python_fixtures`) now say so.
+
 ---
 
 ## 6. Verification
@@ -273,7 +306,7 @@ Rebuilt from scratch after choosing, with the project owner: a full-screen canva
 The Python simulator is the reference ("answer key"), because the goal is identical behaviour:
 
 1. `reference/gen_fixtures.py` runs the **unmodified** Python modules. The only substitution is numpy's generator, replaced by the portable one. Each fixture records every event (time, robot, kind, outcome, the robot's position or target, flags) for the first 1,500 events, plus the final state of every robot.
-2. The Rust test (`crates/lcm-algorithms/tests/parity.rs`) replays each fixture and requires:
+2. The Rust test (`crates/lcm-algorithms/tests/parity.rs`) runs the Rust core with each fixture's settings and seed and requires:
    - identical events for the first 1,500;
    - identical end state for every robot after up to 200,000 events: position, target, state, frozen, terminated, light and distance travelled;
    - identical event count and end time.
@@ -462,8 +495,8 @@ python3 scripts/compare-speed.py 20 50 100      # identical runs: Python vs Rust
 
 # browser (headless Chrome, GPU disabled)
 python3 scripts/browser-smoke.py 10000 5                                # worker only
-node scripts/ui-check.mjs                       # simulator page: 41 checks + screenshots
-node scripts/docs-check.mjs                     # flowchart page: 17 checks + screenshots
+node scripts/ui-check.mjs                       # simulator page: 65 checks + screenshots
+node scripts/docs-check.mjs                     # flowchart page and addresses: 19 checks + screenshots
 
 # flowcharts
 python3 scripts/gen-flowcharts.py               # regenerate docs/flowcharts.md and web/docs.html
@@ -471,7 +504,7 @@ python3 scripts/gen-flowcharts.py --check       # fail if they are out of date w
 
 # side by side, by hand
 python3 -m http.server 8000
-#   old page: http://localhost:8000/        new page: http://localhost:8000/web/
+#   new page: http://localhost:8000/        old page: http://localhost:8000/old/
 #   flowcharts: http://localhost:8000/web/docs.html
 ```
 
@@ -484,7 +517,7 @@ python3 -m http.server 8000
 | 3   | Core speed           | Cache each move's path length (the 52 % `hypot` cost); running totals for centroid-based algorithms; spatial grid for limited visibility; counters instead of scans. Each change is checked against the exact mode. Expected: a full 10,000-robot Gathering run in seconds instead of minutes |
 | 4   | Analysis dashboard   | Sweeps over robot counts and seeds in parallel Web Workers, charts, table, CSV export                                                                                                                                                                                                         |
 | 5   | Remaining algorithms | SEC (with the iterative Welzl), GoToCenter, CircleFormation, PatternFormation, Spreading, TwoTask, each with Python fixtures                                                                                                                                                                  |
-| 6   | Switch-over          | New page replaces the old one, Pyodide removed, commit, CI, GitHub Pages hosting (requires committing `web/pkg/`)                                                                                                                                                                             |
+| 6   | Switch-over          | Hosting done (new page at the main address, original at `/old/`). Left: remove Pyodide once every algorithm is ported, CI                                                                                                                                                                     |
 
 **Limits to keep in mind:**
 
@@ -495,7 +528,7 @@ python3 -m http.server 8000
 
 1. What to do about findings #1–#4 (fix or keep the original behaviour).
 2. Whether to add the proposed extra verification before stage 3 (recommended).
-3. Hosting and commit strategy.
+3. When to remove the original page and Pyodide (after all algorithms are ported).
 4. Browsers still to test by hand: Firefox, Safari, mobile layout.
 5. The flowchart page's GitHub buttons point to the `rust-core` branch of `imstillsamarth/LCMmodel`; switch `REPO_URL` in `scripts/gen-flowcharts.py` if the code moves.
 
@@ -517,7 +550,7 @@ Every test run on 29–30 September 2026, with its result. "Repeatable" tests ar
 |   6 | `event::pops_in_python_tuple_order`         | Events leave the queue in Python's `(time, id, state)` order                                      | Pass                 |
 |   7 | `geom::interpolation_is_clamped`            | Interpolation and distance                                                                        | Pass                 |
 |   8 | `py_round::matches_cpython_round`           | `py_round` against 5,000 CPython 3.12 `round()` results, bit for bit                              | Pass (5,000 / 5,000) |
-|   9 | `parity::rust_core_replays_python_fixtures` | The 9 recorded Python runs: first 1,500 events one by one, then the full end state of every robot | Pass (9 / 9)         |
+|   9 | `parity::rust_core_matches_python_fixtures` | The 9 recorded Python runs: first 1,500 events one by one, then the full end state of every robot | Pass (9 / 9)         |
 |  10 | `parity::every_registered_algorithm_builds` | Every registered algorithm builds and runs 500 events                                             | Pass                 |
 
 Also: `cargo clippy --workspace --all-targets` gave 0 warnings, and `cargo check --target wasm32-unknown-unknown` succeeded.
@@ -612,3 +645,20 @@ Tests 14–19 used the first version of the page. That page and its test (`web/t
 | Theme and exit | Follows the system dark theme; the sidebar button opens the simulator                                                                                                                                  |
 | Health         | No errors in the console                                                                                                                                                                               |
 
+### A.6 Tests added on 1 October
+
+| Test                                                                     | What it checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Result                                                                                                                                                                         |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `start::every_supported_combination_places_n_finite_robots_in_its_shape` | All 36 allowed combinations, for 1, 2, 7 and 500 robots: the right count, finite, inside / on the shape                                                                                                                                                                                                                                                                                                                                                                       | Pass                                                                                                                                                                           |
+| `start::same_seed_same_start_and_even_ignores_the_seed`                  | The same seed gives the same start; "evenly spaced" does not depend on the seed, the others do                                                                                                                                                                                                                                                                                                                                                                                | Pass                                                                                                                                                                           |
+| `start::even_placements_are_exact`                                       | Exact positions for a line, a circle, a 3 × 3 grid, and 8 robots on a square's edge (corners and midpoints)                                                                                                                                                                                                                                                                                                                                                                   | Pass                                                                                                                                                                           |
+| `start::a_filled_polygon_is_covered_evenly`                              | 6,000 robots in a hexagon: each centre triangle holds 1/6 (±8 %), the inner half holds 1/4 (±2 %)                                                                                                                                                                                                                                                                                                                                                                             | Pass                                                                                                                                                                           |
+| `start::free_cloud_has_the_requested_spread`                             | A 40,000-robot cloud is centred and has the requested σ                                                                                                                                                                                                                                                                                                                                                                                                                       | Pass                                                                                                                                                                           |
+| `start::rotation_turns_the_shape`                                        | Rotation by 90°                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Pass                                                                                                                                                                           |
+| `start::mismatched_choices_are_rejected_with_a_clear_reason`             | e.g. a square ring, a Gaussian edge                                                                                                                                                                                                                                                                                                                                                                                                                                           | Pass                                                                                                                                                                           |
+| `config::` 3 tests                                                       | Open world gives no bounds; own positions win over a generated start, which wins over the original box; a bad start is rejected                                                                                                                                                                                                                                                                                                                                               | Pass                                                                                                                                                                           |
+| `ui-check.mjs`, 24 new checks                                            | Open world by default and the view fits the cloud; World mode gives the original box; only the controls that apply are shown; shape-specific labels; the summary sentence; circle edge, square edge, rectangle edge and filled polygon positions; only fitting distributions offered; own positions: count, locked robot count, exact positions, editor window, Esc, typo reported by line, JSON, CSV export pasted back; the tooltip clears; the core loaded is this build's | 65 / 65                                                                                                                                                                        |
+| `docs-check.mjs`, 2 new checks                                           | `/web/` redirects to the main address (keeping the `#…` part); `/old/` loads the original Pyodide simulator                                                                                                                                                                                                                                                                                                                                                                   | 19 / 19 (one early run failed 2 checks and another stopped without a result; the next 7 runs passed; most likely the `/old/` check, which downloads Pyodide from the internet) |
+| One-off: `/old/` with the Pyodide CDN blocked                            | The original page falls back to its bundled `pyodide/` from `/old/` too                                                                                                                                                                                                                                                                                                                                                                                                       | Failed at first (Pyodide resolved the folder against `/old/`); fixed by making the path absolute in `main.js`; then pass                                                       |
+
+Unchanged and still passing: Python parity (9 / 9 fixtures), browser build = native bit for bit, `cargo clippy` 0 warnings, flowcharts up to date.

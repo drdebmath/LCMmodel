@@ -11,4 +11,9 @@ export RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=+simd128 --remap-path-prefix=
 cargo build -p lcm-wasm --target wasm32-unknown-unknown --release
 wasm-bindgen target/wasm32-unknown-unknown/release/lcm_wasm.wasm \
   --target web --out-dir web/pkg --no-typescript
+# Build id from the package's contents. The page loads the worker and the
+# package with ?v=<id>, so a browser can never pair new page code with a
+# cached old core (or the other way round).
+id=$( (cat web/pkg/lcm_wasm_bg.wasm web/pkg/lcm_wasm.js) | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-16)
+printf '{"id":"%s"}\n' "$id" > web/pkg/build.json
 ls -l web/pkg

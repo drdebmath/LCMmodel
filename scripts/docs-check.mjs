@@ -22,7 +22,7 @@ await sleep(300);
 
 const charts = await js("Object.keys(docs.DATA.charts)");
 check("four charts", charts.length === 4, charts.join(", "));
-const simLinks = await js(`[...document.querySelectorAll('a[href="index.html"]')].filter((a) => a.offsetParent && /simulator/i.test(a.textContent)).map((a) => { const r = a.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y) }; })`);
+const simLinks = await js(`[...document.querySelectorAll('a[href="../"]')].filter((a) => a.offsetParent && /simulator/i.test(a.textContent)).map((a) => { const r = a.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y) }; })`);
 check("simulator buttons: the sidebar card (top left) and the header (top right)", simLinks.length === 2
   && simLinks.some((p) => p.x < 60 && p.y < 120) && simLinks.some((p) => p.x > 1200 && p.y < 30), JSON.stringify(simLinks));
 await shot("1-event-loop");
@@ -109,6 +109,13 @@ await sleep(300);
 await shot("5-cycle-dark-code");
 
 await js("document.querySelector('.sim-card').click()");
-check("the button opens the simulator", await until("location.pathname.endsWith('/web/index.html') && !!window.lcm", 8000));
+check("the button opens the simulator at the site root", await until("location.pathname.endsWith('/') && !location.pathname.includes('/web') && !!window.lcm", 8000));
+
+// Addresses: /web/ (the old link) lands on the simulator at the root; /old/ is the original page.
+await send("Page.navigate", { url: `${base}/web/#kept` });
+check("the old /web/ link lands on the simulator at the root", await until("!!window.lcm && !location.pathname.includes('/web') && location.hash === '#kept'", 8000));
+await send("Page.navigate", { url: `${base}/old/` });
+check("/old/ is the original Pyodide simulator and it finishes loading", await until(
+  "document.title === 'Asynchronous Simulator' && typeof pythonRunner !== 'undefined' && !!pythonRunner", 90000));
 check("no errors in the console", consoleErrors.length === 0, consoleErrors.join(" / "));
 await finish();

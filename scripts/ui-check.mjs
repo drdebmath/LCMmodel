@@ -1,4 +1,4 @@
-// End-to-end check of the simulator page (web/index.html) in headless Chrome,
+// End-to-end check of the simulator page (index.html at the site root) in headless Chrome,
 // driven through the DevTools protocol: real clicks, keys and screenshots.
 //
 //   node scripts/ui-check.mjs [screenshot-dir]
@@ -17,11 +17,14 @@ await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, dev
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
 
 const t0 = Date.now();
-await send("Page.navigate", { url: `${base}/web/index.html` });
+await send("Page.navigate", { url: `${base}/` });
 await until("!!window.lcm", 10000);
 await js("window.lcm.ready");
 check("page loads and shows the first swarm", true, `${Date.now() - t0} ms to first frame`);
 check("starts in the ready state", (await js("lcm.state")) === "ready");
+const build = await js("fetch('web/pkg/build.json', { cache: 'no-store' }).then((r) => r.json())");
+const loaded = await js("lcm.client.loadedVersion");
+check("the core is loaded with this build's id, so a stale cache cannot mix versions", !!build.id && loaded === build.id, `build ${build.id}, worker loaded ${loaded}`);
 await sleep(300);
 await shot("1-ready-light");
 const legend = await js("document.getElementById('legend').textContent");
@@ -103,6 +106,98 @@ await shot("3-faults-visibility-lights");
 const legend2 = await js("document.getElementById('legend').textContent");
 check("fault colours appear in the legend", /Byzantine/.test(legend2) && /Crashed/.test(legend2), legend2.trim());
 await click("#lights");
+
+// Start settings: open world by default, the World toggle, pattern / arrangement / distribution, custom positions.
+// Earlier checks changed robots, faults and visibility: start from the defaults.
+await js("lcm.settings.reset()");
+await click("#reset");
+await until("lcm.state === 'ready'");
+const startDefaults = await js(`({ open: lcm.settings.values.open_world, pattern: lcm.settings.values.pattern,
+  outline: lcm.renderer.outline, widthHidden: document.querySelector('[data-key="width_bound"]').hidden })`);
+check("opens in an open world: free cloud, no box, no world size", startDefaults.open && startDefaults.pattern === "cloud" && startDefaults.outline === null && startDefaults.widthHidden,
+  JSON.stringify(startDefaults));
+const onScreen = (await js(`(() => { const r = lcm.renderer, f = r.frame; let out = 0;
+  for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.xy[2*i], f.xy[2*i+1]); if (x < 0 || y < 0 || x > r.width || y > r.height) out++; } return out; })()`));
+check("the view fits the whole cloud", onScreen === 0, `${onScreen} robots off screen`);
+const visibleStart = () => js(`[...document.querySelectorAll('[data-group="start"] .field')].filter((f) => f.offsetParent && !f.closest('.more-body')).map((f) => f.dataset.key)`);
+const cloudFields = await visibleStart();
+check("the cloud start shows only the world switch, pattern and spread", JSON.stringify(cloudFields) === JSON.stringify(["open_world", "pattern", "spread"]) &&
+  await js("document.querySelector('[data-more=\"start\"]').hidden"), cloudFields.join(", "));
+check("no '?' icons; help is on the labels", await js("document.querySelectorAll('#settings .hint').length === 0 && document.querySelectorAll('#settings label.has-hint').length > 5"));
+await shot("8-start-cloud");
+await js("lcm.settings.set('open_world', false)");
+await until("lcm.renderer.outline && lcm.renderer.outline.kind === 'rect'", 3000);
+await sleep(300);
+const world = await js(`(() => { const f = lcm.renderer.frame; let inBox = true;
+  for (let i = 0; i < f.flags.length; i++) if (Math.abs(f.xy[2*i]) > 300.001 || Math.abs(f.xy[2*i+1]) > 300.001) inBox = false;
+  return { pattern: lcm.settings.values.pattern, inBox, widthShown: !document.querySelector('[data-key="width_bound"]').hidden }; })()`);
+check("World mode: the original box start, with its size settings", world.pattern === "box" && world.inBox && world.widthShown, JSON.stringify(world));
+await js("lcm.settings.set('open_world', true); lcm.settings.set('pattern', 'circle'); lcm.settings.set('arrangement', 'edge'); lcm.settings.set('size', 400)");
+check("a circle: robots evenly on a circle of radius 200", await until(`(() => { const f = lcm.renderer.frame;
+  return f.flags.length === 500 && [...Array(500).keys()].every((i) => Math.abs(Math.hypot(f.xy[2*i], f.xy[2*i+1]) - 200) < 0.01); })()`, 3000));
+await sleep(200);
+await shot("9-start-ring");
+check("a new start clears the hover tooltip of the old run", await js("document.getElementById('tip').hidden"));
+const circleFields = await visibleStart();
+const circleSummary = await js("document.getElementById('start-summary').textContent");
+check("a circle's edge: pattern, arrangement, distribution and diameter, nothing else",
+  JSON.stringify(circleFields) === JSON.stringify(["open_world", "pattern", "arrangement", "distribution", "size"]) && await js("lcm.settings.values.distribution === 'even'") &&
+  await js("document.querySelector('[data-key=\"size\"] label').textContent === 'Diameter' && document.querySelector('[data-more=\"start\"]').hidden"),
+  circleFields.join(", "));
+check("one sentence says what the start gives", circleSummary === "500 robots evenly spaced on the edge of a circle 400 wide.", circleSummary);
+const arrangements = await js("[...document.querySelectorAll('#set-arrangement option')].map((o) => o.value).join(',')");
+check("a circle can be filled, edge only or a ring", arrangements === "filled,edge,ring", arrangements);
+// The three combinations added with the three-setting layout.
+await js("lcm.settings.set('pattern', 'square'); lcm.settings.set('arrangement', 'edge'); lcm.settings.set('size', 400)");
+check("square, edge only: every robot on the square's outline", await until(`(() => { const f = lcm.renderer.frame; if (f.flags.length !== 500) return false;
+  for (let i = 0; i < 500; i++) { const x = Math.abs(f.xy[2*i]), y = Math.abs(f.xy[2*i+1]); if (Math.max(x, y) > 200.01 || Math.max(x, y) < 199.99) return false; } return true; })()`, 3000));
+await js("lcm.settings.set('pattern', 'rectangle'); lcm.settings.set('arrangement', 'edge'); lcm.settings.set('size', 400); lcm.settings.set('aspect', 0.5)");
+check("rectangle, edge only: every robot on the rectangle's outline", await until(`(() => { const f = lcm.renderer.frame; if (f.flags.length !== 500) return false;
+  for (let i = 0; i < 500; i++) { const x = Math.abs(f.xy[2*i]) / 200, y = Math.abs(f.xy[2*i+1]) / 100; if (Math.max(x, y) > 1.0001 || Math.max(x, y) < 0.9999) return false; } return true; })()`, 3000));
+await js("lcm.settings.set('pattern', 'polygon'); lcm.settings.set('distribution', 'even'); lcm.settings.set('size', 400)");
+check("polygon, filled: robots inside the hexagon, reaching near its corners", await until(`(() => { const f = lcm.renderer.frame; if (f.flags.length !== 500) return false;
+  let far = 0; for (let i = 0; i < 500; i++) { const r = Math.hypot(f.xy[2*i], f.xy[2*i+1]); if (r > 200.001) return false; far = Math.max(far, r); } return far > 180; })()`, 3000) &&
+  await js("lcm.settings.values.arrangement === 'filled'"));
+await sleep(200);
+await shot("9b-start-polygon-filled");
+await js("lcm.settings.set('pattern', 'line'); lcm.settings.set('size', 600)");
+check("a line: robots on a line", await until(`(() => { const f = lcm.renderer.frame; return [...Array(f.flags.length).keys()].every((i) => Math.abs(f.xy[2*i+1]) < 1e-3); })()`, 3000));
+const lineDistributions = await js("[...document.querySelectorAll('#set-distribution option')].map((o) => o.value)");
+check("only distributions that fit the pattern are offered", !lineDistributions.includes("gaussian") && lineDistributions.includes("even"), lineDistributions.join(", "));
+await js("lcm.settings.set('pattern', 'clusters'); lcm.settings.set('size', 500); lcm.settings.set('spread', 50)");
+await until("lcm.settings.values.pattern === 'clusters' && lcm.renderer.frame.flags.length === 500", 3000);
+await sleep(300);
+await shot("10-start-clusters");
+await js("lcm.settings.set('pattern', 'cloud')");
+await until("lcm.settings.values.pattern === 'cloud'", 3000);
+await sleep(300);
+const exported = (await js("lcm.client.csv().then((r) => r.text)"));
+await js("lcm.settings.set('pattern', 'custom')");
+await js(`lcm.settings.set('custom', ${JSON.stringify("# my robots\n0, 0\n80 0\n40;69.3")})`);
+check("custom coordinates: the robot count is the number of lines", await until("lcm.renderer.frame.flags.length === 3 && lcm.settings.values.num_of_robots === 3", 3000));
+check("custom coordinates: the robot-count control is locked", await js("document.getElementById('set-num_of_robots-n').disabled"));
+const tri = await js("Array.from(lcm.renderer.frame.xy).map((v) => +v.toFixed(2))");
+check("custom coordinates are used exactly", JSON.stringify(tri) === JSON.stringify([0, 0, 80, 0, 40, 69.3]), JSON.stringify(tri));
+await js("document.getElementById('set-pattern').dispatchEvent(new Event('change'))");
+check("custom coordinates are edited in their own window", await js("!document.getElementById('coords').hidden && document.activeElement.id === 'set-custom'"));
+await sleep(200);
+await shot("11-start-custom");
+await js("document.getElementById('set-custom').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+check("Esc closes the coordinates window; the panel shows a summary", await js("document.getElementById('coords').hidden && /3 robots/.test(document.getElementById('set-custom-summary').textContent)"));
+await js(`lcm.settings.set('custom', ${JSON.stringify("1, 2\n3, abc")})`);
+await sleep(400);
+const err = await js("({ status: document.getElementById('set-custom-status').textContent, robots: lcm.renderer.frame.flags.length })");
+check("a typo is reported by line and does not rebuild the run", /Line 2/.test(err.status) && err.robots === 3, JSON.stringify(err));
+await js(`lcm.settings.set('custom', ${JSON.stringify("[[5, 5], [-5, -5]]")})`);
+check("JSON coordinates work", await until("lcm.renderer.frame.flags.length === 2", 3000));
+await js(`lcm.settings.set('custom', ${JSON.stringify(exported)})`);
+const roundTrip = await until(`(() => { const f = lcm.renderer.frame; return f.flags.length === 500; })()`, 4000);
+const cloudFirst = exported.split("\n")[1].split(",");
+const firstNow = await js("Array.from(lcm.renderer.frame.xy.slice(0, 2))");
+check("the simulator's own CSV export pastes back as a custom start", roundTrip && Math.abs(firstNow[0] - Number(cloudFirst[1])) < 1e-3 && Math.abs(firstNow[1] - Number(cloudFirst[2])) < 1e-3,
+  `500 robots, first at (${firstNow.map((v) => v.toFixed(3)).join(", ")})`);
+await js("lcm.settings.reset()");
+await until("lcm.settings.values.pattern === 'cloud' && lcm.renderer.frame.flags.length === 500", 3000);
 
 // Play straight after a settings change plays the new settings.
 await click("#reset");
