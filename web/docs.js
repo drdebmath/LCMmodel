@@ -51,9 +51,12 @@ class View {
     if (!W || !d.w || !b.w) return;
     const s = W / b.w, k = d.w / b.w;
     const dx = (d.x - b.x) * s, dy = (d.y - b.y) * s;
-    // The picture has half a stage of chart drawn beyond each edge. Before
-    // the finger goes past that (or the zoom changes a lot), redraw it once.
-    if (Math.abs(dx) > W * MARGIN * 0.8 || Math.abs(dy) > H * MARGIN * 0.8 || k < 0.7 || k > 1.5) { this.commit(); return; }
+    // The picture has half a stage of chart drawn beyond each edge. Redraw
+    // only when the view would leave it (or the picture would get very
+    // stretched); otherwise stretching and sliding it costs no drawing.
+    const covered = b.x >= d.x - d.w * MARGIN && b.y >= d.y - d.h * MARGIN
+      && b.x + b.w <= d.x + d.w * (1 + MARGIN) && b.y + b.h <= d.y + d.h * (1 + MARGIN);
+    if (!covered || k > 3) { this.commit(); return; }
     const ox = W * MARGIN * (1 - k), oy = H * MARGIN * (1 - k);
     this.svg.style.transform = `translate(${dx + ox}px, ${dy + oy}px) scale(${k})`;
   }

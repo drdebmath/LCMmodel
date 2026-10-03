@@ -242,5 +242,8 @@ svg text { font-family: var(--font); fill: var(--text); }
 }
 
 @media (pointer: coarse) {
+  /* Soft shadows on every card are what makes a phone stutter when it redraws
+     the chart; a crisp border keeps the cards distinct. */
+  .node .card { filter: none; stroke: var(--border-strong); stroke-width: 1.2; }
   .stage-tools .btn, .detail-links .btn, .tour-ctl .btn, .about-btn { height: 38px; min-width: 38px; }
 }
