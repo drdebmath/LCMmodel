@@ -98,7 +98,7 @@ await size(390, 844, 3, true);
 await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
 await fresh(`${base}/web/docs.html#look-compute-move`);
 const touch = (type, pts) => send("Input.dispatchTouchEvent", { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
-const box = () => js(`(() => { const v = document.querySelector('.chart:not([hidden]) svg').viewBox.baseVal; return { y: v.y, w: v.width }; })()`);
+const box = () => js(`(() => { const b = docs.views[docs.chart].box; return { y: b.y, w: b.w }; })()`);
 const onScreenNode = () => js(`(() => { const s = document.querySelector('.chart:not([hidden]) .stage').getBoundingClientRect();
   for (const g of document.querySelectorAll('.chart:not([hidden]) .node')) { const r = g.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
     if (x > s.left + 10 && x < s.right - 10 && y > s.top + 140 && y < s.bottom - 80) return [x, y, g.dataset.id]; } return null; })()`);
@@ -127,6 +127,27 @@ for (let i = 1; i <= 6; i++) await touch("touchMove", [[c[0] - 30 - i * 12, c[1]
 await touch("touchEnd", []);
 await sleep(100);
 check("phone: two fingers pinch to zoom", (await box()).w < w0 * 0.6, `visible width ${w0.toFixed(0)} -> ${(await box()).w.toFixed(0)}`);
+// While a finger moves, the drawn picture is slid on the GPU; it must line up
+// exactly with the sharp redraw when the finger lifts, and never show blank.
+await fresh(`${base}/web/docs.html#event-loop`);
+const someNode = () => js(`(() => { const r = document.querySelector('.chart:not([hidden]) .node').getBoundingClientRect(); return [r.x, r.y, r.width]; })()`);
+const mid = await js(`(() => { const r = document.querySelector('.chart:not([hidden]) .stage').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+await touch("touchStart", [mid]);
+for (let i = 1; i <= 6; i++) { await touch("touchMove", [[mid[0] - i * 10, mid[1]]]); await sleep(20); }
+await sleep(50);
+const sliding = await someNode();
+const slid = (await js("document.querySelector('.chart:not([hidden]) svg').style.transform")) !== "";
+await touch("touchEnd", []);
+await sleep(100);
+const settled = await someNode();
+check("phone: a drag slides the drawn chart and lands without a jump", slid && sliding.every((v, i) => Math.abs(v - settled[i]) < 1), `${sliding.map((v) => v.toFixed(1))} -> ${settled.map((v) => v.toFixed(1))}`);
+await touch("touchStart", [mid]);
+for (let i = 1; i <= 30; i++) { await touch("touchMove", [[mid[0] + (i % 2 ? 1 : -1), mid[1] - i * 12]]); await sleep(18); }
+await sleep(50);
+check("phone: a long drag never uncovers blank space", await js(`(() => { const s = document.querySelector('.chart:not([hidden]) .stage').getBoundingClientRect(), g = document.querySelector('.chart:not([hidden]) svg').getBoundingClientRect(); return g.left <= s.left + 1 && g.top <= s.top + 1 && g.right >= s.right - 1 && g.bottom >= s.bottom - 1; })()`));
+await touch("touchEnd", []);
+await sleep(100);
+await fresh(`${base}/web/docs.html#look-compute-move`);
 await js("document.querySelector('.chart:not([hidden]) .about-btn').click()");
 check("phone: 'About this chart' shows the introduction and notes in place of the chart", await js("(() => { const s = document.querySelector('.chart:not([hidden])'); return getComputedStyle(s.querySelector('.blurb')).display !== 'none' && getComputedStyle(s.querySelector('.notes')).display !== 'none' && getComputedStyle(s.querySelector('.stage-wrap')).display === 'none'; })()"));
 await js("document.querySelector('.chart:not([hidden]) .about-btn').click()");

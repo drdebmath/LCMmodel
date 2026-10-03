@@ -9,6 +9,9 @@ const $ = (id) => document.getElementById(id);
 const KIND = { entry: "Start", step: "Step", decision: "Question", end: "Finish", out: "Ends this pass" };
 renderIcons();
 
+/** How much chart is drawn beyond each edge of the stage, as a fraction of
+ *  its size, so a drag can slide the picture without uncovering blank space. */
+const MARGIN = 0.5;
 /** Below this zoom the step titles stop being readable. */
 const MIN_READABLE = 0.6;
 let chartId = null;
@@ -24,16 +27,51 @@ class View {
     this.w = Number(this.svg.dataset.width);
     this.h = Number(this.svg.dataset.height);
     this.box = { x: 0, y: 0, w: this.w, h: this.h };
+    this.drawn = { ...this.box }; // the view box the SVG is actually drawn with
+    this.live = false; // a drag, pinch or wheel is under way
+    this.frame = 0;
     this.level = section.querySelector(".zoom-level");
+    this.measure();
     this.bind();
   }
+  /** The stage's size, measured once per layout change rather than on every move. */
+  measure() { this.rect = this.stage.getBoundingClientRect(); return this.rect; }
+  /**
+   * Shows `this.box`. During a gesture the chart is not redrawn: the picture
+   * already drawn is slid and scaled on the GPU (a CSS transform), at most once
+   * per frame. When the gesture ends, `commit` redraws it sharply in place.
+   */
   apply() {
     this.clamp();
+    if (!this.live) { this.commit(); return; }
+    if (!this.frame) this.frame = requestAnimationFrame(() => { this.frame = 0; if (this.live) this.slide(); });
+  }
+  slide() {
+    const d = this.drawn, b = this.box, { width: W, height: H } = this.rect;
+    if (!W || !d.w || !b.w) return;
+    const s = W / b.w, k = d.w / b.w;
+    const dx = (d.x - b.x) * s, dy = (d.y - b.y) * s;
+    // The picture has half a stage of chart drawn beyond each edge. Before
+    // the finger goes past that (or the zoom changes a lot), redraw it once.
+    if (Math.abs(dx) > W * MARGIN * 0.8 || Math.abs(dy) > H * MARGIN * 0.8 || k < 0.7 || k > 1.5) { this.commit(); return; }
+    const ox = W * MARGIN * (1 - k), oy = H * MARGIN * (1 - k);
+    this.svg.style.transform = `translate(${dx + ox}px, ${dy + oy}px) scale(${k})`;
+  }
+  commit() {
+    if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
     const b = this.box;
-    this.svg.setAttribute("viewBox", `${b.x} ${b.y} ${b.w} ${b.h}`);
-    const rect = this.stage.getBoundingClientRect();
-    const scale = Math.min(rect.width / b.w, rect.height / b.h);
-    this.level.textContent = `${Math.round(scale * 100)}%`;
+    // Drawn with a margin of chart around the visible part (see `slide`).
+    this.svg.setAttribute("viewBox", `${b.x - b.w * MARGIN} ${b.y - b.h * MARGIN} ${b.w * (1 + 2 * MARGIN)} ${b.h * (1 + 2 * MARGIN)}`);
+    this.svg.style.transform = "";
+    this.drawn = { ...b };
+    const rect = this.rect;
+    if (rect.width) this.level.textContent = `${Math.round(Math.min(rect.width / b.w, rect.height / b.h) * 100)}%`;
+  }
+  /** Start or end a gesture; ending it redraws the chart once, sharply. */
+  setLive(on) {
+    if (on === this.live) return;
+    this.live = on;
+    if (on) this.measure(); else { this.clamp(); this.commit(); }
   }
   /** Keep some of the chart in view: never scroll past its edges by more than a margin. */
   clamp() {
@@ -44,7 +82,7 @@ class View {
   }
   /** Show the whole chart, at most at 100 %. */
   fit() {
-    const rect = this.stage.getBoundingClientRect();
+    const rect = this.measure();
     if (!rect.width) return;
     const scale = Math.min(1, (rect.width - 24) / this.w, (rect.height - 64) / this.h);
     const w = rect.width / scale, h = rect.height / scale;
@@ -54,7 +92,7 @@ class View {
   }
   /** Readable start: the chart's full width (at most 100 %), from the top. */
   fitWidth() {
-    const rect = this.stage.getBoundingClientRect();
+    const rect = this.measure();
     if (!rect.width) return;
     const scale = Math.min(1, (rect.width - 24) / this.w);
     if (scale < MIN_READABLE) { this.startReadable(rect); return; }
@@ -74,10 +112,10 @@ class View {
     this.lastRect = rect;
     this.apply();
   }
-  scale() { const r = this.stage.getBoundingClientRect(); return r.width / this.box.w; }
+  scale() { return this.rect.width / this.box.w; }
   /** The stage changed size: keep the zoom level and the view's centre. */
   resized() {
-    const rect = this.stage.getBoundingClientRect();
+    const rect = this.measure();
     if (!rect.width || !this.lastRect) { this.lastRect = rect; this.apply(); return; }
     const s = this.lastRect.width / this.box.w;
     const cx = this.box.x + this.box.w / 2, cy = this.box.y + this.box.h / 2;
@@ -87,7 +125,7 @@ class View {
     this.apply();
   }
   zoom(factor, cx, cy) {
-    const rect = this.stage.getBoundingClientRect();
+    const rect = this.rect;
     const s = this.scale();
     const next = Math.min(3, Math.max(0.2, s * factor));
     const px = cx ?? rect.width / 2, py = cy ?? rect.height / 2;
@@ -116,13 +154,13 @@ class View {
     this.stage.addEventListener("pointerdown", (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1) { drag = { x: e.clientX, y: e.clientY, start: { x: e.clientX, y: e.clientY } }; moved = false; }
-      if (pointers.size === 2) { pinch = midpoint(); drag = null; moved = true; }
+      if (pointers.size === 2) { pinch = midpoint(); drag = null; moved = true; this.setLive(true); }
     });
     this.stage.addEventListener("pointermove", (e) => {
       if (!pointers.has(e.pointerId)) return;
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pinch && pointers.size === 2) {
-        const now = midpoint(), rect = this.stage.getBoundingClientRect();
+        const now = midpoint(), rect = this.rect;
         if (pinch.d > 0 && now.d > 0) this.zoom(now.d / pinch.d, now.x - rect.left, now.y - rect.top);
         const s = this.scale();
         this.box.x -= (now.x - pinch.x) / s;
@@ -133,7 +171,7 @@ class View {
       }
       if (!drag) return;
       if (!moved && Math.hypot(e.clientX - drag.start.x, e.clientY - drag.start.y) < 6) return;
-      if (!moved) { moved = true; this.stage.setPointerCapture(e.pointerId); this.stage.classList.add("panning"); }
+      if (!moved) { moved = true; this.stage.setPointerCapture(e.pointerId); this.stage.classList.add("panning"); this.setLive(true); }
       const s = this.scale();
       this.box.x -= (e.clientX - drag.x) / s;
       this.box.y -= (e.clientY - drag.y) / s;
@@ -150,7 +188,7 @@ class View {
       }
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinch = null;
-      if (pointers.size === 0) { drag = null; this.stage.classList.remove("panning"); }
+      if (pointers.size === 0) { drag = null; this.stage.classList.remove("panning"); this.setLive(false); }
     };
     this.stage.addEventListener("pointerup", end);
     this.stage.addEventListener("pointercancel", end);
@@ -160,9 +198,13 @@ class View {
       if (moved || (e.isTrusted && performance.now() - tapAt < 700)) { e.stopPropagation(); e.preventDefault(); moved = false; }
     }, true);
     // Wheel scrolls; Ctrl + wheel (and trackpad pinch, which arrives as it) zooms.
+    let wheelEnd = 0;
     this.stage.addEventListener("wheel", (e) => {
       e.preventDefault();
-      const rect = this.stage.getBoundingClientRect();
+      this.setLive(true);
+      clearTimeout(wheelEnd);
+      wheelEnd = setTimeout(() => this.setLive(false), 140);
+      const rect = this.rect;
       if (e.ctrlKey || e.metaKey) {
         this.zoom(Math.exp(-e.deltaY * 0.01), e.clientX - rect.left, e.clientY - rect.top);
       } else {

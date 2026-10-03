@@ -83,9 +83,11 @@ body:not(.has-detail) .docs-detail { visibility: hidden; padding: 0; border: 0; 
 
 .stage-wrap { position: relative; border: 1px solid var(--border); border-radius: 16px; background: var(--canvas);
   overflow: hidden; height: calc(100vh - 230px); min-height: 440px; }
-.stage { width: 100%; height: 100%; cursor: grab; touch-action: none; outline: none; }
+.stage { position: relative; overflow: hidden; width: 100%; height: 100%; cursor: grab; touch-action: none; outline: none; }
 .stage.panning { cursor: grabbing; }
-.stage svg { display: block; width: 100%; height: 100%; }
+/* The SVG is twice the stage's size, centred on it: half a stage of chart is
+   drawn beyond each edge so a drag can slide the picture (docs.js, MARGIN). */
+.stage svg { position: absolute; left: -50%; top: -50%; display: block; width: 200%; height: 200%; transform-origin: 0 0; will-change: transform; }
 .stage-tools { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 4px; pointer-events: none; }
 .stage-tools > * { pointer-events: auto; }
 .stage-tools .btn:not(.primary) { background: var(--surface); border: 1px solid var(--border); backdrop-filter: blur(8px); }
