@@ -129,7 +129,10 @@ await sleep(100);
 check("phone: two fingers pinch to zoom", (await box()).w < w0 * 0.6, `visible width ${w0.toFixed(0)} -> ${(await box()).w.toFixed(0)}`);
 // While a finger moves, the drawn picture is slid on the GPU; it must line up
 // exactly with the sharp redraw when the finger lifts, and never show blank.
-await fresh(`${base}/web/docs.html#event-loop`);
+// (Charts are switched with their chip, as a user would: reloading the page
+// here can leave Chrome's simulated touch screen deaf.)
+await js("docs.showChart('event-loop')");
+await sleep(400);
 const someNode = () => js(`(() => { const r = document.querySelector('.chart:not([hidden]) .node').getBoundingClientRect(); return [r.x, r.y, r.width]; })()`);
 const mid = await js(`(() => { const r = document.querySelector('.chart:not([hidden]) .stage').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
 await touch("touchStart", [mid]);
