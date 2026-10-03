@@ -46,6 +46,7 @@
       <h2>Settings</h2>
       <span class="spacer"></span>
       <span id="dirty" class="badge warn" hidden title="The running simulation still uses the old settings">Reset to apply</span>
+      <button id="close_settings" class="btn small sheet-close" type="button" title="Close settings" aria-label="Close settings"><span data-icon="close" data-size="15"></span></button>
     </div>
     <div id="settings_body" class="panel-body"></div>
     <div class="panel-foot">
@@ -60,10 +61,10 @@
     <div id="hud_time" class="hud-time">0.00</div>
     <div class="hud-row"><span class="k">Terminated</span><span class="v" id="hud_term">0 / 0</span></div>
     <div class="progress" aria-hidden="true"><div id="hud_bar"></div></div>
-    <div class="hud-row"><span class="k">Events</span><span class="v" id="hud_events">0</span></div>
-    <div class="hud-row"><span class="k">Events / s</span><span class="v" id="hud_rate">—</span></div>
-    <div id="hud_last" class="last-event" hidden></div>
-    <div id="hud_perf" class="hud-perf">—</div>
+    <div class="hud-row hud-extra"><span class="k">Events</span><span class="v" id="hud_events">0</span></div>
+    <div class="hud-row hud-extra"><span class="k">Events / s</span><span class="v" id="hud_rate">—</span></div>
+    <div id="hud_last" class="last-event hud-extra" hidden></div>
+    <div id="hud_perf" class="hud-perf hud-extra">—</div>
   </section>
 
   <!-- Inspector -->

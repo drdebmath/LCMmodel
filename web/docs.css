@@ -185,4 +185,19 @@ svg text { font-family: var(--font); fill: var(--text); }
   .docs-detail { border-left: 0; border-top: 1px solid var(--border); }
   body:not(.has-detail) .docs-detail { display: none; }
   .stage-wrap { height: 70vh; }
+  /* The sidebar's simulator card is right there: no second button in the bar. */
+  .docs-bar > a.btn.outline { display: none; }
+  /* The selected step opens as a sheet over the chart, so it is seen at once. */
+  .docs-detail { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 62vh; overflow-y: auto;
+    border-radius: 16px 16px 0 0; border: 1px solid var(--border); box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18); }
+  body.has-detail .docs-content { padding-bottom: 62vh; }
+}
+@media (max-width: 560px) {
+  .crumb { display: none; }
+  .docs-content { padding: 16px 12px 32px; }
+  .stage-hint { display: none; }
+  .stage-wrap { height: 64vh; min-height: 360px; }
+}
+@media (pointer: coarse) {
+  .stage-tools .btn, .detail-links .btn, .tour-ctl .btn { height: 38px; min-width: 38px; }
 }

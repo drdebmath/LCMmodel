@@ -9,6 +9,8 @@ const $ = (id) => document.getElementById(id);
 const KIND = { entry: "Start", step: "Step", decision: "Question", end: "Finish", out: "Ends this pass" };
 renderIcons();
 
+/** Below this zoom the step titles stop being readable. */
+const MIN_READABLE = 0.6;
 let chartId = null;
 let selected = null;
 const views = {}; // chart id -> view state
@@ -55,9 +57,20 @@ class View {
     const rect = this.stage.getBoundingClientRect();
     if (!rect.width) return;
     const scale = Math.min(1, (rect.width - 24) / this.w);
+    if (scale < MIN_READABLE) { this.startReadable(rect); return; }
     if (this.h * scale <= rect.height - 56) { this.fit(); return; }
     const w = rect.width / scale, h = rect.height / scale;
     this.box = { x: (this.w - w) / 2, y: 0, w, h };
+    this.lastRect = rect;
+    this.apply();
+  }
+  /** A narrow screen can't show the whole width readably: start at a readable
+   *  zoom, at the top, centred on the chart's first step. */
+  startReadable(rect) {
+    const first = this.section.querySelector(`.node[data-id="${DATA.charts[this.section.dataset.chart].order[0]}"]`);
+    const bb = first ? first.getBBox() : { x: this.w / 2, width: 0 };
+    const w = rect.width / MIN_READABLE, h = rect.height / MIN_READABLE;
+    this.box = { x: bb.x + bb.width / 2 - w / 2, y: 0, w, h };
     this.lastRect = rect;
     this.apply();
   }
