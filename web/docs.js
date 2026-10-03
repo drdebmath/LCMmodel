@@ -105,24 +105,60 @@ class View {
     this.apply();
   }
   bind() {
-    let drag = null;
+    // One finger or the mouse drags the chart, from anywhere, boxes included;
+    // two fingers pinch to zoom. A press that barely moves is still a click.
+    const pointers = new Map();
+    let drag = null, pinch = null, moved = false;
+    const midpoint = () => {
+      const [a, b] = [...pointers.values()];
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) };
+    };
     this.stage.addEventListener("pointerdown", (e) => {
-      if (e.target.closest(".node")) return;
-      drag = { x: e.clientX, y: e.clientY };
-      this.stage.setPointerCapture(e.pointerId);
-      this.stage.classList.add("panning");
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1) { drag = { x: e.clientX, y: e.clientY, start: { x: e.clientX, y: e.clientY } }; moved = false; }
+      if (pointers.size === 2) { pinch = midpoint(); drag = null; moved = true; }
     });
     this.stage.addEventListener("pointermove", (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && pointers.size === 2) {
+        const now = midpoint(), rect = this.stage.getBoundingClientRect();
+        if (pinch.d > 0 && now.d > 0) this.zoom(now.d / pinch.d, now.x - rect.left, now.y - rect.top);
+        const s = this.scale();
+        this.box.x -= (now.x - pinch.x) / s;
+        this.box.y -= (now.y - pinch.y) / s;
+        this.apply();
+        pinch = now;
+        return;
+      }
       if (!drag) return;
+      if (!moved && Math.hypot(e.clientX - drag.start.x, e.clientY - drag.start.y) < 6) return;
+      if (!moved) { moved = true; this.stage.setPointerCapture(e.pointerId); this.stage.classList.add("panning"); }
       const s = this.scale();
       this.box.x -= (e.clientX - drag.x) / s;
       this.box.y -= (e.clientY - drag.y) / s;
-      drag = { x: e.clientX, y: e.clientY };
+      drag = { ...drag, x: e.clientX, y: e.clientY };
       this.apply();
     });
-    const end = () => { drag = null; this.stage.classList.remove("panning"); };
+    let tapAt = 0;
+    const end = (e) => {
+      // A finger tap that didn't move opens the box at once. Browsers swallow
+      // the click of a tap that comes right after a swipe, so don't wait for it.
+      if (e.type === "pointerup" && e.pointerType !== "mouse" && !moved && pointers.size === 1) {
+        const g = e.target.closest?.(".node");
+        if (g) { tapAt = performance.now(); g.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+      }
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinch = null;
+      if (pointers.size === 0) { drag = null; this.stage.classList.remove("panning"); }
+    };
     this.stage.addEventListener("pointerup", end);
     this.stage.addEventListener("pointercancel", end);
+    // A drag that started on a box must not also open it.
+    // ...and the browser's own click for that tap, if it comes, is not a second one.
+    this.stage.addEventListener("click", (e) => {
+      if (moved || (e.isTrusted && performance.now() - tapAt < 700)) { e.stopPropagation(); e.preventDefault(); moved = false; }
+    }, true);
     // Wheel scrolls; Ctrl + wheel (and trackpad pinch, which arrives as it) zooms.
     this.stage.addEventListener("wheel", (e) => {
       e.preventDefault();
@@ -175,10 +211,13 @@ function showDetail(id) {
   g.classList.add("selected");
   setFocus(section, id);
   views[chartId].reveal(g);
+  // On small screens opening the details shrinks the chart: keep the step in view.
+  const opening = !document.body.classList.contains("has-detail");
 
   $("detail").querySelector(".detail-empty").hidden = true;
   $("detail").querySelector(".detail-body").hidden = false;
   document.body.classList.add("has-detail");
+  if (opening) requestAnimationFrame(() => { views[chartId].resized(); views[chartId].reveal(g); });
   const chip = $("d_kind");
   chip.textContent = KIND[n.kind];
   chip.className = `kind-chip k-${n.kind}`;
@@ -262,6 +301,19 @@ function showChart(id, step) {
 }
 
 for (const section of document.querySelectorAll(".chart")) {
+  // Small screens hide the introduction and notes behind this button.
+  const about = document.createElement("button");
+  about.className = "btn outline small about-btn";
+  about.type = "button";
+  about.textContent = "About this chart";
+  about.setAttribute("aria-expanded", "false");
+  about.addEventListener("click", () => {
+    const open = section.classList.toggle("about-open");
+    about.setAttribute("aria-expanded", String(open));
+    about.textContent = open ? "Back to the chart" : "About this chart";
+    if (!open) requestAnimationFrame(() => views[section.dataset.chart]?.resized());
+  });
+  section.querySelector(".chart-head").append(about);
   const stage = section.querySelector(".stage");
   for (const g of stage.querySelectorAll(".node")) {
     g.addEventListener("click", () => showDetail(g.dataset.id));

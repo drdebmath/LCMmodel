@@ -1,7 +1,8 @@
 // Checks the simulator and the flowchart page at phone, tablet and desktop
 // sizes in headless Chrome: nothing scrolls sideways, the floating panels
 // never overlap, phones get the settings sheet and finger-sized buttons, and
-// the flowcharts open readable on a narrow screen.
+// the flowcharts open readable on a narrow screen and work with fingers
+// (drag, tap, pinch), with a step's details never hiding the step.
 //   node scripts/responsive-check.mjs [screenshot-dir]
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,6 +88,58 @@ await sleep(300);
 const detail = await js(`(() => { const r = document.getElementById('detail').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, h: innerHeight }; })()`);
 check("phone: a step's details open as a sheet in view", detail.top > 0 && detail.top < detail.h * 0.6 && Math.abs(detail.bottom - detail.h) < 2, JSON.stringify(detail));
 await shot("docs-phone-detail");
+
+// Each scenario below starts from a fresh page: the same page with a new "#"
+// would only switch charts and keep the earlier state.
+const fresh = async (url) => { await send("Page.navigate", { url: "about:blank" }); await sleep(100); await send("Page.navigate", { url }); await until("!!window.docs", 10000); await sleep(300); };
+
+// Flowchart page with fingers: drag from a box, tap right after, pinch.
+await size(390, 844, 3, true);
+await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+await fresh(`${base}/web/docs.html#look-compute-move`);
+const touch = (type, pts) => send("Input.dispatchTouchEvent", { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+const box = () => js(`(() => { const v = document.querySelector('.chart:not([hidden]) svg').viewBox.baseVal; return { y: v.y, w: v.width }; })()`);
+const onScreenNode = () => js(`(() => { const s = document.querySelector('.chart:not([hidden]) .stage').getBoundingClientRect();
+  for (const g of document.querySelectorAll('.chart:not([hidden]) .node')) { const r = g.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+    if (x > s.left + 10 && x < s.right - 10 && y > s.top + 140 && y < s.bottom - 80) return [x, y, g.dataset.id]; } return null; })()`);
+await js("document.querySelector('.chart:not([hidden]) [data-zoom=\"in\"]').click()");
+await js("document.querySelector('.chart:not([hidden]) [data-zoom=\"in\"]').click()");
+await sleep(100);
+const from = await onScreenNode();
+const before = await box();
+await touch("touchStart", [from]);
+for (let i = 1; i <= 8; i++) await touch("touchMove", [[from[0], from[1] - i * 15]]);
+await touch("touchEnd", []);
+await sleep(100);
+const moved = ((await box()).y - before.y) * (await js("docs.views['look-compute-move'].scale()"));
+check("phone: one finger drags the chart, even starting on a box", Math.abs(moved - 120) < 3 && !(await js("document.body.classList.contains('has-detail')")), `${moved.toFixed(1)} px of 120`);
+const target = await onScreenNode();
+await touch("touchStart", [target]);
+await touch("touchEnd", []);
+await sleep(300);
+check("phone: a tap right after a drag opens the box", await js(`document.querySelector('.chart:not([hidden]) .node.selected')?.dataset.id === ${JSON.stringify(target[2])}`));
+const tapped = await js(`(() => { const n = document.querySelector('.chart:not([hidden]) .node.selected').getBoundingClientRect(), s = document.querySelector('.chart:not([hidden]) .stage').getBoundingClientRect(), d = document.getElementById('detail').getBoundingClientRect(); return { node: [n.top, n.bottom], stage: [s.top, s.bottom], detail: d.top }; })()`);
+check("phone: the tapped box stays in view above its details", tapped.node[0] >= tapped.stage[0] && tapped.node[1] <= tapped.stage[1] && tapped.node[1] <= tapped.detail, JSON.stringify(tapped));
+const w0 = (await box()).w;
+const c = await js(`(() => { const r = document.querySelector('.chart:not([hidden]) .stage').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+await touch("touchStart", [[c[0] - 30, c[1]], [c[0] + 30, c[1]]]);
+for (let i = 1; i <= 6; i++) await touch("touchMove", [[c[0] - 30 - i * 12, c[1]], [c[0] + 30 + i * 12, c[1]]]);
+await touch("touchEnd", []);
+await sleep(100);
+check("phone: two fingers pinch to zoom", (await box()).w < w0 * 0.6, `visible width ${w0.toFixed(0)} -> ${(await box()).w.toFixed(0)}`);
+await js("document.querySelector('.chart:not([hidden]) .about-btn').click()");
+check("phone: 'About this chart' shows the introduction and notes in place of the chart", await js("(() => { const s = document.querySelector('.chart:not([hidden])'); return getComputedStyle(s.querySelector('.blurb')).display !== 'none' && getComputedStyle(s.querySelector('.notes')).display !== 'none' && getComputedStyle(s.querySelector('.stage-wrap')).display === 'none'; })()"));
+await js("document.querySelector('.chart:not([hidden]) .about-btn').click()");
+await sleep(100);
+check("phone: 'Back to the chart' brings the chart back", await js("(() => { const r = document.querySelector('.chart:not([hidden]) .stage').getBoundingClientRect(); return r.height > 200; })()"));
+
+// A phone held sideways: the details open beside the chart.
+await size(844, 390, 3, true);
+await fresh(`${base}/web/docs.html#look-compute-move/comp`);
+await sleep(200);
+const side = await js(`(() => { const s = document.querySelector('.chart:not([hidden]) .stage').getBoundingClientRect(), d = document.getElementById('detail').getBoundingClientRect(), n = document.querySelector('.chart:not([hidden]) .node.selected').getBoundingClientRect(); return { stageRight: s.right, detailLeft: d.left, nodeIn: n.top >= s.top && n.bottom <= s.bottom && n.right <= s.right }; })()`);
+check("sideways: details open beside the chart, the step still in view", side.detailLeft >= side.stageRight - 1 && side.nodeIn, JSON.stringify(side));
+await shot("docs-sideways-detail");
 
 check("no errors in the console", consoleErrors.length === 0, consoleErrors.join(" / "));
 await finish();

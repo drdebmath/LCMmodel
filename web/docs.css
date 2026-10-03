@@ -175,29 +175,70 @@ svg text { font-family: var(--font); fill: var(--text); }
   .docs-main { grid-template-columns: 220px minmax(0, 1fr) 0; }
   body.has-detail .docs-main { grid-template-columns: 220px minmax(0, 1fr) 360px; }
 }
+/* "About this chart" only exists on small screens (see below). */
+.about-btn { display: none; }
+
+/* ------------------------------------------------------------ phones and tablets
+ * The page becomes one screen: header, a row of chart chips, the chart filling
+ * the rest, and, once a step is picked, its details below the chart (beside it
+ * on a short, wide screen). The chart shrinks to make room, so the step stays
+ * in view. The introduction and notes sit behind "About this chart". */
 @media (max-width: 920px) {
-  html, body { overflow: auto; height: auto; }
-  body.docs { display: block; }
-  .docs-main { display: block; }
-  .docs-nav { border-right: 0; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 4px; padding: 10px; }
-  .docs-nav .nav-title, .legend-list, .nav-foot, .nav-short, .sim-card-sub { display: none; }
-  .sim-card { width: 100%; margin-bottom: 6px; padding: 8px 12px; }
-  .docs-detail { border-left: 0; border-top: 1px solid var(--border); }
+  html, body { height: 100%; overflow: hidden; }
+  body.docs { height: 100vh; height: 100dvh; }
+  .docs-bar { height: 48px; gap: 4px; }
+  .docs-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  body.has-detail .docs-main { grid-template-columns: none; }
+
+  .docs-nav { flex: none; display: flex; flex-wrap: nowrap; gap: 6px; padding: 8px 10px; overflow-x: auto; overflow-y: hidden;
+    border-right: 0; border-bottom: 1px solid var(--border); scrollbar-width: none; }
+  .docs-nav::-webkit-scrollbar { display: none; }
+  .docs-nav .nav-title, .legend-list, .nav-foot, .nav-short, .sim-card { display: none; }
+  .nav-item { flex: none; align-items: center; padding: 6px 12px 6px 6px; border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; }
+  .nav-item[aria-current="page"] { border-color: var(--accent); }
+  .nav-name { font-size: 13px; }
+
+  .docs-content { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 10px 12px 12px; }
+  .chart:not([hidden]) { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+  .chart-head { display: flex; align-items: center; gap: 8px; }
+  .chart-head > div { flex: 1; min-width: 0; }
+  .chart-head .eyebrow, .chart-head .blurb { display: none; }
+  .chart-head h1 { margin: 0; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .about-btn { display: inline-flex; flex: none; }
+  /* "About this chart" swaps the chart for its introduction and notes. */
+  .chart .notes { display: none; }
+  .chart.about-open { overflow-y: auto; }
+  .chart.about-open .chart-head { flex-wrap: wrap; }
+  .chart.about-open .chart-head > div { flex-basis: 100%; order: 2; }
+  .chart.about-open .chart-head .blurb { display: block; }
+  .chart.about-open .notes { display: block; margin: 0; }
+  .chart.about-open .stage-wrap { display: none; }
+  .stage-wrap { order: 2; flex: 1; min-height: 140px; height: auto; }
+  .stage-hint { display: none; }
+
+  .docs-detail { flex: 0 0 auto; height: 46dvh; max-height: 46dvh; overflow-y: auto; padding: 14px 16px 24px;
+    border-left: 0; border-top: 1px solid var(--border); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.14); }
   body:not(.has-detail) .docs-detail { display: none; }
-  .stage-wrap { height: 70vh; }
-  /* The sidebar's simulator card is right there: no second button in the bar. */
-  .docs-bar > a.btn.outline { display: none; }
-  /* The selected step opens as a sheet over the chart, so it is seen at once. */
-  .docs-detail { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 62vh; overflow-y: auto;
-    border-radius: 16px 16px 0 0; border: 1px solid var(--border); box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18); }
-  body.has-detail .docs-content { padding-bottom: 62vh; }
+  .docs-detail h2 { margin-top: 10px; }
+  .code { max-height: none; }
 }
+
+/* A short, wide screen (a phone held sideways): details beside the chart. */
+@media (max-width: 920px) and (max-height: 520px) and (orientation: landscape) {
+  .docs-main { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  body.has-detail .docs-main { grid-template-columns: minmax(0, 1fr) min(46vw, 420px); }
+  .docs-nav { grid-column: 1 / -1; padding: 6px 10px; }
+  .docs-content { grid-column: 1; grid-row: 2; padding: 8px 10px; }
+  .docs-detail { grid-column: 2; grid-row: 2; height: auto; max-height: none; border-top: 0; border-left: 1px solid var(--border);
+    border-radius: 0; box-shadow: none; }
+  .chart-head h1 { font-size: 15px; }
+  .docs-bar { height: 42px; }
+}
+
 @media (max-width: 560px) {
   .crumb { display: none; }
-  .docs-content { padding: 16px 12px 32px; }
-  .stage-hint { display: none; }
-  .stage-wrap { height: 64vh; min-height: 360px; }
 }
+
 @media (pointer: coarse) {
-  .stage-tools .btn, .detail-links .btn, .tour-ctl .btn { height: 38px; min-width: 38px; }
+  .stage-tools .btn, .detail-links .btn, .tour-ctl .btn, .about-btn { height: 38px; min-width: 38px; }
 }
