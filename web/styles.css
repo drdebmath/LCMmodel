@@ -252,13 +252,57 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
-/* ------------------------------------------------------------ small screens */
+/* ------------------------------------------------------------ smaller screens
+ * Desktop is the layout above. --top-h is the toolbar's bottom edge and
+ * --hud-bottom the stats card's, both set by app.js, so panels stack under
+ * whatever height the toolbar wraps to. */
+.sheet-close { display: none; }
+
+/* Tablet and small laptops: icon-only toolbar, stats under it on the right. */
+@media (max-width: 1099px) {
+  #toolbar .label { display: none; }
+  #hud { top: calc(var(--top-h, 56px) + 8px); width: 220px; }
+  #inspector { top: calc(var(--top-h, 56px) + 8px); right: 244px; }
+}
+
+/* Compact stats wherever space is short: just time, terminated and the bar. */
+@media (max-width: 760px), (max-height: 520px) {
+  #hud { padding: 8px 12px; gap: 5px; width: 190px; }
+  #hud .hud-extra { display: none !important; }
+  .hud-time { font-size: 17px; }
+}
+
+/* Short screens (a phone held sideways): tools in a row along the bottom. */
+@media (max-height: 520px) {
+  #tools { flex-direction: row; }
+  #settings { max-height: calc(100vh - var(--top-h, 56px) - 20px); }
+  #legend { display: none; }
+}
+
+/* Phones: full-width toolbar, settings as a bottom sheet, tools in a row. */
 @media (max-width: 760px) {
-  #toolbar { right: 12px; flex-wrap: wrap; }
-  #toolbar .label, .brand span { display: none; }
-  #settings { top: auto; bottom: 64px; width: auto; right: 12px; max-height: 55vh; }
-  #hud { top: auto; bottom: 64px; width: 200px; }
-  #settings:not([hidden]) ~ #hud { display: none; }
-  #inspector { top: 64px; right: 12px; left: 12px; width: auto; }
-  #legend, #settings:not([hidden]) ~ #legend { left: 12px; max-width: calc(100vw - 80px); }
+  #toolbar { top: 8px; left: 8px; right: 8px; flex-wrap: wrap; justify-content: space-between; row-gap: 6px; }
+  #toolbar .brand, #toolbar .divider { display: none; }
+  #algorithm { flex: 1 1 150px; min-width: 0; }
+  #hud { top: calc(var(--top-h, 96px) + 6px); left: 8px; right: 8px; width: auto; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 12px; }
+  #hud .hud-row:first-child { grid-column: 3; grid-row: 1; }
+  #hud .hud-time { grid-column: 1; grid-row: 1; }
+  #hud .hud-row:not(:first-child) { grid-column: 2; grid-row: 1; justify-content: flex-start; }
+  #hud .progress { grid-column: 1 / -1; }
+  #hud .hud-row:first-child .k { display: none; }
+  #settings { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 72vh; border-radius: 16px 16px 0 0; z-index: 25; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18); }
+  .sheet-close { display: inline-flex; }
+  #tools { left: 8px; right: 8px; bottom: 8px; flex-direction: row; justify-content: space-between; }
+  #legend, #settings:not([hidden]) ~ #legend { left: 8px; right: 8px; bottom: 64px; max-width: none; }
+  #inspector { top: calc(var(--hud-bottom, 150px) + 6px); left: 8px; right: 8px; width: auto; }
+  .menu { right: 8px; bottom: 64px; }
+}
+
+/* Touch screens: finger-sized targets. */
+@media (pointer: coarse) {
+  .btn { height: 40px; min-width: 40px; }
+  .btn.small { height: 34px; min-width: 34px; }
+  #toolbar select { height: 40px; }
+  .field select, .field input[type="number"] { height: 36px; }
+  input[type="range"] { height: 28px; }
 }

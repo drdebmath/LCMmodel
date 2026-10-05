@@ -27,6 +27,7 @@ node scripts/check-wasm-parity.mjs            # browser build vs native, bit for
 python3 scripts/compare-speed.py 20 50 100    # the same run in Python and Rust, timed
 node scripts/ui-check.mjs                     # the simulator page in headless Chrome
 node scripts/docs-check.mjs                   # the flowchart page in headless Chrome
+node scripts/responsive-check.mjs             # both pages at phone, tablet and desktop sizes
 python3 -m http.server 8000                   # then open http://localhost:8000/ (original: /old/)
 ```
 

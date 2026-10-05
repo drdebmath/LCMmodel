@@ -234,6 +234,9 @@ $("algorithm").addEventListener("change", onSettingChange);
 $("playback").addEventListener("change", (e) => client.speed(Number(e.target.value)));
 $("defaults").addEventListener("click", () => settings.reset());
 $("toggle_settings").addEventListener("click", toggleSettings);
+$("close_settings").addEventListener("click", toggleSettings);
+// Phones (and short screens) open on the swarm; settings is one tap away.
+if (innerWidth <= 760 || innerHeight <= 520) { $("settings").hidden = true; $("toggle_settings").setAttribute("aria-pressed", "false"); }
 function toggleSettings() {
   const panel = $("settings");
   panel.hidden = !panel.hidden;
@@ -241,16 +244,27 @@ function toggleSettings() {
   updateInsets();
 }
 
-/** Tell the renderer which parts of the window the floating panels cover. */
+/** Tell the renderer which parts of the window the floating panels cover,
+ * and let the CSS stack panels under the toolbar and stats at any width. */
 function updateInsets() {
   const visible = (id) => { const el = $(id); return !el.hidden && getComputedStyle(el).display !== "none" ? el.getBoundingClientRect() : null; };
-  if (innerWidth <= 760) { renderer.setInsets({ left: 0, right: 0, top: 60, bottom: 60 }); return; }
-  const settingsRect = visible("settings"), hud = visible("hud"), tools = visible("tools"), toolbar = visible("toolbar");
+  const root = document.documentElement.style;
+  const toolbar = visible("toolbar");
+  root.setProperty("--top-h", `${Math.round(toolbar ? toolbar.bottom : 0)}px`);
+  const hud = visible("hud");
+  root.setProperty("--hud-bottom", `${Math.round(hud ? hud.bottom : 0)}px`);
+  const settingsRect = visible("settings"), tools = visible("tools"), legend = visible("legend");
+  if (innerWidth <= 760) {
+    // Phones: the settings sheet floats over the view instead of narrowing it.
+    const bottomEdge = Math.min(tools ? tools.top : innerHeight, legend ? legend.top : innerHeight);
+    renderer.setInsets({ left: 0, right: 0, top: Math.max(toolbar ? toolbar.bottom : 0, hud ? hud.bottom : 0), bottom: innerHeight - bottomEdge });
+    return;
+  }
   renderer.setInsets({
     left: settingsRect ? settingsRect.right : 0,
-    right: Math.max(hud ? innerWidth - hud.left : 0, tools ? innerWidth - tools.left : 0),
+    right: Math.max(hud ? innerWidth - hud.left : 0, tools && tools.height > tools.width ? innerWidth - tools.left : 0),
     top: toolbar ? toolbar.bottom : 0,
-    bottom: 56,
+    bottom: tools && tools.width >= tools.height ? innerHeight - tools.top : 56,
   });
 }
 
