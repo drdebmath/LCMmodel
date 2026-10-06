@@ -6,9 +6,15 @@
 //! line to [`REGISTRY`].
 //!
 //! Gathering and SEC are ported; they drive the core's parity tests.
+//!
+//! [`sq_gathering`] (Algorithm 8 of the sequential-schedulers paper) is not in
+//! the registry: it runs under the sequential scheduler in [`seq`], not the
+//! asynchronous event loop of `lcm_core::Simulation`.
 
 mod gathering;
 mod sec;
+pub mod seq;
+pub mod sq_gathering;
 
 pub use gathering::Gathering;
 pub use sec::Sec;

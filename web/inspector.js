@@ -66,7 +66,14 @@ export class Inspector {
     const s = f && i < f.flags.length ? stateLabel(f, i) : null;
     this.card.querySelector("[data-field=title]").textContent = `Robot ${i}`;
     this.card.querySelector("[data-field=status]").innerHTML = s ? `<span class="chip"><span class="dot" style="background:${s.fill}"></span>${s.label}</span>` : "";
-    const rows = info ? [
+    // Sequential runs send `extra` rows (what the robot sees and would do) and
+    // have no speed, light or faults.
+    const rows = info?.extra ? [
+      ["Algorithm", info.algorithm],
+      ["Position", point([info.x, info.y])],
+      ["Target", point(info.target)],
+      ...info.extra,
+    ] : info ? [
       ["Algorithm", info.algorithm],
       ["Phase", info.state + (info.frozen ? " · frozen" : "") + (info.terminated ? " · terminated" : "")],
       ["Position", point([info.x, info.y])],

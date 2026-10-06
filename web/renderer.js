@@ -297,6 +297,19 @@ export class Renderer {
         ctx.arc(cx, cy, cr * s, 0, 2 * Math.PI);
       }
       ctx.stroke();
+      // A negative radius marks a multiplicity point (sequential algorithms):
+      // a ring of -r screen pixels, whatever the zoom.
+      ctx.strokeStyle = "rgba(255,120,40,0.95)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const cr = circle[3 * i + 2];
+        if (!(cr < 0)) continue;
+        const cx = X(circle[3 * i]), cy = Y(circle[3 * i + 1]);
+        ctx.moveTo(cx - cr, cy);
+        ctx.arc(cx, cy, -cr, 0, 2 * Math.PI);
+      }
+      ctx.stroke();
       ctx.lineWidth = 1;
     }
 

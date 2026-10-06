@@ -1,6 +1,6 @@
 /**
  * `advance` result codes, shared with `web/worker.js`.
- * @enum {0 | 1 | 2 | 3 | 4}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5}
  */
 export const Stop = Object.freeze({
     Budget: 0, "0": "Budget",
@@ -8,7 +8,177 @@ export const Stop = Object.freeze({
     Ended: 2, "2": "Ended",
     MaxEvents: 3, "3": "MaxEvents",
     MaxTime: 4, "4": "MaxTime",
+    /**
+     * A sequential run hit the floating-point limit (`Status::Stalled`).
+     */
+    Stalled: 5, "5": "Stalled",
 });
+
+/**
+ * A sequential algorithm behind the same interface as `WasmSimulation`, so
+ * the main simulator page can run it when it is picked from the
+ * "Sequential ›" menu. Time is the round number: one round = one robot's
+ * whole Look-Compute-Move cycle, and an "event" is one round.
+ */
+export class WasmSeqSimulation {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        WasmSeqSimulationFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_wasmseqsimulation_free(ptr, 0);
+    }
+    /**
+     * Plays up to `max_events` rounds, stopping before round `t` when
+     * `t > until_time`. Codes as for `WasmSimulation::advance`; a run out of
+     * round budget stops with `MaxEvents`.
+     * @param {number} max_events
+     * @param {number} until_time
+     * @returns {Stop}
+     */
+    advance(max_events, until_time) {
+        const ret = wasm.wasmseqsimulation_advance(this.__wbg_ptr, max_events, until_time);
+        return ret;
+    }
+    /**
+     * Gathered. A run out of budget is not ended: `advance` reports it.
+     * @returns {boolean}
+     */
+    ended() {
+        const ret = wasm.wasmseqsimulation_ended(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {number}
+     */
+    event_count() {
+        const ret = wasm.wasmseqsimulation_event_count(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {string}
+     */
+    export_csv() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmseqsimulation_export_csv(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Same arrays as `WasmSimulation::fill_frame`. The robot active in the
+     * last round is drawn moving towards its destination; once gathered,
+     * every robot is drawn terminated. Each multiplicity point gets a ring:
+     * `circle` = (x, y, -11), a negative radius meaning screen pixels.
+     * @param {Float32Array} xy
+     * @param {Uint8Array} flags
+     * @param {Uint8Array} light
+     * @param {Uint8Array} fault
+     * @param {Uint8Array} task
+     * @param {Float32Array} target
+     * @param {Float32Array} circle
+     */
+    fill_frame(xy, flags, light, fault, task, target, circle) {
+        var ptr0 = passArrayF32ToWasm0(xy, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        var ptr1 = passArray8ToWasm0(flags, wasm.__wbindgen_malloc);
+        var len1 = WASM_VECTOR_LEN;
+        var ptr2 = passArray8ToWasm0(light, wasm.__wbindgen_malloc);
+        var len2 = WASM_VECTOR_LEN;
+        var ptr3 = passArray8ToWasm0(fault, wasm.__wbindgen_malloc);
+        var len3 = WASM_VECTOR_LEN;
+        var ptr4 = passArray8ToWasm0(task, wasm.__wbindgen_malloc);
+        var len4 = WASM_VECTOR_LEN;
+        var ptr5 = passArrayF32ToWasm0(target, wasm.__wbindgen_malloc);
+        var len5 = WASM_VECTOR_LEN;
+        var ptr6 = passArrayF32ToWasm0(circle, wasm.__wbindgen_malloc);
+        var len6 = WASM_VECTOR_LEN;
+        wasm.wasmseqsimulation_fill_frame(this.__wbg_ptr, ptr0, len0, xy, ptr1, len1, flags, ptr2, len2, light, ptr3, len3, fault, ptr4, len4, task, ptr5, len5, target, ptr6, len6, circle);
+    }
+    /**
+     * `config_json` is the page's `SimConfig`; `options_json` its
+     * `SeqOptions` (`{schedule, stop, frames}`, all optional).
+     *
+     * # Errors
+     * Malformed JSON, an invalid field, or settings the algorithm does not model.
+     * @param {string} config_json
+     * @param {string} options_json
+     */
+    constructor(config_json, options_json) {
+        const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(options_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmseqsimulation_new(ptr0, len0, ptr1, len1);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        WasmSeqSimulationFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {number}
+     */
+    robot_count() {
+        const ret = wasm.wasmseqsimulation_robot_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Robot `i` now, plus what it would observe and decide if activated.
+     * @param {number} i
+     * @returns {string}
+     */
+    robot_info(i) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmseqsimulation_robot_info(this.__wbg_ptr, i);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Plays one round: `[round, robot, 1 (look), outcome]`, outcome 2 if the
+     * robot moved, 3 if it stayed, -1 if the run is over.
+     * @returns {Float64Array}
+     */
+    step_one() {
+        const ret = wasm.wasmseqsimulation_step_one(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * Robots already gathered: all of them once gathered; while there is
+     * exactly one multiplicity, the robots on it (they never leave it
+     * again unless a non-rigid stop creates a second one); otherwise 0.
+     * @returns {number}
+     */
+    terminated_count() {
+        const ret = wasm.wasmseqsimulation_terminated_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    time() {
+        const ret = wasm.wasmseqsimulation_time(this.__wbg_ptr);
+        return ret;
+    }
+}
+if (Symbol.dispose) WasmSeqSimulation.prototype[Symbol.dispose] = WasmSeqSimulation.prototype.free;
 
 export class WasmSimulation {
     __destroy_into_raw() {
@@ -242,7 +412,124 @@ export class WasmSimulation {
 if (Symbol.dispose) WasmSimulation.prototype[Symbol.dispose] = WasmSimulation.prototype.free;
 
 /**
- * The algorithms the core knows, as JSON `[{"key": …, "name": …}, …]`.
+ * A sequential run played one round at a time (the web demo).
+ */
+export class WasmSqGathering {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        WasmSqGatheringFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_wasmsqgathering_free(ptr, 0);
+    }
+    /**
+     * # Errors
+     * Malformed JSON or an invalid configuration.
+     * @param {string} config_json
+     */
+    constructor(config_json) {
+        const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmsqgathering_new(ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        WasmSqGatheringFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * `[x0, y0, x1, y1, …]` now.
+     * @returns {Float64Array}
+     */
+    positions() {
+        const ret = wasm.wasmsqgathering_positions(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * What robot `i` would see and decide if activated now, as JSON
+     * `{observation: [{at, multiplicity}], self_index, kappa, on_multiplicity,
+     * rule, lines, description, destination}`; `null` if out of range.
+     * @param {number} i
+     * @returns {string}
+     */
+    preview(i) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmsqgathering_preview(this.__wbg_ptr, i);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    report() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmsqgathering_report(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    round() {
+        const ret = wasm.wasmsqgathering_round(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * `"running"`, `"gathered"` or `"incomplete"`.
+     * @returns {string}
+     */
+    status() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmsqgathering_status(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Plays one round and returns it as JSON, or `null` once finished.
+     * @returns {string}
+     */
+    step() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmsqgathering_step(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+}
+if (Symbol.dispose) WasmSqGathering.prototype[Symbol.dispose] = WasmSqGathering.prototype.free;
+
+/**
+ * The algorithms the page can run, as JSON
+ * `[{"key": …, "name": …, "group": "async" | "sequential", "detail"?: …}, …]`:
+ * the asynchronous registry, then the sequential algorithms (run with
+ * `WasmSeqSimulation`).
  * @returns {string}
  */
 export function algorithms() {
@@ -255,6 +542,54 @@ export function algorithms() {
         return getStringFromWasm0(ret[0], ret[1]);
     } finally {
         wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * The sequential-scheduler algorithms, as JSON `["SqGathering"]`.
+ * @returns {string}
+ */
+export function seq_algorithms() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.seq_algorithms();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * Runs a `SeqConfig` to the end: `{"report": …, "trace": [round, …]}`
+ * (`trace` empty unless `with_trace`). Same output as `lcm seq --format json`.
+ *
+ * # Errors
+ * Malformed JSON or an invalid configuration.
+ * @param {string} config_json
+ * @param {boolean} with_trace
+ * @returns {string}
+ */
+export function sq_gathering_run(config_json, with_trace) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.sq_gathering_run(ptr0, len0, with_trace);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
 }
 function __wbg_get_imports() {
@@ -282,6 +617,10 @@ function __wbg_get_imports() {
             const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
             return ret;
         },
+        __wbg_new_from_slice_f545fd22ddc142b8: function(arg0, arg1) {
+            const ret = new Float64Array(getArrayF64FromWasm0(arg0, arg1));
+            return ret;
+        },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
             const offset = table.grow(4);
@@ -298,9 +637,15 @@ function __wbg_get_imports() {
     };
 }
 
+const WasmSeqSimulationFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_wasmseqsimulation_free(ptr, 1));
 const WasmSimulationFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmsimulation_free(ptr, 1));
+const WasmSqGatheringFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_wasmsqgathering_free(ptr, 1));
 
 function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;

@@ -9,7 +9,7 @@ cd "$repo"
 # remap: keep the build machine's paths out of the shipped binary.
 export RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=+simd128 --remap-path-prefix=$repo=/lcm --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo"
 cargo build -p lcm-wasm --target wasm32-unknown-unknown --release
-wasm-bindgen target/wasm32-unknown-unknown/release/lcm_wasm.wasm \
+wasm-bindgen "${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/release/lcm_wasm.wasm" \
   --target web --out-dir web/pkg --no-typescript
 # Build id from the package's contents. The page loads the worker and the
 # package with ?v=<id>, so a browser can never pair new page code with a

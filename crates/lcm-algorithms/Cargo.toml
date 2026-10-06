@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 lcm-core.workspace = true
 libm.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 lcm-core = { workspace = true, features = ["serde"] }

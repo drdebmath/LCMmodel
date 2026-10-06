@@ -21,7 +21,68 @@
   <!-- Toolbar -->
   <div id="toolbar" class="panel keep" role="toolbar" aria-label="Simulation controls">
     <div class="brand"><span data-icon="logo" data-size="20"></span><span>LCM</span></div>
-    <select id="algorithm" aria-label="Algorithm" title="Algorithm"></select>
+    <!-- The menu below drives this select; the rest of the page reads it. -->
+    <select id="algorithm" aria-label="Algorithm" title="Algorithm" hidden></select>
+    <div id="algo_picker" class="algo-picker">
+      <button id="algo_button" class="btn outline algo-button" type="button" aria-haspopup="menu" aria-expanded="false" title="Algorithm">
+        <span id="algo_label">Algorithm</span><span data-icon="chevron" data-size="14" class="algo-caret"></span>
+      </button>
+      <div id="algo_menu" class="algo-menu" role="menu" hidden>
+        <div class="menu-title">Asynchronous</div>
+        <div id="algo_async"></div>
+        <div class="menu-sep" role="separator"></div>
+        <button id="algo_seq_toggle" class="menu-item has-sub" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false">
+          <span class="menu-text"><span class="menu-name">Sequential</span><span class="menu-detail">one robot per round</span></span>
+          <span data-icon="chevron" data-size="14"></span>
+        </button>
+        <div id="algo_sub" class="algo-sub" role="menu" aria-label="Sequential algorithms" hidden>
+          <div class="menu-title">Sequential scheduler</div>
+          <div id="algo_seq"></div>
+          <div class="menu-sep" role="separator"></div>
+          <div class="menu-title">Sequential options</div>
+          <div class="menu-row">
+            <label class="menu-field">Starting κ (multiplicities)
+              <input data-seq="multiplicities" type="number" min="0" max="500" step="1">
+            </label>
+            <label class="menu-field">Robots on each
+              <input data-seq="multiplicity_size" type="number" min="0" step="1" placeholder="auto" title="0 or empty: automatic (a third of the robots for κ = 1, 4 each for κ ≥ 2)">
+            </label>
+          </div>
+          <div class="menu-row">
+            <label class="menu-field">Movement
+              <select id="seq_movement">
+                <option value="rigid">Rigid</option>
+                <option value="non-rigid">Non-rigid</option>
+              </select>
+            </label>
+            <label class="menu-field">δ (min. move)
+              <input id="seq_delta" type="number" min="0.1" max="10" step="0.1">
+            </label>
+          </div>
+          <label class="menu-field">Schedule
+            <select data-seq="schedule">
+              <option value="shuffled">Shuffled each epoch</option>
+              <option value="round-robin">Round-robin</option>
+            </select>
+          </label>
+          <label class="menu-field">Adversary stops
+            <select data-seq="stop">
+              <option value="random">At random (≥ δ)</option>
+              <option value="delta">After exactly δ</option>
+              <option value="half">Halfway (≥ δ)</option>
+            </select>
+          </label>
+          <label class="menu-field">Robot frames
+            <select data-seq="frames">
+              <option value="random">Own rotation, scale, handedness</option>
+              <option value="global">Shared axes</option>
+            </select>
+          </label>
+          <p class="menu-note">Movement and δ are the Rigid movement and Speed settings. Non-rigid: the adversary may stop a robot once it has moved δ. Time counts rounds.</p>
+          <a class="menu-link" href="web/sqgathering.html">Step-by-step view with hand traces ↗</a>
+        </div>
+      </div>
+    </div>
     <div class="divider"></div>
     <button id="play" class="btn primary" title="Play (Space)" aria-label="Play"><span data-icon="play"></span><span class="label">Play</span></button>
     <button id="step_event" class="btn" title="Step one event (→)" aria-label="Step one event"><span data-icon="stepEvent"></span></button>
@@ -57,9 +118,9 @@
 
   <!-- HUD -->
   <section id="hud" class="panel" aria-label="Simulation status" aria-live="polite">
-    <div class="hud-row"><span class="k">Time</span><span id="hud_status" class="hud-status">Loading…</span></div>
+    <div class="hud-row"><span class="k" id="hud_time_label">Time</span><span id="hud_status" class="hud-status">Loading…</span></div>
     <div id="hud_time" class="hud-time">0.00</div>
-    <div class="hud-row"><span class="k">Terminated</span><span class="v" id="hud_term">0 / 0</span></div>
+    <div class="hud-row"><span class="k" id="hud_term_label">Terminated</span><span class="v" id="hud_term">0 / 0</span></div>
     <div class="progress" aria-hidden="true"><div id="hud_bar"></div></div>
     <div class="hud-row hud-extra"><span class="k">Events</span><span class="v" id="hud_events">0</span></div>
     <div class="hud-row hud-extra"><span class="k">Events / s</span><span class="v" id="hud_rate">—</span></div>
