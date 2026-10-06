@@ -1,0 +1,8 @@
+{
+  "algorithm": "SqGathering",
+  "positions": [[0, 0], [4, 0], [4, 3], [10, 0]],
+  "schedule": {"kind": "explicit", "order": [{"robot": 0, "stop": 0.5}, {"robot": 1, "stop": 1}], "then": "round-robin"},
+  "movement": {"kind": "non-rigid", "delta": 1, "stop": {"kind": "delta"}},
+  "frames": {"kind": "global"},
+  "max_rounds": 1000
+}

@@ -252,6 +252,45 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
+/* ------------------------------------------------------- algorithm menu
+ * A button opening the algorithm list. "Sequential ›" opens a flyout to the
+ * right (inline on phones) with the sequential algorithms and their options. */
+.algo-picker { position: relative; }
+#toolbar:has(.algo-menu:not([hidden])) { z-index: 35; } /* above the settings panel and sheet */
+.algo-button { min-width: 190px; justify-content: space-between; background: var(--surface-solid); font-weight: 500; }
+.algo-caret svg { transform: rotate(90deg); transition: transform 0.15s; }
+.algo-button[aria-expanded="true"] .algo-caret svg { transform: rotate(-90deg); }
+.algo-menu, .algo-sub {
+  position: absolute; z-index: 40; display: grid; gap: 1px; padding: 6px; min-width: 250px;
+  background: var(--surface-solid); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.algo-menu { top: calc(100% + 6px); left: 0; }
+.algo-sub { top: -1px; left: calc(100% - 1px); min-width: 300px; border-top-left-radius: 0; }
+.algo-menu:has(.algo-sub:not([hidden])) { border-top-right-radius: 0; }
+.algo-menu[hidden], .algo-sub[hidden] { display: none; }
+.menu-title { padding: 6px 10px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
+.menu-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+.menu-item {
+  position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+  min-height: 34px; padding: 6px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text);
+  text-align: left; cursor: pointer;
+}
+.menu-item:hover, .menu-item:focus-visible, .menu-item.has-sub[aria-expanded="true"] { background: var(--surface-2); outline: none; }
+.menu-item[aria-checked="true"] { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+.menu-item[aria-checked="true"]::after { content: "✓"; font-weight: 700; }
+.menu-text { display: grid; }
+.menu-detail { font-size: 11.5px; color: var(--text-3); font-weight: 400; }
+.menu-item.has-sub { font-weight: 500; }
+.menu-item.has-sub.current .menu-name::after { content: " ●"; color: var(--accent); font-size: 10px; }
+.menu-field { display: grid; gap: 3px; padding: 4px 10px; font-size: 12px; color: var(--text-2); }
+#toolbar .menu-field select, .menu-field select { height: 30px; width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-solid); padding: 0 6px; }
+.menu-row { display: grid; grid-template-columns: 1fr 1fr; }
+#toolbar .menu-field input, .menu-field input { height: 30px; width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-solid); padding: 0 6px; }
+.menu-field select:disabled, .menu-field input:disabled { opacity: 0.5; }
+.menu-note { margin: 4px 10px; font-size: 11.5px; color: var(--text-3); line-height: 1.4; }
+.menu-link { padding: 6px 10px 4px; font-size: 12px; color: var(--accent); text-decoration: none; }
+.menu-link:hover { text-decoration: underline; }
+
 /* ------------------------------------------------------------ smaller screens
  * Desktop is the layout above. --top-h is the toolbar's bottom edge and
  * --hud-bottom the stats card's, both set by app.js, so panels stack under
@@ -283,7 +322,10 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
 @media (max-width: 760px) {
   #toolbar { top: 8px; left: 8px; right: 8px; flex-wrap: wrap; justify-content: space-between; row-gap: 6px; }
   #toolbar .brand, #toolbar .divider { display: none; }
-  #algorithm { flex: 1 1 150px; min-width: 0; }
+  #algorithm, #algo_picker { flex: 1 1 150px; min-width: 0; }
+  .algo-button { width: 100%; min-width: 0; }
+  .algo-menu { position: fixed; top: calc(var(--top-h, 96px) + 4px); left: 8px; right: 8px; max-height: 75vh; overflow: auto; }
+  .algo-sub { position: static; min-width: 0; margin: 2px 0 4px 10px; box-shadow: none; }
   #hud { top: calc(var(--top-h, 96px) + 6px); left: 8px; right: 8px; width: auto; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 12px; }
   #hud .hud-row:first-child { grid-column: 3; grid-row: 1; }
   #hud .hud-time { grid-column: 1; grid-row: 1; }
@@ -303,6 +345,8 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
   .btn { height: 40px; min-width: 40px; }
   .btn.small { height: 34px; min-width: 34px; }
   #toolbar select { height: 40px; }
+  .menu-item { min-height: 40px; }
+  #toolbar .menu-field select, .menu-field select, .menu-field input { height: 38px; }
   .field select, .field input[type="number"] { height: 36px; }
   input[type="range"] { height: 28px; }
 }

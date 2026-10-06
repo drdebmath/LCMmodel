@@ -8,8 +8,9 @@ import { createServer } from "node:http";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("../..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
   ".wasm": "application/wasm", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml" };
 
@@ -26,7 +27,8 @@ mkdirSync(OUT, { recursive: true });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = (process.env.LCM_BASE ?? `http://127.0.0.1:${server.address().port}`).replace(/\/$/, "");
 
-const chromeBin = ["google-chrome", "chromium", "chromium-browser"].find((b) => {
+// CHROME=/path/to/chrome overrides the PATH lookup (needed on Windows).
+const chromeBin = process.env.CHROME ?? ["google-chrome", "chromium", "chromium-browser"].find((b) => {
   try { execSync(`command -v ${b}`, { stdio: "ignore" }); return true; } catch { return false; }
 });
 const profile = mkdtempSync(join(tmpdir(), "lcm-chrome-"));

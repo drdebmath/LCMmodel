@@ -17,6 +17,9 @@
  * Page -> worker
  *   {type: "hello"}                  reply {type: "ready", algorithms}
  *   {type: "start", config, run}     new simulation (paused); reply with its first frame.
+ *                                    A sequential algorithm (group "sequential") runs on
+ *                                    WasmSeqSimulation with options `config.sequential`;
+ *                                    its time and events count rounds
  *                                    `run` is echoed on every frame so the page can
  *                                    drop frames that belong to an earlier run
  *   {type: "play"} / {type: "pause"}
@@ -40,7 +43,7 @@ const version = new URL(self.location.href).searchParams.get("v");
 const suffix = version ? `?v=${encodeURIComponent(version)}` : "";
 let wasm = null;
 
-const STOP = ["budget", "until-time", "ended", "max-events", "max-time"];
+const STOP = ["budget", "until-time", "ended", "max-events", "max-time", "stalled"];
 const SLICE_MS = 6;
 const IDLE_MS = 4;
 const ready = (async () => {
@@ -149,9 +152,16 @@ self.onmessage = async ({ data }) => {
       case "hello":
         self.postMessage({ type: "ready", version, algorithms: JSON.parse(wasm.algorithms()) });
         break;
-      case "start":
+      case "start": {
         sim?.free();
-        sim = new wasm.WasmSimulation(JSON.stringify(data.config));
+        sim = null;
+        // Sequential algorithms (the "Sequential ›" menu) run one robot per
+        // round on their own scheduler; `sequential` carries their options.
+        const { sequential, ...config } = data.config;
+        const group = JSON.parse(wasm.algorithms()).find((a) => a.key === config.algorithm)?.group;
+        sim = group === "sequential"
+          ? new wasm.WasmSeqSimulation(JSON.stringify(config), JSON.stringify(sequential ?? {}))
+          : new wasm.WasmSimulation(JSON.stringify(config));
         run = data.run ?? run + 1;
         playing = false;
         stop = "running";
@@ -160,6 +170,7 @@ self.onmessage = async ({ data }) => {
         sinceMs = 0;
         postFrame();
         break;
+      }
       case "play":
         if (sim && stop === "running" && !playing) { playing = true; generation++; reanchor(); yieldThenSlice(); }
         break;

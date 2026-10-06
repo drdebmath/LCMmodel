@@ -1,6 +1,10 @@
 //! `lcm run <config.json>`  — run a configuration to the end and print a summary.
 //! `lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]`
 //!                          — throughput of the core on this machine.
+//! `lcm seq [config.json] [flags]` — a sequential-scheduler algorithm
+//!                          (SqGathering) with its round-by-round trace; see `seq.rs`.
+
+mod seq;
 
 use lcm_core::{Budget, SimConfig, Simulation, StopReason};
 use std::time::Instant;
@@ -10,7 +14,13 @@ fn main() {
     let result = match args.first().map(String::as_str) {
         Some("run") => run(&args[1..]),
         Some("bench") => bench(&args[1..]),
-        _ => Err("usage: lcm run <config.json> | lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]".to_owned()),
+        Some("seq") => match seq::run(&args[1..]) {
+            Ok(0) => Ok(()),
+            Ok(code) => std::process::exit(code),
+            Err(e) => Err(e),
+        },
+        _ => Err(format!("usage: lcm run <config.json> | lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]
+       {}", seq::USAGE)),
     };
     if let Err(message) = result {
         eprintln!("{message}");

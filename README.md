@@ -31,6 +31,20 @@ node scripts/responsive-check.mjs             # both pages at phone, tablet and 
 python3 -m http.server 8000                   # then open http://localhost:8000/ (original: /old/)
 ```
 
+### SqGathering (Algorithm 8, sequential scheduler)
+
+Gathering with weak multiplicity detection under a fair sequential scheduler with non-rigid moves (Section 6 of arXiv:2412.10733). It runs on its own scheduler, not the asynchronous core, and is separate from the generic Gathering above. Details, hand traces and checks: [`docs/sqgathering.md`](docs/sqgathering.md).
+
+```sh
+cargo test -p lcm-algorithms --test sq_gathering                     # hand traces + properties
+cargo run --release -p lcm-cli -- seq fixtures/sqgathering/kmany_two_multiplicities.json --trace -
+node scripts/check-seq-parity.mjs                                     # native vs wasm, bit for bit
+node scripts/sqgathering-check.mjs                                    # both pages in headless Chrome (CHROME=… on Windows)
+python scripts/serve.py                                               # serve without browser caching: http://localhost:8000/
+```
+
+In the simulator, open the algorithm menu and choose **Sequential › SqGathering**. The flyout sets the starting κ, robots per multiplicity, movement, δ, schedule, adversary stops and frames.
+
 The rest of this README describes the original Python version.
 
 ## Installing required packages
