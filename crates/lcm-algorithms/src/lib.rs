@@ -5,11 +5,13 @@
 //! Adding an algorithm: implement [`Algorithm`] in a new module and add one
 //! line to [`REGISTRY`].
 //!
-//! Only Gathering is ported for now: it drives the core's parity tests.
+//! Gathering and SEC are ported; they drive the core's parity tests.
 
 mod gathering;
+mod sec;
 
 pub use gathering::Gathering;
+pub use sec::Sec;
 
 use lcm_core::{Algorithm, ConfigError, Plan, SimConfig, Simulation};
 
@@ -24,11 +26,18 @@ fn one<A: Algorithm + Default + 'static>() -> Plan {
     Plan::single(Box::new(A::default()))
 }
 
-pub const REGISTRY: &[Entry] = &[Entry {
-    key: "Gathering",
-    name: "Center of Gravity",
-    build: one::<Gathering>,
-}];
+pub const REGISTRY: &[Entry] = &[
+    Entry {
+        key: "Gathering",
+        name: "Center of Gravity",
+        build: one::<Gathering>,
+    },
+    Entry {
+        key: "SEC",
+        name: "Smallest Enclosing Circle",
+        build: one::<Sec>,
+    },
+];
 
 #[must_use]
 pub fn plan(key: &str) -> Option<Plan> {

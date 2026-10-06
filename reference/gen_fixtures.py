@@ -80,6 +80,11 @@ CASES = {
     "fault_mixed": config(num_of_robots=12, num_of_faults=6, fault_type="mixed", random_seed=16),
     "explicit_positions": config(num_of_robots=4, random_seed=17,
                                  initial_positions=[[0, 0], [10, 0], [0, 10], [10, 10]]),
+    # SEC cases.
+    "sec_8":               config(algorithm="SEC"),
+    "sec_20":              config(algorithm="SEC", num_of_robots=20, random_seed=4),
+    "sec_fault_crash":     config(algorithm="SEC", num_of_robots=10,
+                                  num_of_faults=3, fault_type="crash", random_seed=20),
 }
 
 
