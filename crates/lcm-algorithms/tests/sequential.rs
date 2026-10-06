@@ -197,3 +197,20 @@ fn ticks_are_counted_apart_from_robot_events() {
     assert!(sim.tick_count() > 0);
     assert_eq!(sim.event_count() - sim.tick_count(), robot_events);
 }
+
+#[test]
+fn sec_runs_under_the_sequential_scheduler_too() {
+    for mut config in all_configs() {
+        config.algorithm = "SEC".to_owned();
+        let (turns, sim) = run(&config);
+        assert!(sim.ended(), "{config:?}");
+        assert!(sim.epochs_completed() > 0, "{config:?}");
+        assert!(sim.robots().terminated.iter().all(|t| *t), "{config:?}");
+        for pair in turns.windows(2) {
+            let (a, b) = (&pair[0].step, &pair[1].step);
+            if a.kind == Some(EventKind::Look) && a.outcome == StepOutcome::Moved {
+                assert_eq!(b.robot, a.robot, "another robot acted mid-move");
+            }
+        }
+    }
+}
