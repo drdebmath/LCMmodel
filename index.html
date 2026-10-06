@@ -61,8 +61,10 @@
     <div id="hud_time" class="hud-time">0.00</div>
     <div class="hud-row"><span class="k">Terminated</span><span class="v" id="hud_term">0 / 0</span></div>
     <div class="progress" aria-hidden="true"><div id="hud_bar"></div></div>
-    <div class="hud-row hud-extra"><span class="k">Events</span><span class="v" id="hud_events">0</span></div>
-    <div class="hud-row hud-extra"><span class="k">Events / s</span><span class="v" id="hud_rate">—</span></div>
+    <div class="hud-row hud-extra" id="hud_epochs_row" hidden><span class="k" title="Rounds in which every robot still moving has had its turn">Epochs</span><span class="v" id="hud_epochs">0</span></div>
+    <div class="hud-row hud-extra"><span class="k" title="What the robots did: each Look and each arrival">Robot events</span><span class="v" id="hud_events">0</span></div>
+    <div class="hud-row hud-extra"><span class="k" title="Visualize ticks, one every sampling interval. They belong to no robot">Ticks</span><span class="v" id="hud_ticks">0</span></div>
+    <div class="hud-row hud-extra"><span class="k" title="Robot events and ticks together">Events / s</span><span class="v" id="hud_rate">—</span></div>
     <div id="hud_last" class="last-event hud-extra" hidden></div>
     <div id="hud_perf" class="hud-perf hud-extra">—</div>
   </section>

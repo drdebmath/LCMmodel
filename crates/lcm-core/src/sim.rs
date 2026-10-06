@@ -1,8 +1,10 @@
 //! The event loop: Python `Scheduler.handle_event` and `Robot.look/move/wait`
-//! (docs/core-schema.md §5).
+//! (docs/core-schema.md §5), plus a sequential scheduler the original lacks.
 
 use crate::algorithm::{Algorithm, Assignment, Look, Model, OverlayUpdate, Plan, Scratch, View};
-use crate::config::{ConfigError, FaultSelection, SimConfig};
+use crate::config::{
+    ActivationOrder, ConfigError, FaultSelection, SchedulerKind, SimConfig, TurnGap,
+};
 use crate::event::{Event, EventKind, EventQueue};
 use crate::geom::{dist, Point};
 use crate::pyfloat::pow10_neg;
@@ -66,6 +68,16 @@ pub enum StopReason {
     MaxTime,
 }
 
+/// Sequential scheduler state: the current epoch's order and how far into it
+/// the turns have got.
+struct Turns {
+    order: ActivationOrder,
+    gap: TurnGap,
+    epoch: Vec<u32>,
+    next: usize,
+    epochs_completed: u64,
+}
+
 pub struct Simulation {
     model: Model,
     rigid: bool,
@@ -81,8 +93,11 @@ pub struct Simulation {
     now: f64,
     ended: bool,
     events: u64,
+    ticks: u64,
     view: View,
     scratch: Scratch,
+    /// `None` for the async scheduler.
+    turns: Option<Turns>,
 }
 
 const ALL_FAULTS: [FaultKind; 4] = [
@@ -148,8 +163,9 @@ impl Simulation {
             }
         }
 
+        let sequential = config.scheduler == SchedulerKind::Sequential;
         let mut queue = EventQueue::default();
-        for i in 0..n {
+        for i in (0..n).filter(|_| !sequential) {
             let time = rng.exponential(1.0 / config.lambda_rate).max(0.0);
             let kind = if robots.state[i] == RobotState::Crash {
                 EventKind::Crash
@@ -168,7 +184,7 @@ impl Simulation {
             kind: EventKind::Visualize,
         });
 
-        Ok(Self {
+        let mut sim = Self {
             model,
             rigid: config.rigid_movement,
             lambda: config.lambda_rate,
@@ -183,9 +199,21 @@ impl Simulation {
             now: 0.0,
             ended: false,
             events: 0,
+            ticks: 0,
             view: View::default(),
             scratch: Scratch::default(),
-        })
+            turns: sequential.then(|| Turns {
+                order: config.activation_order,
+                gap: config.turn_gap,
+                epoch: Vec::with_capacity(n),
+                next: 0,
+                epochs_completed: 0,
+            }),
+        };
+        if sequential {
+            sim.next_turn(0.0);
+        }
+        Ok(sim)
     }
 
     #[must_use]
@@ -202,6 +230,24 @@ impl Simulation {
     #[must_use]
     pub fn event_count(&self) -> u64 {
         self.events
+    }
+
+    #[must_use]
+    pub fn sequential(&self) -> bool {
+        self.turns.is_some()
+    }
+
+    /// Visualize ticks among the events handled: they belong to no robot.
+    #[must_use]
+    pub fn tick_count(&self) -> u64 {
+        self.ticks
+    }
+
+    /// Sequential scheduler: epochs in which every live robot has had its
+    /// turn. Always 0 for async.
+    #[must_use]
+    pub fn epochs_completed(&self) -> u64 {
+        self.turns.as_ref().map_or(0, |t| t.epochs_completed)
     }
 
     #[must_use]
@@ -274,6 +320,9 @@ impl Simulation {
             return ended;
         };
         self.events += 1;
+        if event.kind == EventKind::Visualize {
+            self.ticks += 1;
+        }
         let info = |outcome| StepInfo {
             time: event.time,
             robot: event.robot,
@@ -429,6 +478,9 @@ impl Simulation {
             return StepOutcome::Crashed;
         }
         if r.terminated[i] {
+            if self.turns.is_some() {
+                self.next_turn(t);
+            }
             return StepOutcome::Terminated;
         }
         if r.frozen[i] {
@@ -493,7 +545,12 @@ impl Simulation {
 
     /// `Scheduler.generate_event`: the random delay is drawn even when a
     /// terminated robot gets no new activation.
+    /// Under the sequential scheduler, robot `i`'s turn is over instead.
     fn schedule_activation(&mut self, previous: f64, i: usize) {
+        if self.turns.is_some() {
+            self.next_turn(previous);
+            return;
+        }
         let delay = self.rng.exponential(1.0 / self.lambda);
         let time = previous + delay.max(1e-9);
         let kind = if self.robots.state[i] == RobotState::Crash {
@@ -507,6 +564,52 @@ impl Simulation {
             time,
             robot: robot_id(i),
             kind,
+        });
+    }
+
+    /// Sequential scheduler: queues the Look of the next robot in the epoch
+    /// that is neither crashed nor terminated, starting a new epoch when this
+    /// one runs out. Queues nothing if no robot is left to move.
+    fn next_turn(&mut self, previous: f64) {
+        let Some(turns) = self.turns.as_mut() else {
+            return;
+        };
+        let r = &self.robots;
+        let live = |i: u32| {
+            let i = i as usize;
+            r.state[i] != RobotState::Crash && !r.terminated[i]
+        };
+        let mut fresh = false;
+        let robot = loop {
+            if let Some(&i) = turns.epoch.get(turns.next) {
+                turns.next += 1;
+                if live(i) {
+                    break i;
+                }
+                continue;
+            }
+            if fresh {
+                return;
+            }
+            if !turns.epoch.is_empty() {
+                turns.epochs_completed += 1;
+            }
+            turns.epoch.clear();
+            turns.epoch.extend((0..r.len()).map(robot_id_u32));
+            if turns.order == ActivationOrder::Random {
+                self.rng.shuffle(&mut turns.epoch);
+            }
+            turns.next = 0;
+            fresh = true;
+        };
+        let time = match turns.gap {
+            TurnGap::Random => previous + self.rng.exponential(1.0 / self.lambda).max(1e-9),
+            TurnGap::None => previous,
+        };
+        self.queue.push(Event {
+            time,
+            robot: i32::try_from(robot).unwrap_or(i32::MAX),
+            kind: EventKind::Look,
         });
     }
 

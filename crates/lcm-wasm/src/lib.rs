@@ -87,6 +87,26 @@ impl WasmSimulation {
         self.sim.event_count() as f64
     }
 
+    /// Visualize ticks among the events handled: they belong to no robot.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn tick_count(&self) -> f64 {
+        self.sim.tick_count() as f64
+    }
+
+    /// `true` under the sequential scheduler.
+    #[must_use]
+    pub fn sequential(&self) -> bool {
+        self.sim.sequential()
+    }
+
+    /// Sequential scheduler: epochs in which every live robot has had its turn.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn epochs_completed(&self) -> f64 {
+        self.sim.epochs_completed() as f64
+    }
+
     #[must_use]
     pub fn ended(&self) -> bool {
         self.sim.ended()

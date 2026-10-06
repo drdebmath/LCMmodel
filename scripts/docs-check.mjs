@@ -23,8 +23,8 @@ await sleep(300);
 const charts = await js("Object.keys(docs.DATA.charts)");
 check("four charts", charts.length === 4, charts.join(", "));
 const simLinks = await js(`[...document.querySelectorAll('a[href="../"]')].filter((a) => a.offsetParent && /simulator/i.test(a.textContent)).map((a) => { const r = a.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y) }; })`);
-check("simulator buttons: the sidebar card (top left) and the header (top right)", simLinks.length === 2
-  && simLinks.some((p) => p.x < 60 && p.y < 120) && simLinks.some((p) => p.x > 1200 && p.y < 30), JSON.stringify(simLinks));
+check("one simulator button on a wide screen: the sidebar card (top left), none in the header's top right", simLinks.length === 1
+  && simLinks[0].x < 60 && simLinks[0].y < 120, JSON.stringify(simLinks));
 await shot("1-event-loop");
 
 // Every step of every chart opens the panel with its own title; code steps show their code.

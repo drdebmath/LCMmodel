@@ -122,7 +122,7 @@ flowchart TD
 | Every live robot terminated? | Crashed and Byzantine robots don't count: the run ends once all the others have terminated. |
 | Ended | advance() returns Ended and the page shows that every robot terminated. |
 
-`advance` — [`crates/lcm-core/src/sim.rs:233`](../crates/lcm-core/src/sim.rs#L233)
+`advance` — [`crates/lcm-core/src/sim.rs:279`](../crates/lcm-core/src/sim.rs#L279)
 
 ```rust
 /// Handles events until the budget, a limit or the end is reached.
@@ -154,7 +154,7 @@ pub fn advance(&mut self, budget: Budget) -> StopReason {
 }
 ```
 
-`step` — [`crates/lcm-core/src/sim.rs:261`](../crates/lcm-core/src/sim.rs#L261)
+`step` — [`crates/lcm-core/src/sim.rs:307`](../crates/lcm-core/src/sim.rs#L307)
 
 ```rust
 /// Handles the next event.
@@ -173,6 +173,9 @@ pub fn step(&mut self) -> StepInfo {
         return ended;
     };
     self.events += 1;
+    if event.kind == EventKind::Visualize {
+        self.ticks += 1;
+    }
     let info = |outcome| StepInfo {
         time: event.time,
         robot: event.robot,
@@ -234,12 +237,17 @@ pub fn step(&mut self) -> StepInfo {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:494`](../crates/lcm-core/src/sim.rs#L494)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:546`](../crates/lcm-core/src/sim.rs#L546)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
 /// terminated robot gets no new activation.
+/// Under the sequential scheduler, robot `i`'s turn is over instead.
 fn schedule_activation(&mut self, previous: f64, i: usize) {
+    if self.turns.is_some() {
+        self.next_turn(previous);
+        return;
+    }
     let delay = self.rng.exponential(1.0 / self.lambda);
     let time = previous + delay.max(1e-9);
     let kind = if self.robots.state[i] == RobotState::Crash {
@@ -257,7 +265,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`look` — [`crates/lcm-core/src/sim.rs:358`](../crates/lcm-core/src/sim.rs#L358)
+`look` — [`crates/lcm-core/src/sim.rs:407`](../crates/lcm-core/src/sim.rs#L407)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -334,6 +342,9 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
         return StepOutcome::Crashed;
     }
     if r.terminated[i] {
+        if self.turns.is_some() {
+            self.next_turn(t);
+        }
         return StepOutcome::Terminated;
     }
     if r.frozen[i] {
@@ -344,7 +355,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:475`](../crates/lcm-core/src/sim.rs#L475)
+`wait` — [`crates/lcm-core/src/sim.rs:527`](../crates/lcm-core/src/sim.rs#L527)
 
 ```rust
 /// `Robot.wait`.
@@ -367,7 +378,7 @@ fn wait(&mut self, i: usize, t: f64) {
 }
 ```
 
-`globally_terminated` — [`crates/lcm-core/src/sim.rs:513`](../crates/lcm-core/src/sim.rs#L513)
+`globally_terminated` — [`crates/lcm-core/src/sim.rs:616`](../crates/lcm-core/src/sim.rs#L616)
 
 ```rust
 /// `Scheduler._check_global_termination`: every robot that is neither
@@ -476,7 +487,7 @@ flowchart TD
 | Schedule WAIT at arrival | A WAIT event goes in the queue for the moment the robot reaches its target; other robots see it moving until then. |
 | Arrive | At the arrival time the robot is placed exactly on its target, its light turns green, and its next LOOK is scheduled. |
 
-`look` — [`crates/lcm-core/src/sim.rs:358`](../crates/lcm-core/src/sim.rs#L358)
+`look` — [`crates/lcm-core/src/sim.rs:407`](../crates/lcm-core/src/sim.rs#L407)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -553,6 +564,9 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
         return StepOutcome::Crashed;
     }
     if r.terminated[i] {
+        if self.turns.is_some() {
+            self.next_turn(t);
+        }
         return StepOutcome::Terminated;
     }
     if r.frozen[i] {
@@ -563,7 +577,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`build_view` — [`crates/lcm-core/src/sim.rs:337`](../crates/lcm-core/src/sim.rs#L337)
+`build_view` — [`crates/lcm-core/src/sim.rs:386`](../crates/lcm-core/src/sim.rs#L386)
 
 ```rust
 /// The snapshot robot `i` takes at `t`, filtered by its visibility.
@@ -616,12 +630,17 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> Decision {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:494`](../crates/lcm-core/src/sim.rs#L494)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:546`](../crates/lcm-core/src/sim.rs#L546)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
 /// terminated robot gets no new activation.
+/// Under the sequential scheduler, robot `i`'s turn is over instead.
 fn schedule_activation(&mut self, previous: f64, i: usize) {
+    if self.turns.is_some() {
+        self.next_turn(previous);
+        return;
+    }
     let delay = self.rng.exponential(1.0 / self.lambda);
     let time = previous + delay.max(1e-9);
     let kind = if self.robots.state[i] == RobotState::Crash {
@@ -639,7 +658,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`begin_move` — [`crates/lcm-core/src/sim.rs:441`](../crates/lcm-core/src/sim.rs#L441)
+`begin_move` — [`crates/lcm-core/src/sim.rs:493`](../crates/lcm-core/src/sim.rs#L493)
 
 ```rust
 /// `Robot.move` and the WAIT scheduling that follows it.
@@ -677,7 +696,7 @@ fn begin_move(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:475`](../crates/lcm-core/src/sim.rs#L475)
+`wait` — [`crates/lcm-core/src/sim.rs:527`](../crates/lcm-core/src/sim.rs#L527)
 
 ```rust
 /// `Robot.wait`.
@@ -912,8 +931,10 @@ function postFrame(extra = {}) {
     run,
     time: sim.time(),
     events: sim.event_count(),
+    ticks: sim.tick_count(),
     robots: n,
     terminated: sim.terminated_count(),
+    epochs: sim.sequential() ? sim.epochs_completed() : null,
     ended: sim.ended(),
     stop,
     playing,
@@ -926,7 +947,7 @@ function postFrame(extra = {}) {
 }
 ```
 
-`fill_frame` — [`crates/lcm-wasm/src/lib.rs:190`](../crates/lcm-wasm/src/lib.rs#L190)
+`fill_frame` — [`crates/lcm-wasm/src/lib.rs:210`](../crates/lcm-wasm/src/lib.rs#L210)
 
 ```rust
 /// Captures the current state straight into caller-owned arrays, so the

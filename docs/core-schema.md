@@ -74,6 +74,9 @@ JSON form (serde, camelCase is **not** used; names match `main.js params()`):
 | `max_events`, `max_time` | u64 / f64 or null | safety limits, same semantics as `run.py` (§6) |
 | `open_world` | bool | `true`: no world box, algorithms get no bounds. Default `false` (the original) |
 | `start` | object or null | a generated start (§4.3); null keeps the original start |
+| `scheduler` | string | `async` (the original, default) or `sequential`: one robot at a time does a whole Look-Compute-Move while the rest stay still |
+| `activation_order` | string | sequential only: `round_robin` (0, 1, …, n-1, default) or `random` (a fresh shuffle each epoch, from the seed). Every epoch gives each robot that is neither crashed nor terminated exactly one turn |
+| `turn_gap` | string | sequential only: `random` (exponential with rate `lambda_rate`, default) or `none` (the next Look at the instant the last turn ends) |
 
 Invalid values are a `ConfigError`, never a silent default.
 

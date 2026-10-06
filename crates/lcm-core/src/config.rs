@@ -18,6 +18,43 @@ pub enum FaultSelection {
     Mixed,
 }
 
+/// How robots are activated.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+pub enum SchedulerKind {
+    /// Every robot on its own exponential clock; cycles overlap (the original).
+    #[default]
+    Async,
+    /// One robot at a time does a whole Look-Compute-Move; the rest stay still.
+    Sequential,
+}
+
+/// Sequential scheduler: who takes the next turn. Every epoch gives each
+/// robot that is neither crashed nor terminated exactly one turn.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum ActivationOrder {
+    /// 0, 1, …, n-1, then 0 again.
+    #[default]
+    RoundRobin,
+    /// A fresh shuffle each epoch, drawn from the run's seed.
+    Random,
+}
+
+/// Sequential scheduler: sim time between one turn ending and the next Look.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+pub enum TurnGap {
+    /// Exponential with rate `lambda_rate`, like an async activation.
+    #[default]
+    Random,
+    /// The next robot looks the instant the previous one stops.
+    None,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
@@ -44,6 +81,11 @@ pub struct SimConfig {
     /// Generated start (pattern + arrangement + distribution). `None` keeps the
     /// original start: `initial_positions` if given, else uniform in the box.
     pub start: Option<StartSpec>,
+    pub scheduler: SchedulerKind,
+    /// Sequential only.
+    pub activation_order: ActivationOrder,
+    /// Sequential only.
+    pub turn_gap: TurnGap,
 }
 
 impl Default for SimConfig {
@@ -68,6 +110,9 @@ impl Default for SimConfig {
             max_time: None,
             open_world: false,
             start: None,
+            scheduler: SchedulerKind::Async,
+            activation_order: ActivationOrder::RoundRobin,
+            turn_gap: TurnGap::Random,
         }
     }
 }

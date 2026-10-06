@@ -199,6 +199,53 @@ check("the simulator's own CSV export pastes back as a custom start", roundTrip 
 await js("lcm.settings.reset()");
 await until("lcm.settings.values.pattern === 'cloud' && lcm.renderer.frame.flags.length === 500", 3000);
 
+// Precision shows the tolerance it stands for, and goes up to 15.
+const epsNote = () => js("document.querySelector('[data-key=\"threshold_precision\"] .note').textContent");
+check("precision shows ε in world units", (await epsNote()) === "ε = 0.00001 world units", await epsNote());
+await js("lcm.settings.set('threshold_precision', 15)");
+check("precision goes up to 15 and the note follows", (await epsNote()) === "ε = 0.000000000000001 world units" && (await js("lcm.settings.values.threshold_precision")) === 15, await epsNote());
+await js("lcm.settings.set('threshold_precision', 50)");
+check("precision cannot go past 15", (await js("lcm.settings.values.threshold_precision")) === 15);
+await js("lcm.settings.set('threshold_precision', 5)");
+
+// The sequential scheduler: one robot at a time, turns counted in epochs.
+const shown = (key) => `!document.querySelector('[data-key="${key}"]').hidden`;
+check("async is the default; turn order, pause and epochs only show for sequential",
+  (await js("lcm.settings.values.scheduler")) === "async" && !(await js(shown("activation_order"))) && !(await js(shown("turn_gap"))) &&
+  (await js("document.getElementById('hud_epochs_row').hidden")));
+await js("lcm.settings.set('scheduler', 'sequential'); lcm.settings.set('num_of_robots', 30); lcm.settings.set('robot_speeds', 10)");
+check("sequential shows the turn order and the pause between turns", (await js(shown("activation_order"))) && (await js(shown("turn_gap"))));
+await js("lcm.settings.set('turn_gap', 'none')");
+check("with no pause between turns, λ is greyed out", await js("document.getElementById('set-lambda_rate').disabled"));
+await js("lcm.settings.set('turn_gap', 'random'); lcm.settings.set('activation_order', 'random')");
+check("λ sets the random pause", !(await js("document.getElementById('set-lambda_rate').disabled")));
+await until("lcm.state === 'ready' && lcm.renderer.frame.robots === 30", 3000);
+await js(`window.__seq = { frames: 0, maxMoving: 0 }; window.__seqTimer = setInterval(() => {
+  const f = lcm.renderer.frame; let moving = 0;
+  for (let i = 0; i < f.flags.length; i++) if ((f.flags[i] & 3) === 2) moving++;
+  __seq.frames++; __seq.maxMoving = Math.max(__seq.maxMoving, moving);
+}, 30)`);
+await click("#play");
+await sleep(3000);
+await js("clearInterval(__seqTimer)");
+// Then at Max speed: at normal speed a single move takes seconds.
+const playback = await js("document.getElementById('playback').value");
+const setPlayback = (v) => js(`document.getElementById('playback').value = '${v}'; document.getElementById('playback').dispatchEvent(new Event('change'))`);
+await setPlayback("Infinity");
+const epochsUp = await until("lcm.stats.epochs >= 2", 8000);
+await setPlayback(playback);
+const seq = await js("({ ...__seq, epochs: lcm.stats.epochs, row: !document.getElementById('hud_epochs_row').hidden, text: document.getElementById('hud_epochs').textContent })");
+check("sequential: the epoch counter shows and climbs", epochsUp && seq.row && Number(seq.text) === seq.epochs, JSON.stringify(seq));
+check("sequential: never more than one robot moving at once", seq.frames > 20 && seq.maxMoving <= 1, JSON.stringify(seq));
+const hudNum = (id) => js(`Number(document.getElementById('${id}').textContent.replace(/,/g, ''))`);
+const [robotEvents, ticks, allEvents] = [await hudNum("hud_events"), await hudNum("hud_ticks"), await js("lcm.renderer.frame.events")];
+check("Events are split into robot events and ticks that add up to the total", ticks > 0 && robotEvents > 0 && robotEvents + ticks === allEvents, `${robotEvents} + ${ticks} = ${allEvents}`);
+await shot("12-sequential");
+await click("#reset");
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.scheduler === 'async' && lcm.renderer.frame.flags.length === 500", 3000);
+check("back on async the epoch counter hides", await js("document.getElementById('hud_epochs_row').hidden"));
+
 // Play straight after a settings change plays the new settings.
 await click("#reset");
 await until("lcm.state === 'ready'");

@@ -54,6 +54,14 @@ export class WasmSimulation {
         return ret !== 0;
     }
     /**
+     * Sequential scheduler: epochs in which every live robot has had its turn.
+     * @returns {number}
+     */
+    epochs_completed() {
+        const ret = wasm.wasmsimulation_epochs_completed(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * Events handled so far. `f64` because JS numbers are exact up to 2⁵³.
      * @returns {number}
      */
@@ -189,6 +197,14 @@ export class WasmSimulation {
         }
     }
     /**
+     * `true` under the sequential scheduler.
+     * @returns {boolean}
+     */
+    sequential() {
+        const ret = wasm.wasmsimulation_sequential(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
      * Handles exactly one event and reports it as
      * `[time, robot (-1 = none), kind, outcome]`: kind 0 crash, 1 look,
      * 2 wait, 3 visualize, -1 none; outcome is `StepOutcome::code`.
@@ -222,6 +238,14 @@ export class WasmSimulation {
     terminated_count() {
         const ret = wasm.wasmsimulation_terminated_count(this.__wbg_ptr);
         return ret >>> 0;
+    }
+    /**
+     * Visualize ticks among the events handled: they belong to no robot.
+     * @returns {number}
+     */
+    tick_count() {
+        const ret = wasm.wasmsimulation_tick_count(this.__wbg_ptr);
+        return ret;
     }
     /**
      * @returns {number}

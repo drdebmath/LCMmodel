@@ -697,7 +697,7 @@ PAGE = """<!DOCTYPE html>
     <span class="crumb">How it works</span>
     <span class="spacer"></span>
     <button id="theme" class="btn" title="Theme" aria-label="Theme"><span data-icon="moon"></span></button>
-    <a class="btn outline" href="../"><span data-icon="play" data-size="14"></span>Open the simulator</a>
+    <a class="btn outline open-sim" href="../"><span data-icon="play" data-size="14"></span>Open the simulator</a>
   </header>
   <div class="docs-main">
     <nav class="docs-nav" aria-label="Charts">
