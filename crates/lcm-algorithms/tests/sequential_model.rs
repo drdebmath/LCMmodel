@@ -526,7 +526,10 @@ fn a_turn_limit_needs_the_sequential_scheduler_and_a_positive_number() {
 #[test]
 fn the_registry_builds_a_plan_from_the_run_config() {
     let config = SimConfig::default();
-    assert!(lcm_algorithms::plan("Gathering", &config).is_some());
-    assert!(lcm_algorithms::plan("SEC", &config).is_some());
-    assert!(lcm_algorithms::plan("NoSuchAlgorithm", &config).is_none());
+    assert!(lcm_algorithms::plan("Gathering", &config).is_ok());
+    assert!(lcm_algorithms::plan("SEC", &config).is_ok());
+    assert!(matches!(
+        lcm_algorithms::plan("NoSuchAlgorithm", &config),
+        Err(ConfigError::UnknownAlgorithm(name)) if name == "NoSuchAlgorithm"
+    ));
 }

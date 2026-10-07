@@ -215,6 +215,9 @@ pub enum ConfigError {
     Start(String),
     /// A sequential-scheduler setting that cannot work as given.
     Schedule(String),
+    /// The chosen algorithm cannot run with these settings (for example, it
+    /// needs the sequential scheduler).
+    Unsupported(String),
 }
 
 impl fmt::Display for ConfigError {
@@ -227,7 +230,9 @@ impl fmt::Display for ConfigError {
             }
             Self::Precision(p) => write!(f, "threshold_precision must be 1..=15, got {p}"),
             Self::Position { index } => write!(f, "initial_positions[{index}] is not finite"),
-            Self::Start(message) | Self::Schedule(message) => f.write_str(message),
+            Self::Start(message) | Self::Schedule(message) | Self::Unsupported(message) => {
+                f.write_str(message)
+            }
         }
     }
 }

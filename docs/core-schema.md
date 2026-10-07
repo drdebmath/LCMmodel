@@ -260,7 +260,10 @@ termination, omission, the freeze threshold) is fixed by §5 and is not the
 algorithm's business.
 
 Adding an algorithm = one file implementing `Algorithm` plus one registry
-line in `lcm-algorithms`.
+line in `lcm-algorithms`. A registry entry builds the algorithm's `Plan` from the
+run's `SimConfig` (so it can use the seed or the robot count) and may refuse
+settings it cannot work with by returning `ConfigError::Unsupported`, for
+example an algorithm that is only defined under the sequential scheduler.
 
 ## 8. Frame (core → renderer)
 
