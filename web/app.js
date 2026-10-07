@@ -184,7 +184,8 @@ function updateHud(force = false) {
   const statusText = {
     loading: "Loading…", ready: "Ready", running: "Running", paused: "Paused",
     ended: frame?.ended ? "Ended · all terminated"
-      : frame?.stop === "stalled" ? "Stalled · nothing can move any more" : `Stopped (${frame?.stop})`,
+      : frame?.stop === "stalled" ? "Stalled · nothing can move any more"
+      : frame?.stop === "max-turns" ? "Stopped · turn limit reached" : `Stopped (${frame?.stop})`,
   }[state];
   $("hud_status").textContent = statusText;
   $("hud_status").className = `hud-status${state === "ended" ? " ended" : ""}`;

@@ -3,7 +3,9 @@
 //! Each algorithm is a port of the matching `Robot._<name>` method pair
 //! (compute + terminal check) in `robot.py`, keeping its operation order.
 //! Adding an algorithm: implement [`Algorithm`] in a new module and add one
-//! line to [`REGISTRY`].
+//! line to [`REGISTRY`]. An entry builds its [`Plan`] from the run's
+//! [`SimConfig`], so an algorithm can use the seed, the robot count and the
+//! other settings (most ignore them).
 //!
 //! Gathering and SEC are ported; they drive the core's parity tests.
 
@@ -19,10 +21,10 @@ use lcm_core::{Algorithm, ConfigError, Plan, SimConfig, Simulation};
 pub struct Entry {
     pub key: &'static str,
     pub name: &'static str,
-    pub build: fn() -> Plan,
+    pub build: fn(&SimConfig) -> Plan,
 }
 
-fn one<A: Algorithm + Default + 'static>() -> Plan {
+fn one<A: Algorithm + Default + 'static>(_: &SimConfig) -> Plan {
     Plan::single(Box::new(A::default()))
 }
 
@@ -40,8 +42,11 @@ pub const REGISTRY: &[Entry] = &[
 ];
 
 #[must_use]
-pub fn plan(key: &str) -> Option<Plan> {
-    REGISTRY.iter().find(|e| e.key == key).map(|e| (e.build)())
+pub fn plan(key: &str, config: &SimConfig) -> Option<Plan> {
+    REGISTRY
+        .iter()
+        .find(|e| e.key == key)
+        .map(|e| (e.build)(config))
 }
 
 /// Builds a simulation for `config.algorithm`.
@@ -49,7 +54,7 @@ pub fn plan(key: &str) -> Option<Plan> {
 /// # Errors
 /// An unknown algorithm or an invalid configuration.
 pub fn simulation(config: &SimConfig) -> Result<Simulation, ConfigError> {
-    let plan = plan(&config.algorithm)
+    let plan = plan(&config.algorithm, config)
         .ok_or_else(|| ConfigError::UnknownAlgorithm(config.algorithm.clone()))?;
     Simulation::new(config, plan)
 }

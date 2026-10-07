@@ -120,9 +120,11 @@ const onScreen = (await js(`(() => { const r = lcm.renderer, f = r.frame; let ou
   for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.xy[2*i], f.xy[2*i+1]); if (x < 0 || y < 0 || x > r.width || y > r.height) out++; } return out; })()`));
 check("the view fits the whole cloud", onScreen === 0, `${onScreen} robots off screen`);
 const visibleStart = () => js(`[...document.querySelectorAll('[data-group="start"] .field')].filter((f) => f.offsetParent && !f.closest('.more-body')).map((f) => f.dataset.key)`);
+// "More options" always holds the stacked-points setting, and nothing else for a simple start.
+const moreStart = () => js(`[...document.querySelectorAll('[data-more="start"] .field')].filter((f) => f.offsetParent).map((f) => f.dataset.key)`);
 const cloudFields = await visibleStart();
-check("the cloud start shows only the world switch, pattern and spread", JSON.stringify(cloudFields) === JSON.stringify(["open_world", "pattern", "spread"]) &&
-  await js("document.querySelector('[data-more=\"start\"]').hidden"), cloudFields.join(", "));
+check("the cloud start shows only the world switch, pattern and spread, and More options only the stacked points", JSON.stringify(cloudFields) === JSON.stringify(["open_world", "pattern", "spread"]) &&
+  JSON.stringify(await js(`(() => { const d = document.querySelector('[data-more="start"]'); d.open = true; return [...d.querySelectorAll('.field')].filter((f) => f.offsetParent).map((f) => f.dataset.key); })()`)) === JSON.stringify(["multiplicities"]), cloudFields.join(", "));
 check("no '?' icons; help is on the labels", await js("document.querySelectorAll('#settings .hint').length === 0 && document.querySelectorAll('#settings label.has-hint').length > 5"));
 await shot("8-start-cloud");
 await js("lcm.settings.set('open_world', false)");
@@ -142,7 +144,7 @@ const circleFields = await visibleStart();
 const circleSummary = await js("document.getElementById('start-summary').textContent");
 check("a circle's edge: pattern, arrangement, distribution and diameter, nothing else",
   JSON.stringify(circleFields) === JSON.stringify(["open_world", "pattern", "arrangement", "distribution", "size"]) && await js("lcm.settings.values.distribution === 'even'") &&
-  await js("document.querySelector('[data-key=\"size\"] label').textContent === 'Diameter' && document.querySelector('[data-more=\"start\"]').hidden"),
+  await js("document.querySelector('[data-key=\"size\"] label').textContent === 'Diameter'") && JSON.stringify(await moreStart()) === JSON.stringify(["multiplicities"]),
   circleFields.join(", "));
 check("one sentence says what the start gives", circleSummary === "500 robots evenly spaced on the edge of a circle 400 wide.", circleSummary);
 const arrangements = await js("[...document.querySelectorAll('#set-arrangement option')].map((o) => o.value).join(',')");
@@ -262,8 +264,35 @@ await click("#play");
 const nonRigidEnds = await until("lcm.state === 'ended'", 20000);
 const nonRigid = await js("({ terminated: lcm.stats.terminated, stop: lcm.stats.stop, status: document.getElementById('hud_status').textContent })");
 check("a sequential run with non-rigid δ-stops still gathers all robots", nonRigidEnds && nonRigid.terminated === 30 && nonRigid.stop === "ended", JSON.stringify(nonRigid));
+await click("#reset");
 await js("lcm.settings.reset()");
-await until("lcm.settings.values.rigid_movement === true && lcm.renderer.frame.flags.length === 500", 3000);
+await until("lcm.state === 'ready' && lcm.settings.values.rigid_movement === true && lcm.renderer.frame.flags.length === 500", 3000);
+await setPlayback(playback);
+
+// Starting with robots stacked on a few points, and the turn limit.
+await click("#reset");
+await until("lcm.state === 'ready'", 3000);
+check("the stack size waits until some stacked points are asked for", !(await shownNow("multiplicity_size")) && !(await shownNow("max_turns")));
+await js("lcm.settings.set('num_of_robots', 30); lcm.settings.set('multiplicities', 2); lcm.settings.set('multiplicity_size', 3)");
+check("with stacked points asked for, the stack size shows", await shownNow("multiplicity_size"));
+const stacked = await until(`(() => { const f = lcm.renderer.frame; if (!f || f.flags.length !== 30) return false;
+  const seen = new Set(); for (let i = 0; i < 30; i++) seen.add(f.xy[2*i] + "," + f.xy[2*i+1]); return seen.size === 26; })()`, 4000);
+check("two stacked points of 3 robots leave 26 distinct start points", stacked,
+  JSON.stringify(await js(`(() => { const f = lcm.renderer.frame; const seen = new Set(); for (let i = 0; i < f.flags.length; i++) seen.add(f.xy[2*i] + "," + f.xy[2*i+1]);
+    return { robots: f.flags.length, distinct: seen.size, state: lcm.state, dirty: !document.getElementById("dirty").hidden, values: [lcm.settings.values.multiplicities, lcm.settings.values.multiplicity_size, lcm.settings.values.num_of_robots] }; })()`)));
+await js("lcm.settings.set('multiplicities', 0)");
+check("the stack size hides again at 0", !(await shownNow("multiplicity_size")));
+await js("lcm.settings.set('scheduler', 'sequential'); lcm.settings.set('max_turns', 12); lcm.settings.set('robot_speeds', 10)");
+check("the turn limit shows for the sequential scheduler", await shownNow("max_turns"));
+await until("lcm.state === 'ready' && lcm.renderer.frame.robots === 30", 3000);
+await setPlayback("Infinity");
+await click("#play");
+const limited = await until("lcm.state === 'ended'", 20000);
+const turnLimit = await js("({ stop: lcm.stats.stop, status: document.getElementById('hud_status').textContent })");
+check("a run stops at the turn limit and says so", limited && turnLimit.stop === "max-turns" && /turn limit/.test(turnLimit.status), JSON.stringify(turnLimit));
+await click("#reset");
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.max_turns === 0 && lcm.renderer.frame.flags.length === 500", 3000);
 await setPlayback(playback);
 
 // Play straight after a settings change plays the new settings.

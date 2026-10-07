@@ -352,3 +352,181 @@ fn faults_switch_the_stall_check_off() {
     assert_eq!(run_to_the_end(&mut sim), StopReason::MaxEvents);
     assert!(!sim.stalled());
 }
+
+// ---- starting multiplicities ----
+
+fn spread(n: u32) -> SimConfig {
+    SimConfig {
+        num_of_robots: n,
+        scheduler: SchedulerKind::Sequential,
+        turn_gap: TurnGap::None,
+        ..SimConfig::default()
+    }
+}
+
+/// How many robots stand on each occupied point, most crowded first.
+fn crowds(config: &SimConfig) -> Vec<usize> {
+    let points = config.resolve_positions();
+    let mut counts: Vec<usize> = Vec::new();
+    let mut seen: Vec<Point> = Vec::new();
+    for p in points {
+        match seen.iter().position(|q| *q == p) {
+            Some(i) => counts[i] += 1,
+            None => {
+                seen.push(p);
+                counts.push(1);
+            }
+        }
+    }
+    counts.sort_unstable_by(|a, b| b.cmp(a));
+    counts
+}
+
+#[test]
+fn robots_can_start_stacked_on_a_given_number_of_points() {
+    let config = SimConfig {
+        multiplicities: 2,
+        multiplicity_size: 4,
+        ..spread(30)
+    };
+    let counts = crowds(&config);
+    assert_eq!(&counts[..3], [4, 4, 1], "{counts:?}");
+    assert_eq!(counts.len(), 30 - 2 * 3, "24 distinct points");
+    // Everything else stays where the start put it.
+    let plain = spread(30).resolve_positions();
+    let stacked = config.resolve_positions();
+    assert_eq!(
+        plain.iter().zip(&stacked).filter(|(a, b)| a != b).count(),
+        6
+    );
+}
+
+#[test]
+fn stacking_is_repeatable_and_follows_the_seed() {
+    let at = |seed: u64| {
+        SimConfig {
+            multiplicities: 1,
+            multiplicity_size: 5,
+            random_seed: seed,
+            ..spread(20)
+        }
+        .resolve_positions()
+    };
+    assert_eq!(at(7), at(7));
+    assert_ne!(at(7), at(8));
+}
+
+#[test]
+fn an_unspecified_size_is_chosen_for_you() {
+    let one = SimConfig {
+        multiplicities: 1,
+        ..spread(30)
+    };
+    assert_eq!(crowds(&one)[0], 10, "a third of the robots");
+    let several = SimConfig {
+        multiplicities: 3,
+        ..spread(30)
+    };
+    assert_eq!(&crowds(&several)[..3], [4, 4, 4]);
+}
+
+#[test]
+fn impossible_stackings_are_refused() {
+    let refused = |config: SimConfig| match lcm_algorithms::simulation(&config) {
+        Err(ConfigError::Start(message)) => message,
+        Err(other) => panic!("wrong error: {other}"),
+        Ok(_) => panic!("accepted {config:?}"),
+    };
+    let single = SimConfig {
+        multiplicities: 2,
+        multiplicity_size: 1,
+        ..spread(30)
+    };
+    assert!(refused(single).contains("at least 2"));
+    let too_many = SimConfig {
+        multiplicities: 7,
+        multiplicity_size: 5,
+        ..spread(30)
+    };
+    assert!(refused(too_many).contains("need 35 robots, there are 30"));
+}
+
+#[test]
+fn a_swarm_that_starts_stacked_still_runs() {
+    let config = SimConfig {
+        multiplicities: 2,
+        multiplicity_size: 4,
+        ..spread(30)
+    };
+    let mut sim = lcm_algorithms::simulation(&config).unwrap();
+    assert_eq!(run_to_the_end(&mut sim), StopReason::Ended);
+}
+
+// ---- the turn limit ----
+
+#[test]
+fn a_run_stops_after_max_turns() {
+    for turns in [1, 5, 9] {
+        let config = SimConfig {
+            max_turns: Some(turns),
+            ..three()
+        };
+        let mut sim = lcm_algorithms::simulation(&config).unwrap();
+        assert_eq!(run_to_the_end(&mut sim), StopReason::MaxTurns);
+        assert_eq!(sim.turn_count(), turns);
+        assert!(sim.turn_limit_reached() && !sim.ended() && !sim.stalled());
+        // The robot whose turn was the last still finished its move.
+        assert!((0..3).all(|i| sim.robots().state[i] != RobotState::Move));
+        let events = sim.event_count();
+        assert_eq!(sim.step().outcome, StepOutcome::Ended);
+        assert_eq!(sim.event_count(), events);
+    }
+}
+
+#[test]
+fn epochs_are_counted_up_to_the_turn_limit() {
+    // Three robots: after 6 turns, two whole epochs.
+    let config = SimConfig {
+        max_turns: Some(6),
+        ..three()
+    };
+    let mut sim = lcm_algorithms::simulation(&config).unwrap();
+    run_to_the_end(&mut sim);
+    assert_eq!(sim.epochs_completed(), 2);
+}
+
+#[test]
+fn a_run_that_finishes_first_is_not_cut_short() {
+    let config = SimConfig {
+        max_turns: Some(100_000),
+        ..three()
+    };
+    let mut sim = lcm_algorithms::simulation(&config).unwrap();
+    assert_eq!(run_to_the_end(&mut sim), StopReason::Ended);
+    assert!(!sim.turn_limit_reached());
+}
+
+#[test]
+fn a_turn_limit_needs_the_sequential_scheduler_and_a_positive_number() {
+    let asynchronous = SimConfig {
+        scheduler: SchedulerKind::Async,
+        max_turns: Some(5),
+        ..three()
+    };
+    assert!(rejected(&asynchronous).contains("sequential"));
+    let zero = SimConfig {
+        max_turns: Some(0),
+        ..three()
+    };
+    assert!(rejected(&zero).contains("at least 1"));
+}
+
+// ---- the registry builds from the config ----
+
+#[test]
+fn the_registry_builds_a_plan_from_the_run_config() {
+    let config = SimConfig::default();
+    assert!(lcm_algorithms::plan("Gathering", &config).is_some());
+    assert!(lcm_algorithms::plan("SEC", &config).is_some());
+    assert!(lcm_algorithms::plan("NoSuchAlgorithm", &config).is_none());
+}

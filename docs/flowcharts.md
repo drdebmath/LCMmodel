@@ -124,7 +124,7 @@ flowchart TD
 | Every live robot terminated? | Crashed and Byzantine robots don't count: the run ends once all the others have terminated. |
 | Ended | advance() returns Ended and the page shows that every robot terminated. |
 
-`advance` — [`crates/lcm-core/src/sim.rs:341`](../crates/lcm-core/src/sim.rs#L341)
+`advance` — [`crates/lcm-core/src/sim.rs:354`](../crates/lcm-core/src/sim.rs#L354)
 
 ```rust
 /// Handles events until the budget, a limit or the end is reached.
@@ -136,6 +136,9 @@ pub fn advance(&mut self, budget: Budget) -> StopReason {
         }
         if self.stalled {
             return StopReason::Stalled;
+        }
+        if self.turn_limit {
+            return StopReason::MaxTurns;
         }
         if self.max_time.is_some_and(|limit| self.now > limit) {
             return StopReason::MaxTime;
@@ -159,7 +162,7 @@ pub fn advance(&mut self, budget: Budget) -> StopReason {
 }
 ```
 
-`step` — [`crates/lcm-core/src/sim.rs:372`](../crates/lcm-core/src/sim.rs#L372)
+`step` — [`crates/lcm-core/src/sim.rs:388`](../crates/lcm-core/src/sim.rs#L388)
 
 ```rust
 /// Handles the next event.
@@ -170,7 +173,7 @@ pub fn step(&mut self) -> StepInfo {
         kind: None,
         outcome: StepOutcome::Ended,
     };
-    if self.ended || self.stalled {
+    if self.ended || self.stalled || self.turn_limit {
         return ended;
     }
     let Some(event) = self.queue.pop() else {
@@ -252,7 +255,7 @@ pub fn step(&mut self) -> StepInfo {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:657`](../crates/lcm-core/src/sim.rs#L657)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:673`](../crates/lcm-core/src/sim.rs#L673)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -280,7 +283,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`look` — [`crates/lcm-core/src/sim.rs:482`](../crates/lcm-core/src/sim.rs#L482)
+`look` — [`crates/lcm-core/src/sim.rs:498`](../crates/lcm-core/src/sim.rs#L498)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -370,7 +373,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:633`](../crates/lcm-core/src/sim.rs#L633)
+`wait` — [`crates/lcm-core/src/sim.rs:649`](../crates/lcm-core/src/sim.rs#L649)
 
 ```rust
 /// `Robot.wait`.
@@ -398,7 +401,7 @@ fn wait(&mut self, i: usize, t: f64) {
 }
 ```
 
-`globally_terminated` — [`crates/lcm-core/src/sim.rs:777`](../crates/lcm-core/src/sim.rs#L777)
+`globally_terminated` — [`crates/lcm-core/src/sim.rs:797`](../crates/lcm-core/src/sim.rs#L797)
 
 ```rust
 /// `Scheduler._check_global_termination`: every robot that is neither
@@ -507,7 +510,7 @@ flowchart TD
 | Schedule WAIT at arrival | A WAIT event goes in the queue for the moment the robot reaches its target; other robots see it moving until then. |
 | Arrive | At the arrival time the robot is placed exactly on its target, its light turns green, and its next LOOK is scheduled. |
 
-`look` — [`crates/lcm-core/src/sim.rs:482`](../crates/lcm-core/src/sim.rs#L482)
+`look` — [`crates/lcm-core/src/sim.rs:498`](../crates/lcm-core/src/sim.rs#L498)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -597,7 +600,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`build_view` — [`crates/lcm-core/src/sim.rs:461`](../crates/lcm-core/src/sim.rs#L461)
+`build_view` — [`crates/lcm-core/src/sim.rs:477`](../crates/lcm-core/src/sim.rs#L477)
 
 ```rust
 /// The snapshot robot `i` takes at `t`, filtered by its visibility.
@@ -650,7 +653,7 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> Decision {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:657`](../crates/lcm-core/src/sim.rs#L657)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:673`](../crates/lcm-core/src/sim.rs#L673)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -678,7 +681,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`begin_move` — [`crates/lcm-core/src/sim.rs:568`](../crates/lcm-core/src/sim.rs#L568)
+`begin_move` — [`crates/lcm-core/src/sim.rs:584`](../crates/lcm-core/src/sim.rs#L584)
 
 ```rust
 /// `Robot.move` and the WAIT scheduling that follows it.
@@ -718,7 +721,7 @@ fn begin_move(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:633`](../crates/lcm-core/src/sim.rs#L633)
+`wait` — [`crates/lcm-core/src/sim.rs:649`](../crates/lcm-core/src/sim.rs#L649)
 
 ```rust
 /// `Robot.wait`.
@@ -929,7 +932,7 @@ function slice(gen) {
 }
 ```
 
-`advance` — [`crates/lcm-wasm/src/lib.rs:69`](../crates/lcm-wasm/src/lib.rs#L69)
+`advance` — [`crates/lcm-wasm/src/lib.rs:71`](../crates/lcm-wasm/src/lib.rs#L71)
 
 ```rust
 /// Handles up to `max_events` events, stopping early before the first
@@ -958,10 +961,10 @@ function postFrame(extra = {}) {
     run,
     time: sim.time(),
     events: sim.event_count(),
-    ticks: sim.tick_count(),
+    ticks: sim.tick_count?.() ?? 0,
     robots: n,
     terminated: sim.terminated_count(),
-    epochs: sim.sequential() ? sim.epochs_completed() : null,
+    epochs: sim.sequential?.() ? sim.epochs_completed() : null,
     ended: sim.ended(),
     stop,
     playing,
@@ -974,7 +977,7 @@ function postFrame(extra = {}) {
 }
 ```
 
-`fill_frame` — [`crates/lcm-wasm/src/lib.rs:219`](../crates/lcm-wasm/src/lib.rs#L219)
+`fill_frame` — [`crates/lcm-wasm/src/lib.rs:221`](../crates/lcm-wasm/src/lib.rs#L221)
 
 ```rust
 /// Captures the current state straight into caller-owned arrays, so the
@@ -1233,6 +1236,7 @@ flowchart TD
 - Round-robin and the shuffle each epoch both give every robot that is still active exactly one turn per epoch. An explicit list of turns ends its epoch once every robot has had at least one, as in the paper.
 - Crashed and terminated robots are skipped. The paper has no crashes; this is the simulator's own rule.
 - Stalled is not in the paper either. Robots are deterministic and remember nothing, so if a whole epoch changes nothing, every later epoch is the same and the run can never end. It is not checked with faults, because an omission fault skips moves at random.
+- A run can also end at a turn limit (max_turns): the last turn's move still finishes. It says nothing about the algorithm, only that the budget ran out.
 - With non-rigid movement, a robot whose destination is within δ always arrives; otherwise the adversary stops it somewhere at least δ along its way. δ is not shown to the algorithms: in the paper, the robots do not know it.
 
 | Step | What happens |
@@ -1250,7 +1254,7 @@ flowchart TD
 | Stop it on the way | The adversary picks the stopping point, never before δ along the way: just after δ, anywhere between δ and the destination at random, a set fraction of the way, or the fraction this turn of the schedule names. |
 | Arrive, and the turn ends | The robot stands at its destination, or at the point where it was stopped. It does not schedule its own next Look: control goes back to next_turn(). |
 
-`next_turn` — [`crates/lcm-core/src/sim.rs:681`](../crates/lcm-core/src/sim.rs#L681)
+`next_turn` — [`crates/lcm-core/src/sim.rs:697`](../crates/lcm-core/src/sim.rs#L697)
 
 ```rust
 /// Sequential scheduler: queues the Look of the next robot to take a turn:
@@ -1338,6 +1342,10 @@ fn next_turn(&mut self, previous: f64) {
             fresh = true;
         }
     };
+    if self.max_turns.is_some_and(|max| turns.taken >= max) {
+        self.turn_limit = true;
+        return;
+    }
     let time = match turns.gap {
         TurnGap::Random => previous + self.rng.exponential(1.0 / self.lambda).max(1e-9),
         TurnGap::None => previous,
@@ -1350,7 +1358,7 @@ fn next_turn(&mut self, previous: f64) {
 }
 ```
 
-`limited_target` — [`crates/lcm-core/src/sim.rs:604`](../crates/lcm-core/src/sim.rs#L604)
+`limited_target` — [`crates/lcm-core/src/sim.rs:620`](../crates/lcm-core/src/sim.rs#L620)
 
 ```rust
 /// Non-rigid movement with a `delta`: where the adversary stops robot `i`

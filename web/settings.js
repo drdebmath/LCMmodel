@@ -68,6 +68,11 @@ export const SETTINGS = [
     hint: "Size of the world box; with the original pattern robots start at random inside it." },
   { key: "height_bound", group: "start", label: "World height", kind: "range", min: 50, max: 1000, step: 10, value: 600,
     showIf: (v) => !v.open_world, more: (v) => v.pattern !== "box" },
+  { key: "multiplicities", group: "start", label: "Stacked points", kind: "range", min: 0, max: 50, step: 1, value: 0, more: true,
+    hint: "Start with this many spots where several robots stand on top of each other (multiplicities), made from the start above. 0: none." },
+  { key: "multiplicity_size", group: "start", label: "Robots per stacked point", kind: "range", min: 0, max: 200, step: 1, value: 0, more: true,
+    showIf: (v) => v.multiplicities > 0,
+    hint: "At least 2. 0 lets the simulator choose: a third of the robots for one stacked point, up to 4 each for several." },
   { key: "custom", group: "start", label: "Positions", kind: "text", local: true,
     value: "# One robot per line: x, y\n-100, -100\n100, -100\n100, 100\n-100, 100",
     showIf: (v) => v.pattern === "custom" },
@@ -107,6 +112,9 @@ export const SETTINGS = [
     options: [["random", "Random (rate λ)"], ["none", "None"]],
     showIf: (v) => v.scheduler === "sequential",
     hint: "Simulated time between one robot stopping and the next one looking. None: the next robot looks at once." },
+  { key: "max_turns", group: "timing", label: "Turn limit", kind: "number", min: 0, max: 1000000000, value: 0,
+    showIf: (v) => v.scheduler === "sequential",
+    hint: "Stop after this many turns (one robot's whole Look, Compute and Move each). 0: no limit." },
   { key: "lambda_rate", group: "timing", label: "Activation rate λ", kind: "range", min: 0.1, max: 20, step: 0.1, value: 5,
     enabledBy: (v) => v.scheduler !== "sequential" || v.turn_gap === "random",
     hint: "Async: robots wake up after exponential delays with this rate (mean 1/λ). Sequential: the random pause between turns has this rate." },
@@ -366,6 +374,7 @@ export function readConfig(values, algorithm, customPoints = []) {
   for (const s of SETTINGS) if (!s.local) config[s.key] = values[s.key];
   config.visibility_radius = values.unlimited_visibility ? null : values.visibility_radius;
   config.delta = !values.rigid_movement && values.delta > 0 ? values.delta : null;
+  config.max_turns = values.scheduler === "sequential" && values.max_turns > 0 ? values.max_turns : null;
   config.open_world = values.open_world;
   config.start = null;
   config.initial_positions = null;

@@ -152,6 +152,15 @@ pub struct SimConfig {
     pub schedule: Option<Vec<Activation>>,
     /// Sequential only: what follows the end of `schedule`.
     pub schedule_end: ScheduleEnd,
+    /// Sequential only: stop after this many turns (`advance` then returns
+    /// `MaxTurns`). `None`: no limit.
+    pub max_turns: Option<u64>,
+    /// Start with this many multiplicity points (several robots on one spot),
+    /// made from the start positions. 0: none.
+    pub multiplicities: u32,
+    /// Robots on each starting multiplicity (at least 2); 0 chooses a size:
+    /// a third of the robots for one multiplicity, up to 4 each for several.
+    pub multiplicity_size: u32,
 }
 
 impl Default for SimConfig {
@@ -184,6 +193,9 @@ impl Default for SimConfig {
             stop_fraction: 0.5,
             schedule: None,
             schedule_end: ScheduleEnd::RoundRobin,
+            max_turns: None,
+            multiplicities: 0,
+            multiplicity_size: 0,
         }
     }
 }
@@ -268,6 +280,24 @@ impl SimConfig {
                 self.stop_fraction
             )));
         }
+        start::check_multiplicities(
+            self.num_of_robots as usize,
+            self.multiplicities as usize,
+            self.multiplicity_size as usize,
+        )
+        .map_err(ConfigError::Start)?;
+        if let Some(turns) = self.max_turns {
+            if turns == 0 {
+                return Err(ConfigError::Schedule(
+                    "max_turns must be at least 1".to_owned(),
+                ));
+            }
+            if self.scheduler != SchedulerKind::Sequential {
+                return Err(ConfigError::Schedule(
+                    "max_turns needs scheduler \"sequential\"".to_owned(),
+                ));
+            }
+        }
         self.validate_schedule()
     }
 
@@ -339,8 +369,23 @@ impl SimConfig {
     /// Initial positions, in this order: the given list if it has one entry
     /// per robot; a generated start if `start` is set (`start::generate`);
     /// otherwise uniform in the box from a generator of their own, like `run.py`.
+    /// Then, if `multiplicities` is set, robots are stacked onto that many points.
     #[must_use]
     pub fn resolve_positions(&self) -> Vec<Point> {
+        let mut points = self.base_positions();
+        if self.multiplicities > 0 {
+            // `validate` has checked that this fits.
+            let _ = start::stack_multiplicities(
+                &mut points,
+                self.multiplicities as usize,
+                self.multiplicity_size as usize,
+                self.random_seed,
+            );
+        }
+        points
+    }
+
+    fn base_positions(&self) -> Vec<Point> {
         let n = self.num_of_robots as usize;
         if let Some(given) = self.initial_positions.as_ref().filter(|p| p.len() == n) {
             return given.iter().map(|p| Point::new(p[0], p[1])).collect();

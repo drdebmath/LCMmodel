@@ -354,6 +354,8 @@ CHARTS = [
             "Stalled is not in the paper either. Robots are deterministic and remember nothing, so "
             "if a whole epoch changes nothing, every later epoch is the same and the run can never "
             "end. It is not checked with faults, because an omission fault skips moves at random.",
+            "A run can also end at a turn limit (max_turns): the last turn's move still finishes. It "
+            "says nothing about the algorithm, only that the budget ran out.",
             "With non-rigid movement, a robot whose destination is within δ always arrives; "
             "otherwise the adversary stops it somewhere at least δ along its way. δ is not shown to the "
             "algorithms: in the paper, the robots do not know it.",

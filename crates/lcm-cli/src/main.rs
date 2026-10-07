@@ -38,6 +38,8 @@ fn run(args: &[String]) -> Result<(), String> {
         "events": sim.event_count(),
         "time": sim.time(),
         "terminated": sim.robots().terminated.iter().filter(|t| **t).count(),
+        "turns": sim.turn_count(),
+        "epochs": sim.epochs_completed(),
         "robots": sim.robots().len(),
         "wall_seconds": elapsed,
     });

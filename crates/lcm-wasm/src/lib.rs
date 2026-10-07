@@ -18,6 +18,7 @@ pub enum Stop {
     MaxEvents = 3,
     MaxTime = 4,
     Stalled = 5,
+    MaxTurns = 6,
 }
 
 impl From<StopReason> for Stop {
@@ -29,6 +30,7 @@ impl From<StopReason> for Stop {
             StopReason::MaxEvents => Self::MaxEvents,
             StopReason::MaxTime => Self::MaxTime,
             StopReason::Stalled => Self::Stalled,
+            StopReason::MaxTurns => Self::MaxTurns,
         }
     }
 }

@@ -70,6 +70,8 @@ pub enum StopReason {
     /// Sequential scheduler: a whole epoch passed in which no robot moved or
     /// terminated, so nothing ever will (see [`Simulation::stalled`]).
     Stalled,
+    /// Sequential scheduler: the configured `max_turns` have been taken.
+    MaxTurns,
 }
 
 /// An explicit schedule being played, and which robots have had a turn in
@@ -115,6 +117,8 @@ pub struct Simulation {
     /// Without faults, a silent epoch means nothing will ever change.
     fault_free: bool,
     stalled: bool,
+    max_turns: Option<u64>,
+    turn_limit: bool,
     algorithms: Vec<Box<dyn Algorithm>>,
     robots: Robots,
     queue: EventQueue,
@@ -229,6 +233,8 @@ impl Simulation {
             stop_fraction: config.stop_fraction,
             fault_free: config.num_of_faults == 0,
             stalled: false,
+            max_turns: config.max_turns,
+            turn_limit: false,
             algorithms: plan.algorithms,
             robots,
             queue,
@@ -299,6 +305,13 @@ impl Simulation {
         self.stalled
     }
 
+    /// Sequential scheduler: `max_turns` turns have been taken, so no more
+    /// will be. `advance` then returns [`StopReason::MaxTurns`].
+    #[must_use]
+    pub fn turn_limit_reached(&self) -> bool {
+        self.turn_limit
+    }
+
     /// Sequential scheduler: turns taken so far (one per Look). 0 for async.
     #[must_use]
     pub fn turn_count(&self) -> u64 {
@@ -348,6 +361,9 @@ impl Simulation {
             if self.stalled {
                 return StopReason::Stalled;
             }
+            if self.turn_limit {
+                return StopReason::MaxTurns;
+            }
             if self.max_time.is_some_and(|limit| self.now > limit) {
                 return StopReason::MaxTime;
             }
@@ -377,7 +393,7 @@ impl Simulation {
             kind: None,
             outcome: StepOutcome::Ended,
         };
-        if self.ended || self.stalled {
+        if self.ended || self.stalled || self.turn_limit {
             return ended;
         }
         let Some(event) = self.queue.pop() else {
@@ -763,6 +779,10 @@ impl Simulation {
                 fresh = true;
             }
         };
+        if self.max_turns.is_some_and(|max| turns.taken >= max) {
+            self.turn_limit = true;
+            return;
+        }
         let time = match turns.gap {
             TurnGap::Random => previous + self.rng.exponential(1.0 / self.lambda).max(1e-9),
             TurnGap::None => previous,

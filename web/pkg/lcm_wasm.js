@@ -1,6 +1,6 @@
 /**
  * `advance` result codes, shared with `web/worker.js`.
- * @enum {0 | 1 | 2 | 3 | 4 | 5}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6}
  */
 export const Stop = Object.freeze({
     Budget: 0, "0": "Budget",
@@ -9,6 +9,7 @@ export const Stop = Object.freeze({
     MaxEvents: 3, "3": "MaxEvents",
     MaxTime: 4, "4": "MaxTime",
     Stalled: 5, "5": "Stalled",
+    MaxTurns: 6, "6": "MaxTurns",
 });
 
 export class WasmSimulation {
