@@ -12,8 +12,9 @@ explains itself, steps marked `</>` open their code, and a guided tour walks thr
 
 1. [The event loop](#1-the-event-loop) — How the scheduler takes and handles events
 2. [One Look–Compute–Move cycle](#2-one-lookcomputemove-cycle) — Everything a robot does when it activates
-3. [Gathering (center of gravity)](#3-gathering-center-of-gravity) — The one algorithm ported so far
+3. [Gathering (center of gravity)](#3-gathering-center-of-gravity) — Each robot goes to the average of what it sees
 4. [In the browser](#4-in-the-browser) — Page, worker and Rust core working together
+5. [The sequential scheduler](#5-the-sequential-scheduler) — One robot at a time, turn by turn
 
 ---
 
@@ -100,6 +101,7 @@ flowchart TD
 - Ties in time break exactly as in Python's heap of (time, id, state) tuples: lower robot id first, then Crash < Look < Visualize < Wait.
 - Visualize ticks change nothing; they are kept so event counts and limits match the Python.
 - The run ends when every robot that is neither crashed nor Byzantine has terminated.
+- Under the sequential scheduler robots have no clocks of their own: only one Look is ever in the queue, and the next one is queued when a turn ends (chart 5).
 
 | Step | What happens |
 | --- | --- |
@@ -250,7 +252,7 @@ pub fn step(&mut self) -> StepInfo {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:656`](../crates/lcm-core/src/sim.rs#L656)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:657`](../crates/lcm-core/src/sim.rs#L657)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -376,7 +378,7 @@ fn wait(&mut self, i: usize, t: f64) {
     let eps = self.model.eps;
     let r = &mut self.robots;
     let moving = r.state[i] == RobotState::Move;
-    let snap_to_target = match (moving, r.start_time[i], r.target[i]) {
+    let snap_to_target = match (moving, r.start_time[i], r.goal(i)) {
         (true, Some(start), Some(target))
             if self.rigid || self.delta.is_some() || t <= start + 1e-12 =>
         {
@@ -390,12 +392,13 @@ fn wait(&mut self, i: usize, t: f64) {
     }
     r.pos[i] = end;
     r.start_time[i] = None;
+    r.stop[i] = None;
     r.state[i] = RobotState::Wait;
     r.set_light(i, Light::Green, t);
 }
 ```
 
-`globally_terminated` — [`crates/lcm-core/src/sim.rs:776`](../crates/lcm-core/src/sim.rs#L776)
+`globally_terminated` — [`crates/lcm-core/src/sim.rs:777`](../crates/lcm-core/src/sim.rs#L777)
 
 ```rust
 /// `Scheduler._check_global_termination`: every robot that is neither
@@ -482,7 +485,7 @@ flowchart TD
 
 - The snapshot is taken at the exact LOOK time: moving robots are seen at their interpolated position, never a stale one.
 - A robot freezes (stays put this cycle) when its target is within ε = 10^-precision of where it is, or when an omission fault skips the move (probability ½).
-- Rigid and non-rigid movement both reach the target: the WAIT event is scheduled at the full-distance arrival time (finding #3 in report.md).
+- Rigid movement always reaches the target. Non-rigid movement does too (finding #3 in report.md) unless a minimum move δ is set: then the robot may be stopped on the way, never before it has covered δ, and the WAIT event is scheduled at the stopping point (chart 5).
 
 | Step | What happens |
 | --- | --- |
@@ -498,7 +501,7 @@ flowchart TD
 | Terminate | The robot stops permanently and is drawn grey. |
 | Skip, or already there? | An omission-faulty robot skips the move half the time. Any robot whose target is closer than ε = 10^-precision stays put. |
 | Stay put, look again later | The robot is marked frozen and its next activation is scheduled after a random exponential delay. |
-| Start moving | The move starts now at the robot's speed (40 % for a delay fault); its position is interpolated until it arrives. |
+| Start moving | The move starts now at the robot's speed (40 % for a delay fault); its position is interpolated until it arrives. With non-rigid movement and a minimum move δ, the robot walks only as far as the point where the adversary stops it (chart 5); its target still shows what the algorithm computed. |
 | Arrival later than now? | A tiny move can be shorter than the clock can resolve. As in the Python fix for the endless-simulation bug, it is finished immediately instead of scheduling a WAIT at the same instant. |
 | Finish the tiny move now | The robot is placed on its target at once and its next activation is scheduled. |
 | Schedule WAIT at arrival | A WAIT event goes in the queue for the moment the robot reaches its target; other robots see it moving until then. |
@@ -647,7 +650,7 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> Decision {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:656`](../crates/lcm-core/src/sim.rs#L656)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:657`](../crates/lcm-core/src/sim.rs#L657)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -685,14 +688,14 @@ fn begin_move(&mut self, i: usize, t: f64) -> StepOutcome {
         self.schedule_activation(t, i);
         return StepOutcome::Frozen;
     };
-    let target = self.limited_target(i, destination);
+    let goal = self.limited_target(i, destination);
     let r = &mut self.robots;
-    r.target[i] = Some(target);
+    r.stop[i] = (goal != destination).then_some(goal);
     r.state[i] = RobotState::Move;
     r.set_light(i, Light::Red, t);
     r.start_time[i] = Some(t);
     r.start_pos[i] = r.pos[i];
-    let distance = dist(r.start_pos[i], target);
+    let distance = dist(r.start_pos[i], goal);
     let duration = if r.speed[i] > 1e-9 {
         distance / r.speed[i]
     } else {
@@ -723,7 +726,7 @@ fn wait(&mut self, i: usize, t: f64) {
     let eps = self.model.eps;
     let r = &mut self.robots;
     let moving = r.state[i] == RobotState::Move;
-    let snap_to_target = match (moving, r.start_time[i], r.target[i]) {
+    let snap_to_target = match (moving, r.start_time[i], r.goal(i)) {
         (true, Some(start), Some(target))
             if self.rigid || self.delta.is_some() || t <= start + 1e-12 =>
         {
@@ -737,6 +740,7 @@ fn wait(&mut self, i: usize, t: f64) {
     }
     r.pos[i] = end;
     r.start_time[i] = None;
+    r.stop[i] = None;
     r.state[i] = RobotState::Wait;
     r.set_light(i, Light::Green, t);
 }
@@ -1164,5 +1168,217 @@ draw(ctx = this.ctx, dpr = this.dpr) {
 
   this.lastDrawMs = performance.now() - t0;
   this.onDraw?.(this);
+}
+```
+
+---
+
+## 5. The sequential scheduler
+
+Under the sequential scheduler only one robot's Look is ever waiting in the queue. When its turn ends, next_turn() decides who goes next, and the others stay still until then. This is the sequential scheduler of Section 2.2 of "Universal pattern formation by oblivious robots under sequential schedulers" (arXiv:2412.10733); it is new in the Rust core, not in the Python original.
+
+```mermaid
+flowchart TD
+    classDef k_entry fill:#e8eefd,stroke:#2f5bea,color:#111,stroke-width:1.5px
+    classDef k_step fill:#ffffff,stroke:#9aa1ad,color:#111
+    classDef k_decision fill:#fff4dc,stroke:#d18b00,color:#111
+    classDef k_end fill:#e3f6e8,stroke:#1f9d55,color:#111,stroke-width:1.5px
+    classDef k_out fill:#f1f2f5,stroke:#9aa1ad,color:#333
+    subgraph lane0["A turn ends"]
+        t_end(["A robot's turn ends<br/><small>next_turn()</small>"])
+        t_over{"Epoch over?<br/><small>every live robot has had a turn</small>"}
+        t_prog{"Anything moved or terminated?<br/><small>this epoch · no faults</small>"}
+        t_stall(["Stalled<br/><small>the run stops</small>"])
+        t_new["Start the next epoch<br/><small>epochs + 1 · reshuffle if random</small>"]
+    end
+    subgraph lane1["Who goes next"]
+        t_pick["Pick the next live robot<br/><small>listed turn or next in the epoch</small>"]
+        t_gap["Wait out the pause<br/><small>random (rate λ) or none</small>"]
+        t_look["Queue its Look<br/><small>the only Look in the queue</small>"]
+    end
+    subgraph lane2["The turn"]
+        t_run["It looks, computes and moves<br/><small>look() · chart 2</small>"]
+        t_lim{"Non-rigid, and farther than δ?<br/><small>limited_target()</small>"}
+        t_stop["Stop it on the way<br/><small>never before δ</small>"]
+        t_arr(["Arrive, and the turn ends<br/><small>next turn</small>"])
+    end
+    class t_end k_entry
+    class t_over k_decision
+    class t_prog k_decision
+    class t_stall k_end
+    class t_new k_step
+    class t_pick k_step
+    class t_gap k_step
+    class t_look k_step
+    class t_run k_step
+    class t_lim k_decision
+    class t_stop k_step
+    class t_arr k_end
+    t_end --> t_over
+    t_over -- "yes" --> t_prog
+    t_over -- "no" --> t_pick
+    t_prog -- "no" --> t_stall
+    t_prog -- "yes" --> t_new
+    t_new --> t_pick
+    t_pick --> t_gap
+    t_gap --> t_look
+    t_look --> t_run
+    t_run --> t_lim
+    t_lim -- "yes" --> t_stop
+    t_lim -- "no" --> t_arr
+    t_stop --> t_arr
+    t_arr -- "next turn" --> t_end
+```
+
+- Round-robin and the shuffle each epoch both give every robot that is still active exactly one turn per epoch. An explicit list of turns ends its epoch once every robot has had at least one, as in the paper.
+- Crashed and terminated robots are skipped. The paper has no crashes; this is the simulator's own rule.
+- Stalled is not in the paper either. Robots are deterministic and remember nothing, so if a whole epoch changes nothing, every later epoch is the same and the run can never end. It is not checked with faults, because an omission fault skips moves at random.
+- With non-rigid movement, a robot whose destination is within δ always arrives; otherwise the adversary stops it somewhere at least δ along its way. δ is not shown to the algorithms: in the paper, the robots do not know it.
+
+| Step | What happens |
+| --- | --- |
+| A robot's turn ends | A turn ends when the robot arrives, decides to stay put, or terminates. Nobody else has moved in the meantime, so the next robot sees every robot where it stands. |
+| Epoch over? | An epoch ends as soon as every robot that is still active has taken a turn. For round-robin and the shuffle, that is when the epoch's list runs out. |
+| Anything moved or terminated? | Did any robot move (by at least ε) or terminate since the epoch began? Without faults, robots are deterministic, so an epoch in which nothing changed would repeat forever. |
+| Stalled | advance() returns Stalled; the page shows that nothing can move any more. This also ends a run with no pause between turns, where simulated time would otherwise stand still. |
+| Start the next epoch | The epoch counter goes up. With a random order, the robots are shuffled again from the run's seed; with round-robin they go 0, 1, 2, … again. |
+| Pick the next live robot | The next turn of the explicit schedule if there is one (then round-robin or a repeat), otherwise the next robot of the epoch. Crashed and terminated robots are skipped. |
+| Wait out the pause | Simulated time between one turn ending and the next Look: random with rate λ, or none, when the next robot looks at the very instant the last one stopped. |
+| Queue its Look | The robot's Look event goes into the queue, with the stopping point the schedule names for this turn, if any. |
+| It looks, computes and moves | The turn itself: snapshot, compute a target, start moving. Chart 2 shows every branch. |
+| Non-rigid, and farther than δ? | Only with rigid movement off and a minimum move δ set. A destination within δ is always reached; a farther one may be cut short by the adversary. |
+| Stop it on the way | The adversary picks the stopping point, never before δ along the way: just after δ, anywhere between δ and the destination at random, a set fraction of the way, or the fraction this turn of the schedule names. |
+| Arrive, and the turn ends | The robot stands at its destination, or at the point where it was stopped. It does not schedule its own next Look: control goes back to next_turn(). |
+
+`next_turn` — [`crates/lcm-core/src/sim.rs:681`](../crates/lcm-core/src/sim.rs#L681)
+
+```rust
+/// Sequential scheduler: queues the Look of the next robot to take a turn:
+/// the next live robot of the epoch (or of the explicit schedule), starting
+/// a new epoch when this one runs out. Queues nothing if no robot is left
+/// to move, or if the finished epoch changed nothing (the run is stalled).
+fn next_turn(&mut self, previous: f64) {
+    let Some(turns) = self.turns.as_mut() else {
+        return;
+    };
+    let r = &self.robots;
+    let live = |i: usize| r.state[i] != RobotState::Crash && !r.terminated[i];
+    turns.stop = None;
+    let robot = if let Some(s) = turns.schedule.as_mut() {
+        // An epoch ends when every robot that was live at its start has had a turn.
+        if let Some(done) = s.in_turn.take() {
+            if !s.seen[done] {
+                s.seen[done] = true;
+                s.unseen -= 1;
+            }
+            if s.unseen == 0 {
+                turns.epochs_completed += 1;
+                if !turns.progress && self.fault_free {
+                    self.stalled = true;
+                    return;
+                }
+                turns.progress = false;
+                s.seen.fill(false);
+                s.unseen = (0..r.len()).filter(|&i| live(i)).count();
+            }
+        }
+        let (n, len) = (r.len(), s.list.len());
+        let mut skipped = 0;
+        let picked = loop {
+            let k = s.cursor;
+            s.cursor += 1;
+            let (robot, stop) = if k < len {
+                (s.list[k].robot(), s.list[k].stop())
+            } else if s.end == ScheduleEnd::Repeat {
+                (s.list[k % len].robot(), s.list[k % len].stop())
+            } else {
+                ((k - len) % n, None)
+            };
+            if live(robot) {
+                break Some((robot, stop));
+            }
+            skipped += 1;
+            if skipped > len + n {
+                break None;
+            }
+        };
+        let Some((robot, stop)) = picked else {
+            return;
+        };
+        s.in_turn = Some(robot);
+        turns.stop = stop;
+        robot
+    } else {
+        let mut fresh = false;
+        loop {
+            if let Some(&i) = turns.epoch.get(turns.next) {
+                turns.next += 1;
+                if live(i as usize) {
+                    break i as usize;
+                }
+                continue;
+            }
+            if fresh {
+                return;
+            }
+            if !turns.epoch.is_empty() {
+                turns.epochs_completed += 1;
+                if !turns.progress && self.fault_free {
+                    self.stalled = true;
+                    return;
+                }
+                turns.progress = false;
+            }
+            turns.epoch.clear();
+            turns.epoch.extend((0..r.len()).map(robot_id_u32));
+            if turns.order == ActivationOrder::Random {
+                self.rng.shuffle(&mut turns.epoch);
+            }
+            turns.next = 0;
+            fresh = true;
+        }
+    };
+    let time = match turns.gap {
+        TurnGap::Random => previous + self.rng.exponential(1.0 / self.lambda).max(1e-9),
+        TurnGap::None => previous,
+    };
+    self.queue.push(Event {
+        time,
+        robot: robot_id(robot),
+        kind: EventKind::Look,
+    });
+}
+```
+
+`limited_target` — [`crates/lcm-core/src/sim.rs:604`](../crates/lcm-core/src/sim.rs#L604)
+
+```rust
+/// Non-rigid movement with a `delta`: where the adversary stops robot `i`
+/// on its way to `destination`. A robot always covers at least `delta`
+/// (or reaches the destination if that is nearer); a schedule can name the
+/// fraction of the way for one turn. Without a `delta`, or with rigid
+/// movement, the robot reaches its destination (the original behaviour).
+fn limited_target(&mut self, i: usize, destination: Point) -> Point {
+    let named = self.turns.as_mut().and_then(|turns| turns.stop.take());
+    let Some(delta) = self.delta.filter(|_| !self.rigid) else {
+        return destination;
+    };
+    let from = self.robots.pos[i];
+    let length = dist(from, destination);
+    if length <= delta {
+        return destination;
+    }
+    let wanted = match (named, self.stop) {
+        (Some(fraction), _) => fraction * length,
+        (None, StopPolicy::Delta) => delta,
+        (None, StopPolicy::Random) => self.rng.uniform(delta, length),
+        (None, StopPolicy::Fraction) => self.stop_fraction * length,
+    };
+    let covered = wanted.clamp(delta, length);
+    if covered >= length {
+        destination
+    } else {
+        interpolate(from, destination, covered / length)
+    }
 }
 ```

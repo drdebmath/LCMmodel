@@ -572,14 +572,14 @@ impl Simulation {
             self.schedule_activation(t, i);
             return StepOutcome::Frozen;
         };
-        let target = self.limited_target(i, destination);
+        let goal = self.limited_target(i, destination);
         let r = &mut self.robots;
-        r.target[i] = Some(target);
+        r.stop[i] = (goal != destination).then_some(goal);
         r.state[i] = RobotState::Move;
         r.set_light(i, Light::Red, t);
         r.start_time[i] = Some(t);
         r.start_pos[i] = r.pos[i];
-        let distance = dist(r.start_pos[i], target);
+        let distance = dist(r.start_pos[i], goal);
         let duration = if r.speed[i] > 1e-9 {
             distance / r.speed[i]
         } else {
@@ -635,7 +635,7 @@ impl Simulation {
         let eps = self.model.eps;
         let r = &mut self.robots;
         let moving = r.state[i] == RobotState::Move;
-        let snap_to_target = match (moving, r.start_time[i], r.target[i]) {
+        let snap_to_target = match (moving, r.start_time[i], r.goal(i)) {
             (true, Some(start), Some(target))
                 if self.rigid || self.delta.is_some() || t <= start + 1e-12 =>
             {
@@ -649,6 +649,7 @@ impl Simulation {
         }
         r.pos[i] = end;
         r.start_time[i] = None;
+        r.stop[i] = None;
         r.state[i] = RobotState::Wait;
         r.set_light(i, Light::Green, t);
     }

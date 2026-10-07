@@ -82,6 +82,25 @@ fn a_random_stop_lies_between_delta_and_the_destination_and_repeats_with_the_see
 }
 
 #[test]
+fn a_stopped_robot_still_shows_the_destination_it_computed() {
+    let mut sim = lcm_algorithms::simulation(&two(Some(1.0), StopPolicy::Delta)).unwrap();
+    // Robot 0 looks and starts walking to the midpoint, 300 away.
+    loop {
+        let s = sim.step();
+        if s.kind == Some(EventKind::Look) && s.outcome == StepOutcome::Moved {
+            break;
+        }
+    }
+    let r = sim.robots();
+    assert_eq!(r.target[0], Some(Point::new(0.0, 0.0)));
+    assert!(close(r.stop[0].unwrap().x, -299.0), "{:?}", r.stop[0]);
+    assert_eq!(r.goal(0), r.stop[0]);
+    // After the move it stands at the stopping point, and the move is forgotten.
+    let end = after_first_move(&two(Some(1.0), StopPolicy::Delta));
+    assert!(close(end.x, -299.0));
+}
+
+#[test]
 fn a_robot_whose_destination_is_within_delta_arrives() {
     let near = SimConfig {
         initial_positions: Some(vec![[-0.5, 0.0], [0.5, 0.0]]),

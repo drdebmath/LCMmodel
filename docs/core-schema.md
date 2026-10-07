@@ -94,6 +94,7 @@ Robot `i` is index `i` in every array. IDs are dense `u32`.
 | `pos` | `Point` | position at the last `Wait` (Python `coordinates`) |
 | `start_pos` | `Point` | position when the current move began |
 | `target` | `Option<Point>` | last computed destination (`calculated_position`) |
+| `stop` | `Option<Point>` | non-rigid movement with a `delta`: where the adversary stops the robot on its way to `target`; `None` when it walks all the way. Only the move itself uses it, so `target` keeps showing what the algorithm computed |
 | `start_time` | `Option<f64>` | move start; `None` when not moving |
 | `speed` | f64 | after the delay fault's ×0.4 |
 | `state` | `RobotState` | `Wait`, `Look`, `Move`, `Crash` |
@@ -107,7 +108,7 @@ Robot `i` is index `i` in every array. IDs are dense `u32`.
 | `travelled` | f64 | total distance moved |
 
 The position of robot `i` at time `t` is derived, never stored:
-`position_at(i, t)` interpolates `start_pos → target` at `speed` while
+`position_at(i, t)` interpolates `start_pos → stop` (else `target`) at `speed` while
 `state == Move`, exactly like Python `get_position`.
 
 ## 4. Randomness
