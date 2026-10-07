@@ -122,7 +122,7 @@ flowchart TD
 | Every live robot terminated? | Crashed and Byzantine robots don't count: the run ends once all the others have terminated. |
 | Ended | advance() returns Ended and the page shows that every robot terminated. |
 
-`advance` — [`crates/lcm-core/src/sim.rs:279`](../crates/lcm-core/src/sim.rs#L279)
+`advance` — [`crates/lcm-core/src/sim.rs:341`](../crates/lcm-core/src/sim.rs#L341)
 
 ```rust
 /// Handles events until the budget, a limit or the end is reached.
@@ -131,6 +131,9 @@ pub fn advance(&mut self, budget: Budget) -> StopReason {
     loop {
         if self.ended {
             return StopReason::Ended;
+        }
+        if self.stalled {
+            return StopReason::Stalled;
         }
         if self.max_time.is_some_and(|limit| self.now > limit) {
             return StopReason::MaxTime;
@@ -154,7 +157,7 @@ pub fn advance(&mut self, budget: Budget) -> StopReason {
 }
 ```
 
-`step` — [`crates/lcm-core/src/sim.rs:307`](../crates/lcm-core/src/sim.rs#L307)
+`step` — [`crates/lcm-core/src/sim.rs:372`](../crates/lcm-core/src/sim.rs#L372)
 
 ```rust
 /// Handles the next event.
@@ -165,7 +168,7 @@ pub fn step(&mut self) -> StepInfo {
         kind: None,
         outcome: StepOutcome::Ended,
     };
-    if self.ended {
+    if self.ended || self.stalled {
         return ended;
     }
     let Some(event) = self.queue.pop() else {
@@ -215,7 +218,12 @@ pub fn step(&mut self) -> StepInfo {
     }
 
     let outcome = match event.kind {
-        EventKind::Look => self.look(i, t),
+        EventKind::Look => {
+            if let Some(turns) = self.turns.as_mut() {
+                turns.taken += 1;
+            }
+            self.look(i, t)
+        }
         EventKind::Wait => {
             self.wait(i, t);
             self.schedule_activation(t, i);
@@ -229,6 +237,11 @@ pub fn step(&mut self) -> StepInfo {
         EventKind::Visualize => StepOutcome::Ignored,
     };
 
+    if matches!(outcome, StepOutcome::Moved | StepOutcome::Terminated) {
+        if let Some(turns) = self.turns.as_mut() {
+            turns.progress = true;
+        }
+    }
     if self.globally_terminated() {
         self.ended = true;
         return info(StepOutcome::Ended);
@@ -237,7 +250,7 @@ pub fn step(&mut self) -> StepInfo {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:546`](../crates/lcm-core/src/sim.rs#L546)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:656`](../crates/lcm-core/src/sim.rs#L656)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -265,7 +278,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`look` — [`crates/lcm-core/src/sim.rs:407`](../crates/lcm-core/src/sim.rs#L407)
+`look` — [`crates/lcm-core/src/sim.rs:482`](../crates/lcm-core/src/sim.rs#L482)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -355,7 +368,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:527`](../crates/lcm-core/src/sim.rs#L527)
+`wait` — [`crates/lcm-core/src/sim.rs:633`](../crates/lcm-core/src/sim.rs#L633)
 
 ```rust
 /// `Robot.wait`.
@@ -364,7 +377,11 @@ fn wait(&mut self, i: usize, t: f64) {
     let r = &mut self.robots;
     let moving = r.state[i] == RobotState::Move;
     let snap_to_target = match (moving, r.start_time[i], r.target[i]) {
-        (true, Some(start), Some(target)) if self.rigid || t <= start + 1e-12 => Some(target),
+        (true, Some(start), Some(target))
+            if self.rigid || self.delta.is_some() || t <= start + 1e-12 =>
+        {
+            Some(target)
+        }
         _ => None,
     };
     let end = snap_to_target.unwrap_or_else(|| r.position_at(i, t, eps));
@@ -378,7 +395,7 @@ fn wait(&mut self, i: usize, t: f64) {
 }
 ```
 
-`globally_terminated` — [`crates/lcm-core/src/sim.rs:616`](../crates/lcm-core/src/sim.rs#L616)
+`globally_terminated` — [`crates/lcm-core/src/sim.rs:776`](../crates/lcm-core/src/sim.rs#L776)
 
 ```rust
 /// `Scheduler._check_global_termination`: every robot that is neither
@@ -487,7 +504,7 @@ flowchart TD
 | Schedule WAIT at arrival | A WAIT event goes in the queue for the moment the robot reaches its target; other robots see it moving until then. |
 | Arrive | At the arrival time the robot is placed exactly on its target, its light turns green, and its next LOOK is scheduled. |
 
-`look` — [`crates/lcm-core/src/sim.rs:407`](../crates/lcm-core/src/sim.rs#L407)
+`look` — [`crates/lcm-core/src/sim.rs:482`](../crates/lcm-core/src/sim.rs#L482)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -577,7 +594,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`build_view` — [`crates/lcm-core/src/sim.rs:386`](../crates/lcm-core/src/sim.rs#L386)
+`build_view` — [`crates/lcm-core/src/sim.rs:461`](../crates/lcm-core/src/sim.rs#L461)
 
 ```rust
 /// The snapshot robot `i` takes at `t`, filtered by its visibility.
@@ -630,7 +647,7 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> Decision {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:546`](../crates/lcm-core/src/sim.rs#L546)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:656`](../crates/lcm-core/src/sim.rs#L656)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -658,17 +675,19 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`begin_move` — [`crates/lcm-core/src/sim.rs:493`](../crates/lcm-core/src/sim.rs#L493)
+`begin_move` — [`crates/lcm-core/src/sim.rs:568`](../crates/lcm-core/src/sim.rs#L568)
 
 ```rust
 /// `Robot.move` and the WAIT scheduling that follows it.
 fn begin_move(&mut self, i: usize, t: f64) -> StepOutcome {
-    let r = &mut self.robots;
-    let Some(target) = r.target[i] else {
-        r.state[i] = RobotState::Wait;
+    let Some(destination) = self.robots.target[i] else {
+        self.robots.state[i] = RobotState::Wait;
         self.schedule_activation(t, i);
         return StepOutcome::Frozen;
     };
+    let target = self.limited_target(i, destination);
+    let r = &mut self.robots;
+    r.target[i] = Some(target);
     r.state[i] = RobotState::Move;
     r.set_light(i, Light::Red, t);
     r.start_time[i] = Some(t);
@@ -696,7 +715,7 @@ fn begin_move(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:527`](../crates/lcm-core/src/sim.rs#L527)
+`wait` — [`crates/lcm-core/src/sim.rs:633`](../crates/lcm-core/src/sim.rs#L633)
 
 ```rust
 /// `Robot.wait`.
@@ -705,7 +724,11 @@ fn wait(&mut self, i: usize, t: f64) {
     let r = &mut self.robots;
     let moving = r.state[i] == RobotState::Move;
     let snap_to_target = match (moving, r.start_time[i], r.target[i]) {
-        (true, Some(start), Some(target)) if self.rigid || t <= start + 1e-12 => Some(target),
+        (true, Some(start), Some(target))
+            if self.rigid || self.delta.is_some() || t <= start + 1e-12 =>
+        {
+            Some(target)
+        }
         _ => None,
     };
     let end = snap_to_target.unwrap_or_else(|| r.position_at(i, t, eps));
@@ -902,7 +925,7 @@ function slice(gen) {
 }
 ```
 
-`advance` — [`crates/lcm-wasm/src/lib.rs:67`](../crates/lcm-wasm/src/lib.rs#L67)
+`advance` — [`crates/lcm-wasm/src/lib.rs:69`](../crates/lcm-wasm/src/lib.rs#L69)
 
 ```rust
 /// Handles up to `max_events` events, stopping early before the first
@@ -947,7 +970,7 @@ function postFrame(extra = {}) {
 }
 ```
 
-`fill_frame` — [`crates/lcm-wasm/src/lib.rs:210`](../crates/lcm-wasm/src/lib.rs#L210)
+`fill_frame` — [`crates/lcm-wasm/src/lib.rs:219`](../crates/lcm-wasm/src/lib.rs#L219)
 
 ```rust
 /// Captures the current state straight into caller-owned arrays, so the

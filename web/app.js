@@ -183,7 +183,8 @@ function updateHud(force = false) {
   if (now - fpsAt >= 1000) { fps = (draws * 1000) / (now - fpsAt); draws = 0; fpsAt = now; }
   const statusText = {
     loading: "Loading…", ready: "Ready", running: "Running", paused: "Paused",
-    ended: frame?.ended ? "Ended · all terminated" : `Stopped (${frame?.stop})`,
+    ended: frame?.ended ? "Ended · all terminated"
+      : frame?.stop === "stalled" ? "Stalled · nothing can move any more" : `Stopped (${frame?.stop})`,
   }[state];
   $("hud_status").textContent = statusText;
   $("hud_status").className = `hud-status${state === "ended" ? " ended" : ""}`;

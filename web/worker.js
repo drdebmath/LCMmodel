@@ -40,7 +40,7 @@ const version = new URL(self.location.href).searchParams.get("v");
 const suffix = version ? `?v=${encodeURIComponent(version)}` : "";
 let wasm = null;
 
-const STOP = ["budget", "until-time", "ended", "max-events", "max-time"];
+const STOP = ["budget", "until-time", "ended", "max-events", "max-time", "stalled"];
 const SLICE_MS = 6;
 const IDLE_MS = 4;
 const ready = (async () => {

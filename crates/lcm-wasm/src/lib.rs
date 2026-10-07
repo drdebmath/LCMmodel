@@ -17,6 +17,7 @@ pub enum Stop {
     Ended = 2,
     MaxEvents = 3,
     MaxTime = 4,
+    Stalled = 5,
 }
 
 impl From<StopReason> for Stop {
@@ -27,6 +28,7 @@ impl From<StopReason> for Stop {
             StopReason::Ended => Self::Ended,
             StopReason::MaxEvents => Self::MaxEvents,
             StopReason::MaxTime => Self::MaxTime,
+            StopReason::Stalled => Self::Stalled,
         }
     }
 }
@@ -98,6 +100,13 @@ impl WasmSimulation {
     #[must_use]
     pub fn sequential(&self) -> bool {
         self.sim.sequential()
+    }
+
+    /// Sequential scheduler: turns taken so far (one per Look).
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn turn_count(&self) -> f64 {
+        self.sim.turn_count() as f64
     }
 
     /// Sequential scheduler: epochs in which every live robot has had its turn.

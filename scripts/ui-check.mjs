@@ -246,6 +246,26 @@ await js("lcm.settings.reset()");
 await until("lcm.state === 'ready' && lcm.settings.values.scheduler === 'async' && lcm.renderer.frame.flags.length === 500", 3000);
 check("back on async the epoch counter hides", await js("document.getElementById('hud_epochs_row').hidden"));
 
+// Non-rigid movement: the minimum move δ and where a robot is stopped.
+const shownNow = (key) => js(`!document.querySelector('[data-key="${key}"]').hidden`);
+check("δ and where it stops are hidden while movement is rigid", !(await shownNow("delta")) && !(await shownNow("stop_policy")));
+await js("lcm.settings.set('rigid_movement', false)");
+check("non-rigid movement shows δ, but not the stopping rules until δ is set", (await shownNow("delta")) && !(await shownNow("stop_policy")));
+await js("lcm.settings.set('delta', 20)");
+check("with δ set, the stopping policy shows; the fraction waits for its policy", (await shownNow("stop_policy")) && !(await shownNow("stop_fraction")));
+await js("lcm.settings.set('stop_policy', 'fraction')");
+check("the fraction shows for the fraction policy", await shownNow("stop_fraction"));
+await js("lcm.settings.set('stop_policy', 'random'); lcm.settings.set('scheduler', 'sequential'); lcm.settings.set('num_of_robots', 30); lcm.settings.set('robot_speeds', 10)");
+await until("lcm.state === 'ready' && lcm.renderer.frame.robots === 30", 3000);
+await setPlayback("Infinity");
+await click("#play");
+const nonRigidEnds = await until("lcm.state === 'ended'", 20000);
+const nonRigid = await js("({ terminated: lcm.stats.terminated, stop: lcm.stats.stop, status: document.getElementById('hud_status').textContent })");
+check("a sequential run with non-rigid δ-stops still gathers all robots", nonRigidEnds && nonRigid.terminated === 30 && nonRigid.stop === "ended", JSON.stringify(nonRigid));
+await js("lcm.settings.reset()");
+await until("lcm.settings.values.rigid_movement === true && lcm.renderer.frame.flags.length === 500", 3000);
+await setPlayback(playback);
+
 // Play straight after a settings change plays the new settings.
 await click("#reset");
 await until("lcm.state === 'ready'");

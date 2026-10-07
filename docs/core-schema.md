@@ -76,6 +76,11 @@ JSON form (serde, camelCase is **not** used; names match `main.js params()`):
 | `start` | object or null | a generated start (§4.3); null keeps the original start |
 | `scheduler` | string | `async` (the original, default) or `sequential`: one robot at a time does a whole Look-Compute-Move while the rest stay still |
 | `activation_order` | string | sequential only: `round_robin` (0, 1, …, n-1, default) or `random` (a fresh shuffle each epoch, from the seed). Every epoch gives each robot that is neither crashed nor terminated exactly one turn |
+| `delta` | f64 or null | non-rigid movement (`rigid_movement` false): a robot always covers at least `delta` along its way, or reaches its destination if that is nearer. null (default): a non-rigid robot still reaches its destination, as in the Python original |
+| `stop_policy` | string | where a robot is stopped once its destination is farther than `delta`: `delta` (exactly `delta`), `random` (default: uniform between `delta` and the destination, from the run's random stream), `fraction` (`stop_fraction` of the way, never less than `delta`) |
+| `stop_fraction` | f64 | in (0, 1], default 0.5; used by `stop_policy` `fraction` |
+| `schedule` | list or null | sequential only: the turns in order, instead of `activation_order`. Each turn is a robot index, or `{"robot": i, "stop": f}` where `f` in (0, 1] is the fraction of the way the adversary lets that robot travel (needs non-rigid movement and `delta`). Turns of crashed or terminated robots are skipped. An epoch ends once every robot live at its start has had a turn |
+| `schedule_end` | string | sequential only: what follows the list: `round_robin` (default; carries on 0, 1, 2, …) or `repeat` (plays it again; the list must name every robot) |
 | `turn_gap` | string | sequential only: `random` (exponential with rate `lambda_rate`, default) or `none` (the next Look at the instant the last turn ends) |
 
 Invalid values are a `ConfigError`, never a silent default.
@@ -199,6 +204,14 @@ sim.write_frame(sim.time(), &mut frame);        // render data (§8)
 Rendering frequency never changes results. `max_events` / `max_time` apply
 `run.py`'s checks: time is tested before each event, the event counter after
 it is incremented.
+
+`advance` also stops with `Stalled` under the sequential scheduler when a whole
+epoch passes in which no robot moved (a move of at least ε) or terminated.
+Robots are deterministic and the world did not change, so the next epoch would
+be the same and the run could never end. This is checked only without faults
+(an omission fault skips moves at random). It is what stops a run with
+`turn_gap` `none` whose robots never move: simulated time would not advance at
+all. The run is not `ended`; `sim.stalled()` is true.
 
 ## 7. Algorithm interface
 

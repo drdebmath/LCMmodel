@@ -1,6 +1,6 @@
 /**
  * `advance` result codes, shared with `web/worker.js`.
- * @enum {0 | 1 | 2 | 3 | 4}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5}
  */
 export const Stop = Object.freeze({
     Budget: 0, "0": "Budget",
@@ -8,6 +8,7 @@ export const Stop = Object.freeze({
     Ended: 2, "2": "Ended",
     MaxEvents: 3, "3": "MaxEvents",
     MaxTime: 4, "4": "MaxTime",
+    Stalled: 5, "5": "Stalled",
 });
 
 export class WasmSimulation {
@@ -252,6 +253,14 @@ export class WasmSimulation {
      */
     time() {
         const ret = wasm.wasmsimulation_time(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Sequential scheduler: turns taken so far (one per Look).
+     * @returns {number}
+     */
+    turn_count() {
+        const ret = wasm.wasmsimulation_turn_count(this.__wbg_ptr);
         return ret;
     }
     /**

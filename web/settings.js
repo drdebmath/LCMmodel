@@ -75,7 +75,17 @@ export const SETTINGS = [
   { key: "robot_speeds", group: "movement", label: "Speed", kind: "range", min: 0.1, max: 10, step: 0.1, value: 1,
     hint: "Distance a robot covers per unit of simulated time." },
   { key: "rigid_movement", group: "movement", label: "Rigid movement", kind: "switch", value: true,
-    hint: "Rigid: a robot always reaches its target. (In the original, non-rigid robots also reach it.)" },
+    hint: "Rigid: a robot always reaches its target. Off: set a minimum move δ below and robots can be stopped on the way. (Without δ, non-rigid robots still arrive, as in the original.)" },
+  { key: "delta", group: "movement", label: "Minimum move δ", kind: "range", min: 0, max: 500, step: 1, value: 0,
+    showIf: (v) => !v.rigid_movement,
+    hint: "A robot can be stopped on the way to its target, but never before it has covered δ (or reached the target, if that is nearer). 0: robots always arrive, as in the original." },
+  { key: "stop_policy", group: "movement", label: "Where it stops", kind: "select", value: "random",
+    options: [["delta", "Right after δ"], ["random", "Anywhere after δ, at random"], ["fraction", "After a fraction of the way"]],
+    showIf: (v) => !v.rigid_movement && v.delta > 0,
+    hint: "Who decides where a stopped robot ends up: the worst case (just δ), a random point, or a fixed fraction of its way." },
+  { key: "stop_fraction", group: "movement", label: "Fraction of the way", kind: "range", min: 0.05, max: 1, step: 0.05, value: 0.5,
+    showIf: (v) => !v.rigid_movement && v.delta > 0 && v.stop_policy === "fraction",
+    hint: "How far along its way a stopped robot gets (never less than δ)." },
   { key: "unlimited_visibility", group: "visibility", label: "Unlimited visibility", kind: "switch", value: true, local: true,
     hint: "Every robot sees every other robot." },
   { key: "visibility_radius", group: "visibility", label: "Radius", kind: "range", min: 10, max: 1000, step: 10, value: 150,
@@ -355,6 +365,7 @@ export function readConfig(values, algorithm, customPoints = []) {
   const config = { algorithm };
   for (const s of SETTINGS) if (!s.local) config[s.key] = values[s.key];
   config.visibility_radius = values.unlimited_visibility ? null : values.visibility_radius;
+  config.delta = !values.rigid_movement && values.delta > 0 ? values.delta : null;
   config.open_world = values.open_world;
   config.start = null;
   config.initial_positions = null;
