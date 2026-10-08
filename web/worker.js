@@ -40,7 +40,7 @@ const version = new URL(self.location.href).searchParams.get("v");
 const suffix = version ? `?v=${encodeURIComponent(version)}` : "";
 let wasm = null;
 
-const STOP = ["budget", "until-time", "ended", "max-events", "max-time"];
+const STOP = ["budget", "until-time", "ended", "max-events", "max-time", "stalled", "max-turns"];
 const SLICE_MS = 6;
 const IDLE_MS = 4;
 const ready = (async () => {
@@ -110,8 +110,10 @@ function postFrame(extra = {}) {
     run,
     time: sim.time(),
     events: sim.event_count(),
+    ticks: sim.tick_count?.() ?? 0,
     robots: n,
     terminated: sim.terminated_count(),
+    epochs: sim.sequential?.() ? sim.epochs_completed() : null,
     ended: sim.ended(),
     stop,
     playing,

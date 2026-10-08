@@ -70,6 +70,8 @@ CHARTS = [
             "robot id first, then Crash < Look < Visualize < Wait.",
             "Visualize ticks change nothing; they are kept so event counts and limits match the Python.",
             "The run ends when every robot that is neither crashed nor Byzantine has terminated.",
+            "Under the sequential scheduler robots have no clocks of their own: only one Look is ever "
+            "in the queue, and the next one is queued when a turn ends (chart 5).",
         ],
         "lanes": ("rows", [("Run loop", 0, 1), ("Take the next event", 2, 6),
                            ("Handle it", 7, 8), ("After each robot event", 9, 10)]),
@@ -172,8 +174,9 @@ CHARTS = [
             "interpolated position, never a stale one.",
             "A robot freezes (stays put this cycle) when its target is within ε = 10^-precision of "
             "where it is, or when an omission fault skips the move (probability ½).",
-            "Rigid and non-rigid movement both reach the target: the WAIT event is scheduled at the "
-            "full-distance arrival time (finding #3 in report.md).",
+            "Rigid movement always reaches the target. Non-rigid movement does too (finding #3 in "
+            "report.md) unless a minimum move δ is set: then the robot may be stopped on the way, "
+            "never before it has covered δ, and the WAIT event is scheduled at the stopping point (chart 5).",
         ],
         "lanes": ("rows", [("LOOK", 0, 4), ("COMPUTE", 5, 7), ("MOVE", 8, 11)]),
         "nodes": [
@@ -214,7 +217,9 @@ CHARTS = [
                  "exponential delay."),
             node("mv", "Start moving", 1, 8, "step", (SIM, "begin_move"), "begin_move() · light red",
                  "The move starts now at the robot's speed (40 % for a delay fault); its position "
-                 "is interpolated until it arrives."),
+                 "is interpolated until it arrives. With non-rigid movement and a minimum move δ, "
+                 "the robot walks only as far as the point where the adversary stops it (chart 5); its "
+                 "target still shows what the algorithm computed."),
             node("sub", "Arrival later than now?", 1, 9, "decision", None, None,
                  "A tiny move can be shorter than the clock can resolve. As in the Python fix for "
                  "the endless-simulation bug, it is finished immediately instead of scheduling a "
@@ -250,7 +255,7 @@ CHARTS = [
     {
         "id": "gathering",
         "title": "Gathering (center of gravity)",
-        "short": "The one algorithm ported so far",
+        "short": "Each robot goes to the average of what it sees",
         "blurb": (
             "Each robot moves to the average position of the robots it sees. Repeated "
             "asynchronously, the swarm converges to a single point. This is Robot._midpoint and "
@@ -327,6 +332,89 @@ CHARTS = [
             edge("post", "fill"),
             edge("post", "draw", "transfer"),
             edge("draw", "stats"),
+        ],
+    },
+    {
+        "id": "sequential",
+        "title": "The sequential scheduler",
+        "short": "One robot at a time, turn by turn",
+        "blurb": (
+            "Under the sequential scheduler only one robot's Look is ever waiting in the queue. When "
+            "its turn ends, next_turn() decides who goes next, and the others stay still until then. "
+            "This is the sequential scheduler of Section 2.2 of \"Universal pattern formation by "
+            "oblivious robots under sequential schedulers\" (arXiv:2412.10733); it is new in the "
+            "Rust core, not in the Python original."
+        ),
+        "notes": [
+            "Round-robin and the shuffle each epoch both give every robot that is still active "
+            "exactly one turn per epoch. An explicit list of turns ends its epoch once every robot "
+            "has had at least one, as in the paper.",
+            "Crashed and terminated robots are skipped. The paper has no crashes; this is the "
+            "simulator's own rule.",
+            "Stalled is not in the paper either. Robots are deterministic and remember nothing, so "
+            "if a whole epoch changes nothing, every later epoch is the same and the run can never "
+            "end. It is not checked with faults, because an omission fault skips moves at random.",
+            "A run can also end at a turn limit (max_turns): the last turn's move still finishes. It "
+            "says nothing about the algorithm, only that the budget ran out.",
+            "With non-rigid movement, a robot whose destination is within δ always arrives; "
+            "otherwise the adversary stops it somewhere at least δ along its way. δ is not shown to the "
+            "algorithms: in the paper, the robots do not know it.",
+        ],
+        "lanes": ("rows", [("A turn ends", 0, 3), ("Who goes next", 4, 6), ("The turn", 7, 9)]),
+        "nodes": [
+            node("t_end", "A robot's turn ends", 1, 0, "entry", (SIM, "next_turn"), "next_turn()",
+                 "A turn ends when the robot arrives, decides to stay put, or terminates. Nobody else "
+                 "has moved in the meantime, so the next robot sees every robot where it stands."),
+            node("t_over", "Epoch over?", 1, 1, "decision", None, "every live robot has had a turn",
+                 "An epoch ends as soon as every robot that is still active has taken a turn. For "
+                 "round-robin and the shuffle, that is when the epoch's list runs out."),
+            node("t_prog", "Anything moved or terminated?", 1, 2, "decision", None, "this epoch · no faults",
+                 "Did any robot move (by at least ε) or terminate since the epoch began? Without faults, "
+                 "robots are deterministic, so an epoch in which nothing changed would repeat forever."),
+            node("t_stall", "Stalled", 2, 2, "end", None, "the run stops",
+                 "advance() returns Stalled; the page shows that nothing can move any more. This also "
+                 "ends a run with no pause between turns, where simulated time would otherwise stand still."),
+            node("t_new", "Start the next epoch", 1, 3, "step", None, "epochs + 1 · reshuffle if random",
+                 "The epoch counter goes up. With a random order, the robots are shuffled again from "
+                 "the run's seed; with round-robin they go 0, 1, 2, … again."),
+            node("t_pick", "Pick the next live robot", 1, 4, "step", None, "listed turn or next in the epoch",
+                 "The next turn of the explicit schedule if there is one (then round-robin or a repeat), "
+                 "otherwise the next robot of the epoch. Crashed and terminated robots are skipped."),
+            node("t_gap", "Wait out the pause", 1, 5, "step", None, "random (rate λ) or none",
+                 "Simulated time between one turn ending and the next Look: random with rate λ, or none, "
+                 "when the next robot looks at the very instant the last one stopped."),
+            node("t_look", "Queue its Look", 1, 6, "step", None, "the only Look in the queue",
+                 "The robot's Look event goes into the queue, with the stopping point the schedule "
+                 "names for this turn, if any."),
+            node("t_run", "It looks, computes and moves", 1, 7, "step", None, "look() · chart 2",
+                 "The turn itself: snapshot, compute a target, start moving. Chart 2 shows every branch."),
+            node("t_lim", "Non-rigid, and farther than δ?", 1, 8, "decision", (SIM, "limited_target"),
+                 "limited_target()",
+                 "Only with rigid movement off and a minimum move δ set. A destination within δ is "
+                 "always reached; a farther one may be cut short by the adversary."),
+            node("t_stop", "Stop it on the way", 0, 8, "step", None, "never before δ",
+                 "The adversary picks the stopping point, never before δ along the way: just after δ, "
+                 "anywhere between δ and the destination at random, a set fraction of the way, or the "
+                 "fraction this turn of the schedule names."),
+            node("t_arr", "Arrive, and the turn ends", 1, 9, "end", None, "next turn",
+                 "The robot stands at its destination, or at the point where it was stopped. It does not "
+                 "schedule its own next Look: control goes back to next_turn()."),
+        ],
+        "edges": [
+            edge("t_end", "t_over"),
+            edge("t_over", "t_prog", "yes"),
+            edge("t_over", "t_pick", "no", ("around", -0.66)),
+            edge("t_prog", "t_stall", "no"),
+            edge("t_prog", "t_new", "yes"),
+            edge("t_new", "t_pick"),
+            edge("t_pick", "t_gap"),
+            edge("t_gap", "t_look"),
+            edge("t_look", "t_run"),
+            edge("t_run", "t_lim"),
+            edge("t_lim", "t_stop", "yes"),
+            edge("t_lim", "t_arr", "no"),
+            edge("t_stop", "t_arr", None, "elbow"),
+            edge("t_arr", "t_end", "next turn", ("around", 2.62)),
         ],
     },
 ]
@@ -697,7 +785,7 @@ PAGE = """<!DOCTYPE html>
     <span class="crumb">How it works</span>
     <span class="spacer"></span>
     <button id="theme" class="btn" title="Theme" aria-label="Theme"><span data-icon="moon"></span></button>
-    <a class="btn outline" href="../"><span data-icon="play" data-size="14"></span>Open the simulator</a>
+    <a class="btn outline open-sim" href="../"><span data-icon="play" data-size="14"></span>Open the simulator</a>
   </header>
   <div class="docs-main">
     <nav class="docs-nav" aria-label="Charts">

@@ -74,6 +74,17 @@ JSON form (serde, camelCase is **not** used; names match `main.js params()`):
 | `max_events`, `max_time` | u64 / f64 or null | safety limits, same semantics as `run.py` (§6) |
 | `open_world` | bool | `true`: no world box, algorithms get no bounds. Default `false` (the original) |
 | `start` | object or null | a generated start (§4.3); null keeps the original start |
+| `scheduler` | string | `async` (the original, default) or `sequential`: one robot at a time does a whole Look-Compute-Move while the rest stay still |
+| `activation_order` | string | sequential only: `round_robin` (0, 1, …, n-1, default) or `random` (a fresh shuffle each epoch, from the seed). Every epoch gives each robot that is neither crashed nor terminated exactly one turn |
+| `delta` | f64 or null | non-rigid movement (`rigid_movement` false): a robot always covers at least `delta` along its way, or reaches its destination if that is nearer. null (default): a non-rigid robot still reaches its destination, as in the Python original |
+| `stop_policy` | string | where a robot is stopped once its destination is farther than `delta`: `delta` (exactly `delta`), `random` (default: uniform between `delta` and the destination, from the run's random stream), `fraction` (`stop_fraction` of the way, never less than `delta`) |
+| `stop_fraction` | f64 | in (0, 1], default 0.5; used by `stop_policy` `fraction` |
+| `schedule` | list or null | sequential only: the turns in order, instead of `activation_order`. Each turn is a robot index, or `{"robot": i, "stop": f}` where `f` in (0, 1] is the fraction of the way the adversary lets that robot travel (needs non-rigid movement and `delta`). Turns of crashed or terminated robots are skipped. An epoch ends once every robot live at its start has had a turn |
+| `schedule_end` | string | sequential only: what follows the list: `round_robin` (default; carries on 0, 1, 2, …) or `repeat` (plays it again; the list must name every robot) |
+| `max_turns` | u64 or null | sequential only: stop after this many turns (one per Look); `advance` then returns `MaxTurns`. The last turn's move still finishes. null: no limit |
+| `multiplicities` | u32 | start with this many multiplicity points (robots standing on one spot), made from the start positions whatever their source: that many robots, chosen at random from `random_seed` (a stream of its own), become anchors and other robots are moved onto them. 0 (default): none |
+| `multiplicity_size` | u32 | robots on each starting multiplicity, at least 2; 0 (default) picks a size: a third of the robots for one multiplicity, up to 4 each for several. `multiplicities` × `multiplicity_size` must not exceed `num_of_robots` |
+| `turn_gap` | string | sequential only: `random` (exponential with rate `lambda_rate`, default) or `none` (the next Look at the instant the last turn ends) |
 
 Invalid values are a `ConfigError`, never a silent default.
 
@@ -86,6 +97,7 @@ Robot `i` is index `i` in every array. IDs are dense `u32`.
 | `pos` | `Point` | position at the last `Wait` (Python `coordinates`) |
 | `start_pos` | `Point` | position when the current move began |
 | `target` | `Option<Point>` | last computed destination (`calculated_position`) |
+| `stop` | `Option<Point>` | non-rigid movement with a `delta`: where the adversary stops the robot on its way to `target`; `None` when it walks all the way. Only the move itself uses it, so `target` keeps showing what the algorithm computed |
 | `start_time` | `Option<f64>` | move start; `None` when not moving |
 | `speed` | f64 | after the delay fault's ×0.4 |
 | `state` | `RobotState` | `Wait`, `Look`, `Move`, `Crash` |
@@ -99,7 +111,7 @@ Robot `i` is index `i` in every array. IDs are dense `u32`.
 | `travelled` | f64 | total distance moved |
 
 The position of robot `i` at time `t` is derived, never stored:
-`position_at(i, t)` interpolates `start_pos → target` at `speed` while
+`position_at(i, t)` interpolates `start_pos → stop` (else `target`) at `speed` while
 `state == Move`, exactly like Python `get_position`.
 
 ## 4. Randomness
@@ -197,6 +209,18 @@ Rendering frequency never changes results. `max_events` / `max_time` apply
 `run.py`'s checks: time is tested before each event, the event counter after
 it is incremented.
 
+`advance` also stops with `Stalled` under the sequential scheduler when a whole
+epoch passes in which no robot moved (a move of at least ε) or terminated.
+Robots are deterministic and the world did not change, so the next epoch would
+be the same and the run could never end. This is checked only without faults
+(an omission fault skips moves at random). It is what stops a run with
+`turn_gap` `none` whose robots never move: simulated time would not advance at
+all. The run is not `ended`; `sim.stalled()` is true.
+
+Likewise `MaxTurns` ends a sequential run that has taken `max_turns` turns
+(`sim.turn_limit_reached()`); it says nothing about the algorithm, only that the
+budget ran out.
+
 ## 7. Algorithm interface
 
 ```rust
@@ -236,7 +260,10 @@ termination, omission, the freeze threshold) is fixed by §5 and is not the
 algorithm's business.
 
 Adding an algorithm = one file implementing `Algorithm` plus one registry
-line in `lcm-algorithms`.
+line in `lcm-algorithms`. A registry entry builds the algorithm's `Plan` from the
+run's `SimConfig` (so it can use the seed or the robot count) and may refuse
+settings it cannot work with by returning `ConfigError::Unsupported`, for
+example an algorithm that is only defined under the sequential scheduler.
 
 ## 8. Frame (core → renderer)
 

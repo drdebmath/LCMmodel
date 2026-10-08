@@ -183,7 +183,9 @@ function updateHud(force = false) {
   if (now - fpsAt >= 1000) { fps = (draws * 1000) / (now - fpsAt); draws = 0; fpsAt = now; }
   const statusText = {
     loading: "Loading…", ready: "Ready", running: "Running", paused: "Paused",
-    ended: frame?.ended ? "Ended · all terminated" : `Stopped (${frame?.stop})`,
+    ended: frame?.ended ? "Ended · all terminated"
+      : frame?.stop === "stalled" ? "Stalled · nothing can move any more"
+      : frame?.stop === "max-turns" ? "Stopped · turn limit reached" : `Stopped (${frame?.stop})`,
   }[state];
   $("hud_status").textContent = statusText;
   $("hud_status").className = `hud-status${state === "ended" ? " ended" : ""}`;
@@ -196,15 +198,18 @@ function updateHud(force = false) {
   $("hud_time").textContent = frame.time.toFixed(2);
   $("hud_term").textContent = `${frame.terminated.toLocaleString()} / ${frame.robots.toLocaleString()}`;
   $("hud_bar").style.width = `${(100 * frame.terminated) / Math.max(1, frame.robots)}%`;
-  $("hud_events").textContent = frame.events.toLocaleString();
+  $("hud_epochs_row").hidden = frame.epochs == null;
+  if (frame.epochs != null) $("hud_epochs").textContent = frame.epochs.toLocaleString();
+  $("hud_events").textContent = (frame.events - frame.ticks).toLocaleString();
+  $("hud_ticks").textContent = frame.ticks.toLocaleString();
   $("hud_rate").textContent = state === "running" ? Math.round(rate).toLocaleString() : "—";
   const lod = frame.robots > LOD.outlines ? " · simplified drawing" : "";
   $("hud_perf").textContent = state === "running"
     ? `Draw ${renderer.lastDrawMs.toFixed(1)} ms · ${Math.round(fps)} fps · worker ${Math.round(frame.busy * 100)} %${lod}`
     : `Draw ${renderer.lastDrawMs.toFixed(1)} ms${lod}`;
   window.lcm.stats = {
-    time: frame.time, events: frame.events, eventsPerSecond: Math.round(rate), robots: frame.robots,
-    terminated: frame.terminated, fps: Math.round(fps), drawMs: renderer.lastDrawMs, busy: frame.busy, stop: frame.stop, state,
+    time: frame.time, events: frame.events, ticks: frame.ticks, eventsPerSecond: Math.round(rate), robots: frame.robots,
+    terminated: frame.terminated, epochs: frame.epochs, fps: Math.round(fps), drawMs: renderer.lastDrawMs, busy: frame.busy, stop: frame.stop, state,
   };
 }
 setInterval(() => { if (state === "running") updateHud(); }, 250);

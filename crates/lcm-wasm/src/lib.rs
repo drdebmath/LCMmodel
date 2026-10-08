@@ -17,6 +17,8 @@ pub enum Stop {
     Ended = 2,
     MaxEvents = 3,
     MaxTime = 4,
+    Stalled = 5,
+    MaxTurns = 6,
 }
 
 impl From<StopReason> for Stop {
@@ -27,6 +29,8 @@ impl From<StopReason> for Stop {
             StopReason::Ended => Self::Ended,
             StopReason::MaxEvents => Self::MaxEvents,
             StopReason::MaxTime => Self::MaxTime,
+            StopReason::Stalled => Self::Stalled,
+            StopReason::MaxTurns => Self::MaxTurns,
         }
     }
 }
@@ -85,6 +89,33 @@ impl WasmSimulation {
     #[allow(clippy::cast_precision_loss)]
     pub fn event_count(&self) -> f64 {
         self.sim.event_count() as f64
+    }
+
+    /// Visualize ticks among the events handled: they belong to no robot.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn tick_count(&self) -> f64 {
+        self.sim.tick_count() as f64
+    }
+
+    /// `true` under the sequential scheduler.
+    #[must_use]
+    pub fn sequential(&self) -> bool {
+        self.sim.sequential()
+    }
+
+    /// Sequential scheduler: turns taken so far (one per Look).
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn turn_count(&self) -> f64 {
+        self.sim.turn_count() as f64
+    }
+
+    /// Sequential scheduler: epochs in which every live robot has had its turn.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn epochs_completed(&self) -> f64 {
+        self.sim.epochs_completed() as f64
     }
 
     #[must_use]

@@ -18,6 +18,97 @@ pub enum FaultSelection {
     Mixed,
 }
 
+/// How robots are activated.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+pub enum SchedulerKind {
+    /// Every robot on its own exponential clock; cycles overlap (the original).
+    #[default]
+    Async,
+    /// One robot at a time does a whole Look-Compute-Move; the rest stay still.
+    Sequential,
+}
+
+/// Sequential scheduler: who takes the next turn. Every epoch gives each
+/// robot that is neither crashed nor terminated exactly one turn.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum ActivationOrder {
+    /// 0, 1, …, n-1, then 0 again.
+    #[default]
+    RoundRobin,
+    /// A fresh shuffle each epoch, drawn from the run's seed.
+    Random,
+}
+
+/// Sequential scheduler: sim time between one turn ending and the next Look.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+pub enum TurnGap {
+    /// Exponential with rate `lambda_rate`, like an async activation.
+    #[default]
+    Random,
+    /// The next robot looks the instant the previous one stops.
+    None,
+}
+
+/// Non-rigid movement: where the adversary stops a robot whose destination
+/// is farther than `delta`. It never stops one before `delta`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+pub enum StopPolicy {
+    /// After exactly `delta`: the least progress the model allows.
+    Delta,
+    /// Anywhere between `delta` and the destination, at random.
+    #[default]
+    Random,
+    /// After `stop_fraction` of the way (never less than `delta`).
+    Fraction,
+}
+
+/// One turn of an explicit sequential schedule: a robot, optionally with the
+/// fraction of the way the adversary lets it travel (non-rigid only).
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(untagged))]
+pub enum Activation {
+    Robot(usize),
+    Stopped { robot: usize, stop: f64 },
+}
+
+impl Activation {
+    #[must_use]
+    pub const fn robot(self) -> usize {
+        match self {
+            Self::Robot(r) | Self::Stopped { robot: r, .. } => r,
+        }
+    }
+
+    #[must_use]
+    pub const fn stop(self) -> Option<f64> {
+        match self {
+            Self::Robot(_) => None,
+            Self::Stopped { stop, .. } => Some(stop),
+        }
+    }
+}
+
+/// What an explicit schedule does once its list is used up.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum ScheduleEnd {
+    /// Carry on 0, 1, 2, … (always fair).
+    #[default]
+    RoundRobin,
+    /// Play the list again (it must name every robot, to stay fair).
+    Repeat,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
@@ -44,6 +135,32 @@ pub struct SimConfig {
     /// Generated start (pattern + arrangement + distribution). `None` keeps the
     /// original start: `initial_positions` if given, else uniform in the box.
     pub start: Option<StartSpec>,
+    pub scheduler: SchedulerKind,
+    /// Sequential only.
+    pub activation_order: ActivationOrder,
+    /// Sequential only.
+    pub turn_gap: TurnGap,
+    /// Non-rigid movement: a robot always covers at least this far (or reaches
+    /// its destination if that is nearer). `None`: the original behaviour, where
+    /// a non-rigid robot still reaches its destination. Needs rigid_movement off.
+    pub delta: Option<f64>,
+    /// Where a non-rigid robot is stopped once its destination is farther than `delta`.
+    pub stop_policy: StopPolicy,
+    /// The fraction of the way for `stop_policy` `fraction`, in (0, 1].
+    pub stop_fraction: f64,
+    /// Sequential only: the turns, in order, instead of `activation_order`.
+    pub schedule: Option<Vec<Activation>>,
+    /// Sequential only: what follows the end of `schedule`.
+    pub schedule_end: ScheduleEnd,
+    /// Sequential only: stop after this many turns (`advance` then returns
+    /// `MaxTurns`). `None`: no limit.
+    pub max_turns: Option<u64>,
+    /// Start with this many multiplicity points (several robots on one spot),
+    /// made from the start positions. 0: none.
+    pub multiplicities: u32,
+    /// Robots on each starting multiplicity (at least 2); 0 chooses a size:
+    /// a third of the robots for one multiplicity, up to 4 each for several.
+    pub multiplicity_size: u32,
 }
 
 impl Default for SimConfig {
@@ -68,6 +185,17 @@ impl Default for SimConfig {
             max_time: None,
             open_world: false,
             start: None,
+            scheduler: SchedulerKind::Async,
+            activation_order: ActivationOrder::RoundRobin,
+            turn_gap: TurnGap::Random,
+            delta: None,
+            stop_policy: StopPolicy::Random,
+            stop_fraction: 0.5,
+            schedule: None,
+            schedule_end: ScheduleEnd::RoundRobin,
+            max_turns: None,
+            multiplicities: 0,
+            multiplicity_size: 0,
         }
     }
 }
@@ -76,10 +204,20 @@ impl Default for SimConfig {
 pub enum ConfigError {
     UnknownAlgorithm(String),
     RobotCount(u32),
-    NotPositive { field: &'static str, value: f64 },
+    NotPositive {
+        field: &'static str,
+        value: f64,
+    },
     Precision(u8),
-    Position { index: usize },
+    Position {
+        index: usize,
+    },
     Start(String),
+    /// A sequential-scheduler setting that cannot work as given.
+    Schedule(String),
+    /// The chosen algorithm cannot run with these settings (for example, it
+    /// needs the sequential scheduler).
+    Unsupported(String),
 }
 
 impl fmt::Display for ConfigError {
@@ -92,7 +230,9 @@ impl fmt::Display for ConfigError {
             }
             Self::Precision(p) => write!(f, "threshold_precision must be 1..=15, got {p}"),
             Self::Position { index } => write!(f, "initial_positions[{index}] is not finite"),
-            Self::Start(message) => f.write_str(message),
+            Self::Start(message) | Self::Schedule(message) | Self::Unsupported(message) => {
+                f.write_str(message)
+            }
         }
     }
 }
@@ -136,6 +276,87 @@ impl SimConfig {
         if let Some(start) = &self.start {
             start.validate().map_err(ConfigError::Start)?;
         }
+        if let Some(delta) = self.delta {
+            positive("delta", delta)?;
+        }
+        if !(self.stop_fraction > 0.0 && self.stop_fraction <= 1.0) {
+            return Err(ConfigError::Schedule(format!(
+                "stop_fraction must be in (0, 1], got {}",
+                self.stop_fraction
+            )));
+        }
+        start::check_multiplicities(
+            self.num_of_robots as usize,
+            self.multiplicities as usize,
+            self.multiplicity_size as usize,
+        )
+        .map_err(ConfigError::Start)?;
+        if let Some(turns) = self.max_turns {
+            if turns == 0 {
+                return Err(ConfigError::Schedule(
+                    "max_turns must be at least 1".to_owned(),
+                ));
+            }
+            if self.scheduler != SchedulerKind::Sequential {
+                return Err(ConfigError::Schedule(
+                    "max_turns needs scheduler \"sequential\"".to_owned(),
+                ));
+            }
+        }
+        self.validate_schedule()
+    }
+
+    /// An explicit schedule needs the sequential scheduler, robots that exist,
+    /// and, to name a stopping point, non-rigid movement with a `delta`.
+    fn validate_schedule(&self) -> Result<(), ConfigError> {
+        let Some(list) = &self.schedule else {
+            return Ok(());
+        };
+        let fail = |message: String| Err(ConfigError::Schedule(message));
+        if self.scheduler != SchedulerKind::Sequential {
+            return fail("schedule needs scheduler \"sequential\"".to_owned());
+        }
+        if list.is_empty() {
+            return fail("schedule must name at least one turn".to_owned());
+        }
+        let n = if self
+            .initial_positions
+            .as_ref()
+            .is_some_and(|p| p.len() == self.num_of_robots as usize)
+        {
+            self.num_of_robots as usize
+        } else {
+            self.resolve_positions().len()
+        };
+        for (k, a) in list.iter().enumerate() {
+            if a.robot() >= n {
+                return fail(format!(
+                    "schedule[{k}] activates robot {} but there are only {n} robots",
+                    a.robot()
+                ));
+            }
+            if let Some(stop) = a.stop() {
+                if !(stop > 0.0 && stop <= 1.0) {
+                    return fail(format!("schedule[{k}] stop must be in (0, 1], got {stop}"));
+                }
+                if self.rigid_movement || self.delta.is_none() {
+                    return fail(format!(
+                        "schedule[{k}] names a stopping point: turn rigid movement off and set delta"
+                    ));
+                }
+            }
+        }
+        if self.schedule_end == ScheduleEnd::Repeat {
+            let mut named = vec![false; n];
+            for a in list {
+                named[a.robot()] = true;
+            }
+            if let Some(r) = named.iter().position(|x| !x) {
+                return fail(format!(
+                    "a repeating schedule must name every robot to be fair; robot {r} is never activated"
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -153,8 +374,23 @@ impl SimConfig {
     /// Initial positions, in this order: the given list if it has one entry
     /// per robot; a generated start if `start` is set (`start::generate`);
     /// otherwise uniform in the box from a generator of their own, like `run.py`.
+    /// Then, if `multiplicities` is set, robots are stacked onto that many points.
     #[must_use]
     pub fn resolve_positions(&self) -> Vec<Point> {
+        let mut points = self.base_positions();
+        if self.multiplicities > 0 {
+            // `validate` has checked that this fits.
+            let _ = start::stack_multiplicities(
+                &mut points,
+                self.multiplicities as usize,
+                self.multiplicity_size as usize,
+                self.random_seed,
+            );
+        }
+        points
+    }
+
+    fn base_positions(&self) -> Vec<Point> {
         let n = self.num_of_robots as usize;
         if let Some(given) = self.initial_positions.as_ref().filter(|p| p.len() == n) {
             return given.iter().map(|p| Point::new(p[0], p[1])).collect();

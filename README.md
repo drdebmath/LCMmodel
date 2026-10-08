@@ -4,7 +4,7 @@ A simulator for Look-Compute-Move robots in the Asynchronous System
 
 ## Rust + WebAssembly version (branch `rust-core`)
 
-The simulator core has been ported to Rust and runs in the browser as WebAssembly, in a background worker, with **no Python or Pyodide**. The math is unchanged. The Rust core runs its own simulations from the settings (it does not need Python or any recorded data); to prove it matches, its tests run the same settings and seeds as recorded Python runs and compare the two event by event. So far the core and the Gathering algorithm are ported; the other algorithms follow.
+The simulator core has been ported to Rust and runs in the browser as WebAssembly, in a background worker, with **no Python or Pyodide**. The math is unchanged. The Rust core runs its own simulations from the settings (it does not need Python or any recorded data); to prove it matches, its tests run the same settings and seeds as recorded Python runs and compare the two event by event. So far the core and two algorithms (Gathering and Smallest Enclosing Circle) are ported; the other algorithms follow.
 
 **Try it** (no install, runs entirely in your browser, CPU only):
 
@@ -13,6 +13,13 @@ The simulator core has been ported to Rust and runs in the browser as WebAssembl
 - The original Pyodide simulator, for comparison: <https://imstillsamarth.github.io/LCMmodel/old/>
 
 **Highlights:** 99–357× faster than the Python engine in the browser on identical runs (135–784× natively); 10,000 robots at 60 fps without a GPU; about 350 KB to download instead of about 16 MB.
+
+**Schedulers:** the core runs robots under one of two schedulers, chosen in Settings → Scheduler (or `scheduler` in the config, see [`docs/core-schema.md`](docs/core-schema.md)).
+
+- **Async** (the default, as in the original): every robot wakes on its own random clock (rate λ), so several can be moving at once and a robot can see another halfway through a move.
+- **Sequential**: one robot at a time does a whole Look-Compute-Move while all the others stay still, as in the sequential scheduler of [Universal pattern formation by oblivious robots under sequential schedulers](https://arxiv.org/abs/2412.10733) (Section 2.2). Choose the **turn order** (round-robin, or a fresh random order each epoch drawn from the seed) and the **pause between turns** (random with rate λ, or none). An epoch is over once every robot that is still active has had a turn; the page shows the epoch count. A run whose robots can never move again ends as *stalled* instead of looping forever, and a **turn limit** stops a run after that many turns.
+- **Non-rigid movement:** turn *Rigid movement* off and set a minimum move **δ**. A robot that is stopped on the way still covers at least δ (or arrives, if its destination is within δ), and an adversary chooses where it stops: right after δ, at random, or after a fraction of the way. With δ left at 0 a non-rigid robot still arrives, as in the original. In the config an explicit `schedule` can also list the turns, and name the stopping point of each.
+- **Stacked starts:** under Start → More options, *Stacked points* makes the run begin with that many spots where several robots stand on top of each other (multiplicities), for algorithms that must cope with robots sharing a point.
 
 **What's where:** [`report.md`](report.md) is the full report (method, results, every test). [`docs/core-schema.md`](docs/core-schema.md) is the core's contract. The code is in `crates/` (Rust) and `web/` (browser page; `index.html` at the root opens it, the original page is in `old/`).
 
