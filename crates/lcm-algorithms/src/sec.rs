@@ -206,7 +206,7 @@ fn sec_3pts(pts: &[Point], precision: u8) -> Option<Circle> {
 // The exact same `rng.index(n)` draws happen in the same order as the recursive
 // version, so parity tests against Python fixtures continue to pass.
 
-fn welzl_recur(
+pub(crate) fn welzl_recur(
     pts: &mut [Point],
     r: &mut Vec<Point>,
     n: usize,

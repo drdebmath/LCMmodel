@@ -49,6 +49,8 @@ const SEQUENTIAL = {
     schedule: [2, 2, { robot: 0, stop: 0.5 }, 1], schedule_end: "repeat", turn_gap: "none", robot_speeds: 1000 }),
   seq_turn_limit: seq({ num_of_robots: 20, max_turns: 15, random_seed: 7 }),
   seq_starts_stacked: seq({ num_of_robots: 24, multiplicities: 2, multiplicity_size: 3, random_seed: 8 }),
+  seq_gotocenter_limited_sight: seq({ algorithm: "GoToCenter", num_of_robots: 12, visibility_radius: 120, width_bound: 160, height_bound: 160, random_seed: 11 }),
+  seq_gotocenter_nonrigid: seq({ algorithm: "GoToCenter", num_of_robots: 12, visibility_radius: 120, width_bound: 160, height_bound: 160, rigid_movement: false, delta: 4, stop_policy: "random", random_seed: 12 }),
   async_nonrigid_delta: { algorithm: "SEC", num_of_robots: 30, rigid_movement: false, delta: 5, max_events: 2_000_000, random_seed: 9 },
 };
 for (const [name, config] of Object.entries(SEQUENTIAL)) {
