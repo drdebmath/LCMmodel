@@ -57,7 +57,7 @@ JSON form (serde, camelCase is **not** used; names match `main.js params()`):
 
 | Field | Type | Rule |
 | --- | --- | --- |
-| `algorithm` | string | A registry key. Ported so far: `Gathering` (the others follow once the core is verified) |
+| `algorithm` | string | A registry key. Ported so far: `Gathering`, `SEC`, `CircleFormation` (the others follow once the core is verified) |
 | `num_of_robots` | u32 | 1 ..= 100 000 |
 | `initial_positions` | `[[x,y],…]` or null | If null or its length ≠ `num_of_robots`, positions are drawn (§4.3) |
 | `robot_speeds` | f64 | > 0, finite |
