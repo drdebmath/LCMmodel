@@ -8,11 +8,14 @@
 //! other settings (most ignore them), and it can refuse settings it cannot
 //! work with by returning [`ConfigError::Unsupported`].
 //!
-//! Gathering and SEC are ported; they drive the core's parity tests.
+//! Gathering and SEC are ported; they drive the core's parity tests. Uniform
+//! Circle Formation is ported too.
 
+mod circle_formation;
 mod gathering;
 mod sec;
 
+pub use circle_formation::CircleFormation;
 pub use gathering::Gathering;
 pub use sec::Sec;
 
@@ -39,6 +42,11 @@ pub const REGISTRY: &[Entry] = &[
         key: "SEC",
         name: "Smallest Enclosing Circle",
         build: one::<Sec>,
+    },
+    Entry {
+        key: "CircleFormation",
+        name: "Uniform Circle Formation",
+        build: one::<CircleFormation>,
     },
 ];
 
