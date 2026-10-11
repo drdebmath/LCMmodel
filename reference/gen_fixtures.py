@@ -99,6 +99,27 @@ CASES = {
     "circle_formation_6":          config(algorithm="CircleFormation", num_of_robots=6, random_seed=3),
     "circle_formation_fault_crash": config(algorithm="CircleFormation", num_of_robots=10,
                                            num_of_faults=3, fault_type="crash", random_seed=20),
+    # Go-To-Center cases (Ando, Oasa, Suzuki, Yamashita 1999): head for the centre of the
+    # smallest circle around the visible robots, with each step limited so that no visibility
+    # link to a neighbour is broken. The first two are the doc's three-robot chain.
+    "gtc_chain_3_vis100":    config(algorithm="GoToCenter", num_of_robots=3, visibility_radius=100,
+                                    initial_positions=[[-80, 10], [0, 0], [95, -5]], random_seed=1),
+    "gtc_chain_3_unlimited": config(algorithm="GoToCenter", num_of_robots=3,
+                                    initial_positions=[[-80, 10], [0, 0], [95, -5]], random_seed=1),
+    "gtc_unlimited_8":       config(algorithm="GoToCenter", random_seed=1),
+    "gtc_vis_boundary_2":    config(algorithm="GoToCenter", num_of_robots=2, visibility_radius=100,
+                                    initial_positions=[[0, 0], [100, 0]], random_seed=1),
+    "gtc_collinear_5":       config(algorithm="GoToCenter", num_of_robots=5, visibility_radius=60,
+                                    initial_positions=[[-100, 0], [-50, 0], [0, 0], [50, 0], [100, 0]], random_seed=2),
+    "gtc_coincident_4":      config(algorithm="GoToCenter", num_of_robots=4, visibility_radius=100,
+                                    initial_positions=[[0, 0], [0, 0], [40, 0], [40, 0]], random_seed=1),
+    "gtc_isolated_3":        config(algorithm="GoToCenter", num_of_robots=3, visibility_radius=50,
+                                    initial_positions=[[0, 0], [10, 0], [500, 500]], random_seed=1),
+    "gtc_vis150_12":         config(algorithm="GoToCenter", num_of_robots=12, visibility_radius=150,
+                                    width_bound=200, height_bound=200, random_seed=2),
+    "gtc_fault_crash":       config(algorithm="GoToCenter", num_of_robots=10, visibility_radius=120,
+                                    width_bound=200, height_bound=200, num_of_faults=3,
+                                    fault_type="crash", random_seed=20),
 }
 
 
