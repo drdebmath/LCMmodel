@@ -184,6 +184,17 @@ a.btn { text-decoration: none; }
 .btn.outline { border-color: var(--border-strong); }
 .btn[aria-pressed="true"] { background: var(--accent-weak); color: var(--accent); }
 .btn svg { flex: none; }
+#toolbar select[hidden] { display: none; }
+#examples { width: 112px; } /* compact: the menu itself shows the full text */
+/* On mid-sized screens the extra menu would push the toolbar off the edge: shrink both menus. */
+@media (min-width: 761px) and (max-width: 1099px) {
+  #toolbar.has-examples #algorithm { width: 140px; }
+  #toolbar.has-examples #examples { width: 92px; }
+}
+@media (max-height: 520px) and (min-width: 761px) {
+  #toolbar.has-examples #algorithm { width: 140px; }
+  #toolbar.has-examples #examples { width: 92px; }
+}
 #toolbar select { height: 32px; border-radius: var(--radius-sm); background: var(--surface-solid); }
 
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
@@ -199,6 +210,8 @@ a.btn { text-decoration: none; }
 .hud-status.ended { color: var(--accent); font-weight: 600; }
 .progress { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .progress > div { height: 100%; width: 0; background: var(--accent); transition: width 0.25s; }
+.hud-plot { display: grid; gap: 4px; }
+.hud-plot canvas { width: 100%; height: 55px; display: block; border-radius: 6px; background: var(--surface-2); }
 .hud-perf { color: var(--text-3); font-size: 11.5px; font-variant-numeric: tabular-nums; border-top: 1px solid var(--border); padding-top: 8px; }
 .last-event { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); background: var(--surface-2); border-radius: 6px; padding: 6px 8px; }
 
@@ -283,7 +296,7 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
 @media (max-width: 760px) {
   #toolbar { top: 8px; left: 8px; right: 8px; flex-wrap: wrap; justify-content: space-between; row-gap: 6px; }
   #toolbar .brand, #toolbar .divider { display: none; }
-  #algorithm { flex: 1 1 150px; min-width: 0; }
+  #algorithm, #examples { flex: 1 1 150px; min-width: 0; }
   #hud { top: calc(var(--top-h, 96px) + 6px); left: 8px; right: 8px; width: auto; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 12px; }
   #hud .hud-row:first-child { grid-column: 3; grid-row: 1; }
   #hud .hud-time { grid-column: 1; grid-row: 1; }

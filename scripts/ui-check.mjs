@@ -295,6 +295,42 @@ await js("lcm.settings.reset()");
 await until("lcm.state === 'ready' && lcm.settings.values.max_turns === 0 && lcm.renderer.frame.flags.length === 500", 3000);
 await setPlayback(playback);
 
+// Go-To-Center: examples, who-sees-whom links, the allowed region and the swarm-size plot.
+await click("#reset");
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.renderer.frame.flags.length === 500", 3000);
+check("the examples menu is hidden for an algorithm without examples", await js("document.getElementById('examples').hidden"));
+check("the allowed region is only drawn for Go-To-Center", (await js("lcm.renderer.options.allowedRegion")) === false);
+await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'GoToCenter'; s.dispatchEvent(new Event('change')); })()`);
+await sleep(300);
+const exampleLabels = await js("[...document.querySelectorAll('#examples option')].map((o) => o.textContent)");
+check("Go-To-Center offers four ready-made examples", !(await js("document.getElementById('examples').hidden")) && exampleLabels.length === 5 && /chain/i.test(exampleLabels[1]), exampleLabels.join(" | "));
+await js(`(() => { const s = document.getElementById('examples'); s.value = '0'; s.dispatchEvent(new Event('change')); })()`);
+check("the chain example sets up three robots with limited sight and the links on", await until("lcm.renderer.frame && lcm.renderer.frame.robots === 3 && lcm.settings.values.visibility_radius === 100 && lcm.settings.values.unlimited_visibility === false", 4000)
+  && (await js("document.getElementById('links').getAttribute('aria-pressed')")) === "true" && (await js("lcm.renderer.options.allowedRegion")) === true);
+check("the menu goes back to its title after a choice", (await js("document.getElementById('examples').value")) === "");
+const withLinks = await js("lcm.renderer.requestDraw(), new Promise((r) => requestAnimationFrame(() => r(lcm.renderer.canvas.toDataURL())))");
+await js("document.getElementById('links').click()");
+const withoutLinks = await js("lcm.renderer.requestDraw(), new Promise((r) => requestAnimationFrame(() => r(lcm.renderer.canvas.toDataURL())))");
+check("the links button draws and removes the lines between robots", withLinks !== withoutLinks && (await js("document.getElementById('links').getAttribute('aria-pressed')")) === "false");
+await js("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', bubbles: true }))");
+check("the V key toggles the links too", (await js("lcm.renderer.options.links")) === true);
+await js(`(() => { const s = document.getElementById('examples'); s.value = '2'; s.dispatchEvent(new Event('change')); })()`);
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 40", 4000);
+await setPlayback("Infinity");
+await click("#play");
+const swarmEnds = await until("lcm.state === 'ended'", 30000);
+await sleep(300);
+const plot = await js(`(() => { const p = lcm.trace.points, n = p.length / 2; const c = document.getElementById('hud_plot'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let ink = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) ink++; return { samples: n, first: p[1], last: p[2 * n - 1], ink, label: document.getElementById('hud_spread').textContent }; })()`);
+check("a 40-robot Go-To-Center swarm gathers, and the plot shows its size falling to about the threshold", swarmEnds && plot.samples >= 40 && plot.last < plot.first / 1000 && plot.last < 2e-5 && plot.ink > 200, JSON.stringify(plot));
+await click("#reset");
+await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'Gathering'; s.dispatchEvent(new Event('change')); })()`);
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.pattern === 'cloud' && lcm.renderer.frame.flags.length === 500", 3000);
+await setPlayback(playback);
+await js("document.getElementById('links').getAttribute('aria-pressed') === 'true' && document.getElementById('links').click()");
+check("back on Center of Gravity, the examples menu is hidden again", await js("document.getElementById('examples').hidden && document.getElementById('algorithm').value === 'Gathering'"));
+
 // Play straight after a settings change plays the new settings.
 await click("#reset");
 await until("lcm.state === 'ready'");

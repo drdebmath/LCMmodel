@@ -47,6 +47,12 @@ for (const [name, w, h, dpr, touch] of SIZES) {
   const l = await layout();
   check(`simulator, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !l.sideways && !l.overlaps.length && !l.offscreen.length, JSON.stringify(l));
   await shot(`sim-${name}`);
+  // Go-To-Center adds an examples menu to the toolbar, which can wrap it onto another row.
+  await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'GoToCenter'; s.dispatchEvent(new Event('change')); })()`);
+  await sleep(500);
+  const g = await layout();
+  check(`simulator with Go-To-Center and its examples menu, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !g.sideways && !g.overlaps.length && !g.offscreen.length, JSON.stringify(g));
+  await shot(`sim-${name}-gtc`);
 }
 
 // Phone specifics.

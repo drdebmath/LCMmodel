@@ -56,6 +56,7 @@ function newRun({ quiet = false } = {}) {
   fitPending = true;
   inspector.leave(); // the robot under the pointer belonged to the old run
   renderer.options.visibility = c.visibility_radius;
+  renderer.options.allowedRegion = c.algorithm === "GoToCenter";
   inspector.select(-1);
   $("hud_last").hidden = true;
   dirty = false;
@@ -132,15 +133,76 @@ function step(unit) {
   setState("paused");
 }
 
+/* ---------------------------------------------------------------- examples */
+// Ready-made setups, per algorithm. `set` is applied to the settings in the order written.
+const CHAIN = "-80, 10\n0, 0\n95, -5";
+const TWO_GROUPS = "-170, -10\n-150, 15\n-135, -20\n-160, 30\n150, -25\n165, 10\n135, 20\n170, -15";
+const GTC_SEQUENTIAL = { scheduler: "sequential", turn_gap: "none", rigid_movement: true, robot_speeds: 25 };
+const EXAMPLES = {
+  GoToCenter: [
+    { label: "Three robots in a chain, limited sight", links: true,
+      set: { open_world: true, pattern: "custom", custom: CHAIN, unlimited_visibility: false, visibility_radius: 100, ...GTC_SEQUENTIAL } },
+    { label: "The same chain, unlimited sight", links: false,
+      set: { open_world: true, pattern: "custom", custom: CHAIN, unlimited_visibility: true, ...GTC_SEQUENTIAL } },
+    { label: "A swarm of 40, limited sight", links: true,
+      set: { open_world: true, pattern: "cloud", num_of_robots: 40, spread: 70, unlimited_visibility: false, visibility_radius: 110, ...GTC_SEQUENTIAL } },
+    { label: "Two groups out of sight of each other", links: true,
+      set: { open_world: true, pattern: "custom", custom: TWO_GROUPS, unlimited_visibility: false, visibility_radius: 100, ...GTC_SEQUENTIAL } },
+  ],
+};
+function updateExamples() {
+  const list = EXAMPLES[$("algorithm").value];
+  const select = $("examples");
+  select.hidden = !list;
+  $("toolbar").classList.toggle("has-examples", Boolean(list));
+  if (list) select.innerHTML = `<option value="">Examples…</option>` + list.map((e, i) => `<option value="${i}">${e.label}</option>`).join("");
+  updateInsets(); // the toolbar may have wrapped onto another row
+}
+$("examples").addEventListener("change", (e) => {
+  const example = EXAMPLES[$("algorithm").value]?.[Number(e.target.value)];
+  e.target.value = "";
+  if (!example) return;
+  renderer.options.links = example.links;
+  $("links").setAttribute("aria-pressed", String(example.links));
+  settings.apply(example.set);
+});
+
 client.on("ready", (list) => {
   algorithms = list;
   $("algorithm").innerHTML = list.map((a) => `<option value="${a.key}">${a.name}</option>`).join("");
+  updateExamples();
   $("loading_text").textContent = "Building the swarm…";
   newRun();
 });
 
+/* ------------------------------------------------------- swarm-size trace */
+// The worker samples "how far the farthest robot is from the swarm's centre" as the run advances
+// and sends the points with each frame (time, size, time, size, ...).
+const trace = { points: new Float64Array(0) };
+window.lcm.trace = trace;
+function drawTrace() {
+  const canvas = $("hud_plot"), ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const flat = trace.points, count = flat.length / 2;
+  if (count < 1) { $("hud_spread").textContent = "—"; return; }
+  const times = Array.from({ length: count }, (_, k) => flat[2 * k]);
+  const sizes = Array.from({ length: count }, (_, k) => flat[2 * k + 1]);
+  $("hud_spread").textContent = fmtSize(sizes[count - 1]);
+  if (count < 2) return;
+  const ys = sizes.map((v) => Math.log10(Math.max(v, 1e-7)));
+  const lo = Math.min(...ys), hi = Math.max(...ys, lo + 0.5), t1 = times[count - 1] || 1;
+  const css = getComputedStyle(document.documentElement);
+  ctx.strokeStyle = css.getPropertyValue("--accent").trim() || "#2f5bea";
+  ctx.lineWidth = 2.5; ctx.lineJoin = "round";
+  ctx.beginPath();
+  times.forEach((t, k) => { const x = 6 + ((W - 12) * t) / t1, y = H - 8 - ((H - 16) * (ys[k] - lo)) / (hi - lo); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.stroke();
+}
+const fmtSize = (v) => (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v >= 1e-3 ? v.toFixed(3) : v.toExponential(1));
+
 client.on("frame", (f) => {
   frame = f;
+  if (f.trace) trace.points = f.trace;
   if (fitPending) { fitPending = false; fitToStart(f); }
   renderer.setFrame(f);
   if (firstFrame) { firstFrame = false; $("loading").hidden = true; resolveReady(); }
@@ -198,6 +260,7 @@ function updateHud(force = false) {
   $("hud_time").textContent = frame.time.toFixed(2);
   $("hud_term").textContent = `${frame.terminated.toLocaleString()} / ${frame.robots.toLocaleString()}`;
   $("hud_bar").style.width = `${(100 * frame.terminated) / Math.max(1, frame.robots)}%`;
+  drawTrace();
   $("hud_epochs_row").hidden = frame.epochs == null;
   if (frame.epochs != null) $("hud_epochs").textContent = frame.epochs.toLocaleString();
   $("hud_events").textContent = (frame.events - frame.ticks).toLocaleString();
@@ -235,7 +298,7 @@ $("play").addEventListener("click", play);
 $("step_event").addEventListener("click", () => step("event"));
 $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
-$("algorithm").addEventListener("change", onSettingChange);
+$("algorithm").addEventListener("change", () => { updateExamples(); onSettingChange(); });
 $("playback").addEventListener("change", (e) => client.speed(Number(e.target.value)));
 $("defaults").addEventListener("click", () => settings.reset());
 $("toggle_settings").addEventListener("click", toggleSettings);
@@ -297,6 +360,12 @@ function onFullscreenChange() {
 document.addEventListener("fullscreenchange", onFullscreenChange);
 document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 $("lights").addEventListener("click", toggleLights);
+$("links").addEventListener("click", toggleLinks);
+function toggleLinks() {
+  renderer.options.links = !renderer.options.links;
+  $("links").setAttribute("aria-pressed", String(renderer.options.links));
+  renderer.requestDraw();
+}
 function toggleLights() {
   renderer.options.showLights = !renderer.options.showLights;
   $("lights").setAttribute("aria-pressed", String(renderer.options.showLights));
@@ -419,6 +488,7 @@ window.addEventListener("keydown", (e) => {
     f: () => renderer.resetView(), F: toggleFullscreen,
     "+": () => renderer.zoomAt(1.25), "=": () => renderer.zoomAt(1.25), "-": () => renderer.zoomAt(0.8),
     l: toggleLights, L: toggleLights,
+    v: toggleLinks, V: toggleLinks,
     s: toggleSettings, S: toggleSettings,
     h: toggleClean, H: toggleClean,
     e: exportPng, E: exportCsv,

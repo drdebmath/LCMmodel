@@ -25,6 +25,8 @@ REPO_URL = "https://github.com/imstillsamarth/LCMmodel/blob/rust-core"
 
 SIM = "crates/lcm-core/src/sim.rs"
 GATHERING = "crates/lcm-algorithms/src/gathering.rs"
+GTC = "crates/lcm-algorithms/src/go_to_center.rs"
+SEC = "crates/lcm-algorithms/src/sec.rs"
 WASM = "crates/lcm-wasm/src/lib.rs"
 WORKER = "web/worker.js"
 CLIENT = "web/client.js"
@@ -415,6 +417,71 @@ CHARTS = [
             edge("t_lim", "t_arr", "no"),
             edge("t_stop", "t_arr", None, "elbow"),
             edge("t_arr", "t_end", "next turn", ("around", 2.62)),
+        ],
+    },
+    {
+        "id": "go-to-center",
+        "title": "Go-To-Center",
+        "short": "Head for the centre without losing sight of anyone",
+        "blurb": (
+            "Each robot heads for the centre of the smallest circle around the robots it sees, but never so "
+            "far that it could lose sight of a neighbour. This is Robot._go_to_center and Robot._gtc_terminal in "
+            "robot.py, from Ando, Oasa, Suzuki and Yamashita (1999). With limited visibility it keeps a "
+            "swarm that starts connected together, which simple centre-of-gravity gathering does not."
+        ),
+        "notes": [
+            "The limit: for each visible neighbour j, the destination must stay inside the disc of radius V/2 around "
+            "the midpoint of the robot and j. Both robots then stay within V of each other whatever else happens. "
+            "The step is the farthest point of the way to the centre that is inside all of these discs.",
+            "A robot stopped part-way by non-rigid movement is still on that segment, inside every disc, so no "
+            "link is lost either. Robots that start within sight of each other stay within sight in all the runs "
+            "tested, under the sequential and the asynchronous scheduler.",
+            "The smallest circle is the same randomized routine as SEC's, run for every group of two or more "
+            "robots, so it draws the same random numbers as the Python and the runs match event by event.",
+            "A robot is done when the circle around what it sees has a radius below ε. Under the sequential "
+            "scheduler this can deadlock: the robots that define the circle have stopped, the rest are "
+            "within ε of its centre so they do not move, and the radius is just above ε, so nobody finishes. "
+            "About 7 in 100 sequential runs of 8 robots do this at the default precision; the swarm is then within "
+            "0.00002 of one point and the core ends the run as Stalled. The original Python, which only ran "
+            "asynchronously, finished all 139 of the same starts.",
+        ],
+        "lanes": ("rows", [("Who is there", 0, 1), ("The centre", 2, 3), ("How far", 4, 6)]),
+        "nodes": [
+            node("g_a", "Compute", 1, 0, "entry", (GTC, "compute"), "GoToCenter::compute()",
+                 "Called from the COMPUTE phase of chart 2 with the robot's snapshot."),
+            node("g_b", "Sees another robot?", 1, 1, "decision", None, "crashed ones do not count",
+                 "The robots in the snapshot that have not crashed, itself included. Alone, there is nobody to go to."),
+            node("g_c", "Stay, and done", 0, 1, "end", None, "nobody to go to",
+                 "The robot stays where it is and is finished. The circle it last showed is left alone."),
+            node("g_d", "Smallest circle of what it sees", 1, 2, "step", (SEC, "welzl_recur"), "randomized, as in the Python",
+                 "Shuffles the visible points with the run's random numbers, then Welzl's recursion. The same "
+                 "routine as SEC's, so the random numbers are drawn in the same order as the original."),
+            node("g_e", "Already at the centre?", 1, 3, "decision", None, "within ε",
+                 "The distance from the robot to the circle's centre is below ε = 10^-precision."),
+            node("g_f", "Stay put", 0, 3, "out", None, "done if the circle is a point",
+                 "The robot does not move. It is finished only if the circle's radius is below ε."),
+            node("g_g", "Limited visibility?", 1, 4, "decision", None, None,
+                 "With unlimited visibility every robot sees all the others and nothing limits the step."),
+            node("g_h", "Go all the way to the centre", 2, 4, "step", None, "target = the centre",
+                 "The centre of the smallest circle becomes the target."),
+            node("g_i", "Limit the step for each neighbour", 1, 5, "step", None, "inside every V/2 disc",
+                 "For each visible neighbour, the farthest point on the way to the centre that is inside the disc of "
+                 "radius V/2 around the midpoint with it. The step is the smallest of these limits."),
+            node("g_j", "Move there", 1, 6, "end", None, "chart 2 takes over",
+                 "The destination is the target; chart 2 (freeze check, then the move) takes over. The robot "
+                 "terminates if the circle's radius is below ε."),
+        ],
+        "edges": [
+            edge("g_a", "g_b"),
+            edge("g_b", "g_c", "no"),
+            edge("g_b", "g_d", "yes"),
+            edge("g_d", "g_e"),
+            edge("g_e", "g_f", "yes"),
+            edge("g_e", "g_g", "no"),
+            edge("g_g", "g_h", "no"),
+            edge("g_g", "g_i", "yes"),
+            edge("g_i", "g_j"),
+            edge("g_h", "g_j", None, "elbow"),
         ],
     },
 ]
