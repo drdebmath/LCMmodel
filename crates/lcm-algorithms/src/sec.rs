@@ -32,29 +32,10 @@ impl Algorithm for Sec {
             2 => Some(circle_from_two(scratch.points[0], scratch.points[1])),
             3 => sec_3pts(&scratch.points.clone(), precision),
             _ => {
-                // Fast path A: all points collinear (Line+Edge pattern, or any degenerate
-                // convergence where robots collapse onto a single diameter).
-                // Fails after checking ~3 points for non-collinear configs — near-zero overhead.
-                if let Some(c) = collinear_sec(&scratch.points, eps) {
-                    return Decision {
-                        target: closest_on_circle(c, look.position, eps),
-                        terminate: scratch.points.iter().all(|p| (dist(*p, c.center) - c.radius).abs() < eps),
-                        overlay: OverlayUpdate::Set(c),
-                    };
-                }
-
-                // Fast path B: all points concyclic (Circle+Edge pattern terminates at step 0;
-                // also fires for any configuration in its final convergence steps).
-                // Fails after checking ~4 points for non-circle configs — near-zero overhead.
-                if let Some(c) = concyclic_sec(&scratch.points, precision) {
-                    return Decision {
-                        target: closest_on_circle(c, look.position, eps),
-                        terminate: scratch.points.iter().all(|p| (dist(*p, c.center) - c.radius).abs() < eps),
-                        overlay: OverlayUpdate::Set(c),
-                    };
-                }
-
-                // General path: Welzl (randomized, iterative, WASM-safe).
+                // Welzl, as in `_sec_welzl_coords`: shuffle, then the randomized recursion.
+                // (No shortcuts: any other route skips the random draws the Python makes, so the
+                // runs stop matching it, and a "concyclic" shortcut returns the wrong circle
+                // whenever the points do not surround the circle's centre.)
                 rng.shuffle(&mut scratch.points);
                 let n = scratch.points.len();
                 scratch.points_b.clear();
@@ -98,77 +79,6 @@ impl Algorithm for Sec {
             terminate,
             overlay,
         }
-    }
-}
-
-// ── Fast path A: collinear SEC ────────────────────────────────────────────────
-//
-// Handles the Line+Edge pattern exactly, and any convergence where robots have
-// collapsed onto a single diameter. The SEC of n collinear points is the circle
-// whose diameter is the segment from the leftmost to rightmost point.
-//
-// Complexity: O(n) — checks every point against the line defined by pts[0..1].
-// Fails fast: the first off-line point returns None in O(1) for non-Line configs.
-fn collinear_sec(pts: &[Point], eps: f64) -> Option<Circle> {
-    let a = pts[0];
-    // Find a second distinct point to define the line direction.
-    let b = pts.iter().copied().skip(1).find(|p| {
-        libm::hypot(p.x - a.x, p.y - a.y) > eps
-    });
-    let b = match b {
-        Some(p) => p,
-        // All points coincide — not a collinear-line case (handled by n=1 arm).
-        None => return None,
-    };
-    let (dx, dy) = (b.x - a.x, b.y - a.y);
-    let len = libm::hypot(dx, dy);
-    // Verify every point lies on the line a→b (signed distance < eps).
-    for p in pts {
-        let dist_to_line = ((p.x - a.x) * dy - (p.y - a.y) * dx).abs() / len;
-        if dist_to_line > eps {
-            return None; // fast fail
-        }
-    }
-    // All collinear: SEC diameter = segment from min-projection to max-projection.
-    let proj = |p: &Point| (p.x - a.x) * dx + (p.y - a.y) * dy;
-    let min_p = pts.iter().min_by(|p, q| proj(p).partial_cmp(&proj(q)).unwrap()).unwrap();
-    let max_p = pts.iter().max_by(|p, q| proj(p).partial_cmp(&proj(q)).unwrap()).unwrap();
-    Some(circle_from_two(*min_p, *max_p))
-}
-
-// ── Fast path B: concyclic SEC ────────────────────────────────────────────────
-//
-// Handles the Circle+Edge pattern (all robots already on SEC → terminate at step 0)
-// and any configuration in its final convergence steps (robots approaching the SEC
-// boundary). The SEC of n concyclic points is exactly the common circle.
-//
-// Complexity: O(n) — picks 3 non-collinear points, computes their circumcircle,
-// then verifies all n points lie on it (with Python-style precision rounding).
-// Fails fast: the first off-circle point returns None; for random clouds this
-// happens at point ~4, making the check near-free for non-circle configs.
-fn concyclic_sec(pts: &[Point], precision: u8) -> Option<Circle> {
-    let a = pts[0];
-    let b = pts[1];
-    // Find a third point that is not collinear with a and b.
-    let c = pts[2..].iter().copied().find(|p| {
-        let cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
-        cross.abs() > 1e-6
-    });
-    let c = c?; // None means all points so far are collinear → not concyclic
-    let candidate = circle_from_three(a, b, c);
-    // Degenerate circumcircle (near-collinear triple) — not a valid concyclic circle.
-    if !candidate.radius.is_finite() || candidate.radius < 1e-9 {
-        return None;
-    }
-    // Every point must be exactly on the circle (same rounded distance as radius).
-    let factor = 10.0_f64.powi(precision as i32);
-    let r_rounded = (candidate.radius * factor).round();
-    if pts.iter().all(|p| {
-        (dist(*p, candidate.center) * factor).round() == r_rounded
-    }) {
-        Some(candidate)
-    } else {
-        None
     }
 }
 
@@ -591,90 +501,6 @@ mod tests {
 
     // ── collinear_sec ────────────────────────────────────────────────────────
 
-    #[test]
-    fn collinear_sec_horizontal_line() {
-        let pts = vec![pt(-3.0, 0.0), pt(0.0, 0.0), pt(2.0, 0.0), pt(-1.0, 0.0)];
-        let c = collinear_sec(&pts, 1e-9).unwrap();
-        // Farthest pair: (-3,0)→(2,0).
-        assert!(pt_close(c.center, pt(-0.5, 0.0)));
-        assert!(close(c.radius, 2.5));
-    }
-
-    #[test]
-    fn collinear_sec_diagonal_line() {
-        let pts = vec![pt(-1.0, -1.0), pt(0.0, 0.0), pt(1.0, 1.0)];
-        let c = collinear_sec(&pts, 1e-9).unwrap();
-        assert!(pt_close(c.center, pt(0.0, 0.0)));
-        assert!(close(c.radius, SQRT_2));
-    }
-
-    #[test]
-    fn collinear_sec_none_for_non_collinear() {
-        // Third point is off the line — must return None quickly.
-        let pts = vec![pt(0.0, 0.0), pt(1.0, 0.0), pt(0.0, 1.0), pt(2.0, 0.0)];
-        assert!(collinear_sec(&pts, 1e-9).is_none());
-    }
-
-    #[test]
-    fn collinear_sec_none_when_all_coincident() {
-        // No second distinct point exists — cannot define a line.
-        let pts = vec![pt(5.0, 5.0), pt(5.0, 5.0), pt(5.0, 5.0), pt(5.0, 5.0)];
-        assert!(collinear_sec(&pts, 1e-9).is_none());
-    }
-
-    #[test]
-    fn collinear_sec_single_outlier_causes_rejection() {
-        // Four on line, one off — must fail.
-        let pts = vec![
-            pt(-2.0, 0.0), pt(-1.0, 0.0), pt(0.0, 0.0),
-            pt(1.0, 0.0),  pt(0.5, 1.0),  // this one is off-line
-        ];
-        assert!(collinear_sec(&pts, 1e-9).is_none());
-    }
-
     // ── concyclic_sec ────────────────────────────────────────────────────────
 
-    #[test]
-    fn concyclic_sec_four_cardinal_points_on_unit_circle() {
-        let pts = vec![pt(1.0, 0.0), pt(0.0, 1.0), pt(-1.0, 0.0), pt(0.0, -1.0)];
-        let c = concyclic_sec(&pts, 5).unwrap();
-        assert!(pt_close(c.center, pt(0.0, 0.0)));
-        assert!(close(c.radius, 1.0));
-    }
-
-    #[test]
-    fn concyclic_sec_eight_evenly_spaced_mirrors_circle_edge_start() {
-        // Exactly the Circle+Edge+Even pattern: 8 robots at radius 300.
-        let r = 300.0_f64;
-        let pts: Vec<Point> = (0..8)
-            .map(|k| {
-                let a = TAU * k as f64 / 8.0;
-                pt(r * libm::cos(a), r * libm::sin(a))
-            })
-            .collect();
-        let c = concyclic_sec(&pts, 5).unwrap();
-        assert!(pt_close(c.center, pt(0.0, 0.0)));
-        assert!(close(c.radius, r));
-    }
-
-    #[test]
-    fn concyclic_sec_none_for_non_concyclic() {
-        // Last point is at a different radius — not on the common circle.
-        let pts = vec![pt(1.0, 0.0), pt(0.0, 1.0), pt(-1.0, 0.0), pt(0.0, -2.0)];
-        assert!(concyclic_sec(&pts, 5).is_none());
-    }
-
-    #[test]
-    fn concyclic_sec_none_for_collinear_input() {
-        // All collinear — no non-collinear triple can be found.
-        let pts = vec![pt(-1.0, 0.0), pt(0.0, 0.0), pt(1.0, 0.0), pt(2.0, 0.0)];
-        assert!(concyclic_sec(&pts, 5).is_none());
-    }
-
-    #[test]
-    fn concyclic_sec_none_when_one_point_is_interior() {
-        // Three on unit circle, one inside — not concyclic.
-        let pts = vec![pt(1.0, 0.0), pt(-1.0, 0.0), pt(0.0, 1.0), pt(0.0, 0.0)];
-        assert!(concyclic_sec(&pts, 5).is_none());
-    }
 }

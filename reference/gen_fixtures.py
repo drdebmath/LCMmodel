@@ -92,6 +92,15 @@ CASES = {
     "sec_20":              config(algorithm="SEC", num_of_robots=20, random_seed=4),
     "sec_fault_crash":     config(algorithm="SEC", num_of_robots=10,
                                   num_of_faults=3, fault_type="crash", random_seed=20),
+    # Robots whose smallest circle is NOT the circle through them: exactly on a 90 degree arc
+    # of a radius-150 circle (integer points), and standing on only three spots. Also all on
+    # one line (a shortcut there skips the Python's random draws).
+    "sec_arc90_6":         config(algorithm="SEC", num_of_robots=6, random_seed=3,
+                                  initial_positions=[[150, 0], [144, 42], [120, 90], [90, 120], [42, 144], [0, 150]]),
+    "sec_line_4":          config(algorithm="SEC", num_of_robots=4, random_seed=1,
+                                  initial_positions=[[5.0, 0.0], [35.0, 0.0], [-115.0, 0.0], [-125.0, 0.0]]),
+    "sec_three_spots_6":   config(algorithm="SEC", num_of_robots=6, random_seed=6,
+                                  initial_positions=[[140.0, -120.0], [130.0, -100.0], [140.0, -120.0], [-140.0, -140.0], [-140.0, -140.0], [140.0, -120.0]]),
     # Uniform Circle Formation cases.
     "circle_formation_edge_8":     config(algorithm="CircleFormation", num_of_robots=8,
                                           initial_positions=ring(8, 200.0), random_seed=1),
