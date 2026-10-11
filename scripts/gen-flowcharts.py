@@ -21,7 +21,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REPO_URL = "https://github.com/imstillsamarth/LCMmodel/blob/rust-core"
+REPO_URL = "https://github.com/drdebmath/LCMmodel/blob/main"
 
 SIM = "crates/lcm-core/src/sim.rs"
 GATHERING = "crates/lcm-algorithms/src/gathering.rs"
@@ -265,6 +265,10 @@ CHARTS = [
             "The average includes crashed robots, but the termination test ignores them: the "
             "original's behaviour, kept on purpose (finding #4 in report.md).",
             "The sum is a plain left-to-right loop, as in the Python, so results match to the last digits.",
+            "Only guaranteed to gather with unlimited visibility. With a limited radius the swarm can stop "
+            "in several separate groups, all marked terminated: a robot that sees nobody terminates (the "
+            "original's rule, chart 2), and moving to the average can break visibility links. Algorithms "
+            "built for limited visibility, such as Go-To-Center (Ando et al.), limit the step length to keep them.",
         ],
         "lanes": ("rows", [("Target", 0, 1), ("Termination", 2, 3)]),
         "nodes": [
