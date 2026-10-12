@@ -78,7 +78,7 @@ await shot("sim-phone-settings");
 await js("document.getElementById('close_settings').click()");
 check("phone: the sheet's close button closes it", await js("document.getElementById('settings').hidden"));
 const view = await js(`(() => { const r = lcm.renderer, f = r.frame; let out = 0;
-  for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.xy[2*i], f.xy[2*i+1]); if (x < 0 || y < 0 || x > r.width || y > r.height) out++; } return out; })()`);
+  for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.x(i), f.y(i)); if (x < 0 || y < 0 || x > r.width || y > r.height) out++; } return out; })()`);
 check("phone: the whole swarm fits the screen", view === 0, `${view} robots off screen`);
 
 // Flowchart page.

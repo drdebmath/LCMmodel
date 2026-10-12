@@ -56,6 +56,9 @@ export class SimClient {
         if (data.run !== this.run) break;
         this.pending = false;
         if (this.current) this.recycle = Object.fromEntries(ARRAYS.map((k) => [k, this.current[k]]));
+        // World position of robot i: the frame holds offsets from (originX, originY), see lcm-core's Frame.
+        data.x = (i) => data.originX + data.xy[2 * i];
+        data.y = (i) => data.originY + data.xy[2 * i + 1];
         this.current = data;
         this.emit("frame", data);
         break;

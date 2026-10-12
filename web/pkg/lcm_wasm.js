@@ -133,6 +133,22 @@ export class WasmSimulation {
         return ret;
     }
     /**
+     * World coordinates the frame's positions, targets and circle centres are
+     * measured from (a robot's world position is origin + offset, added in f64).
+     * @returns {number}
+     */
+    frame_origin_x() {
+        const ret = wasm.wasmsimulation_frame_origin_x(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    frame_origin_y() {
+        const ret = wasm.wasmsimulation_frame_origin_y(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @returns {number}
      */
     frame_time() {
@@ -274,7 +290,7 @@ export class WasmSimulation {
         return ret;
     }
     /**
-     * `[x0, y0, x1, y1, …]`
+     * `[x0, y0, x1, y1, …]`, offsets from the frame origin.
      * @returns {Float32Array}
      */
     xy() {

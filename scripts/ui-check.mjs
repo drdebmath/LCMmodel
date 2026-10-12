@@ -73,9 +73,9 @@ check("Space pauses and time stays put", (await js("lcm.state")) === "paused" &&
 
 // Inspector: click the robot the renderer draws nearest the middle.
 const target = await js(`(() => { const r = lcm.renderer, f = r.frame; let best = -1, bd = 1e18;
-  for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.xy[2*i], f.xy[2*i+1]);
+  for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.x(i), f.y(i));
     const d = (x - r.width/2) ** 2 + (y - r.height/2) ** 2; if (d < bd) { bd = d; best = i; } }
-  const [x, y] = r.toScreen(f.xy[2*best], f.xy[2*best+1]); const b = r.canvas.getBoundingClientRect();
+  const [x, y] = r.toScreen(f.x(best), f.y(best)); const b = r.canvas.getBoundingClientRect();
   return { i: best, x: x + b.left, y: y + b.top }; })()`);
 await clickAt(target.x, target.y);
 await until("!document.getElementById('inspector').hidden && /Gathering/.test(document.getElementById('inspector').textContent)");
@@ -117,7 +117,7 @@ const startDefaults = await js(`({ open: lcm.settings.values.open_world, pattern
 check("opens in an open world: free cloud, no box, no world size", startDefaults.open && startDefaults.pattern === "cloud" && startDefaults.outline === null && startDefaults.widthHidden,
   JSON.stringify(startDefaults));
 const onScreen = (await js(`(() => { const r = lcm.renderer, f = r.frame; let out = 0;
-  for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.xy[2*i], f.xy[2*i+1]); if (x < 0 || y < 0 || x > r.width || y > r.height) out++; } return out; })()`));
+  for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.x(i), f.y(i)); if (x < 0 || y < 0 || x > r.width || y > r.height) out++; } return out; })()`));
 check("the view fits the whole cloud", onScreen === 0, `${onScreen} robots off screen`);
 const visibleStart = () => js(`[...document.querySelectorAll('[data-group="start"] .field')].filter((f) => f.offsetParent && !f.closest('.more-body')).map((f) => f.dataset.key)`);
 // "More options" always holds the stacked-points setting, and nothing else for a simple start.
@@ -131,12 +131,12 @@ await js("lcm.settings.set('open_world', false)");
 await until("lcm.renderer.outline && lcm.renderer.outline.kind === 'rect'", 3000);
 await sleep(300);
 const world = await js(`(() => { const f = lcm.renderer.frame; let inBox = true;
-  for (let i = 0; i < f.flags.length; i++) if (Math.abs(f.xy[2*i]) > 300.001 || Math.abs(f.xy[2*i+1]) > 300.001) inBox = false;
+  for (let i = 0; i < f.flags.length; i++) if (Math.abs(f.x(i)) > 300.001 || Math.abs(f.y(i)) > 300.001) inBox = false;
   return { pattern: lcm.settings.values.pattern, inBox, widthShown: !document.querySelector('[data-key="width_bound"]').hidden }; })()`);
 check("World mode: the original box start, with its size settings", world.pattern === "box" && world.inBox && world.widthShown, JSON.stringify(world));
 await js("lcm.settings.set('open_world', true); lcm.settings.set('pattern', 'circle'); lcm.settings.set('arrangement', 'edge'); lcm.settings.set('size', 400)");
 check("a circle: robots evenly on a circle of radius 200", await until(`(() => { const f = lcm.renderer.frame;
-  return f.flags.length === 500 && [...Array(500).keys()].every((i) => Math.abs(Math.hypot(f.xy[2*i], f.xy[2*i+1]) - 200) < 0.01); })()`, 3000));
+  return f.flags.length === 500 && [...Array(500).keys()].every((i) => Math.abs(Math.hypot(f.x(i), f.y(i)) - 200) < 0.01); })()`, 3000));
 await sleep(200);
 await shot("9-start-ring");
 check("a new start clears the hover tooltip of the old run", await js("document.getElementById('tip').hidden"));
@@ -152,18 +152,18 @@ check("a circle can be filled, edge only or a ring", arrangements === "filled,ed
 // The three combinations added with the three-setting layout.
 await js("lcm.settings.set('pattern', 'square'); lcm.settings.set('arrangement', 'edge'); lcm.settings.set('size', 400)");
 check("square, edge only: every robot on the square's outline", await until(`(() => { const f = lcm.renderer.frame; if (f.flags.length !== 500) return false;
-  for (let i = 0; i < 500; i++) { const x = Math.abs(f.xy[2*i]), y = Math.abs(f.xy[2*i+1]); if (Math.max(x, y) > 200.01 || Math.max(x, y) < 199.99) return false; } return true; })()`, 3000));
+  for (let i = 0; i < 500; i++) { const x = Math.abs(f.x(i)), y = Math.abs(f.y(i)); if (Math.max(x, y) > 200.01 || Math.max(x, y) < 199.99) return false; } return true; })()`, 3000));
 await js("lcm.settings.set('pattern', 'rectangle'); lcm.settings.set('arrangement', 'edge'); lcm.settings.set('size', 400); lcm.settings.set('aspect', 0.5)");
 check("rectangle, edge only: every robot on the rectangle's outline", await until(`(() => { const f = lcm.renderer.frame; if (f.flags.length !== 500) return false;
-  for (let i = 0; i < 500; i++) { const x = Math.abs(f.xy[2*i]) / 200, y = Math.abs(f.xy[2*i+1]) / 100; if (Math.max(x, y) > 1.0001 || Math.max(x, y) < 0.9999) return false; } return true; })()`, 3000));
+  for (let i = 0; i < 500; i++) { const x = Math.abs(f.x(i)) / 200, y = Math.abs(f.y(i)) / 100; if (Math.max(x, y) > 1.0001 || Math.max(x, y) < 0.9999) return false; } return true; })()`, 3000));
 await js("lcm.settings.set('pattern', 'polygon'); lcm.settings.set('distribution', 'even'); lcm.settings.set('size', 400)");
 check("polygon, filled: robots inside the hexagon, reaching near its corners", await until(`(() => { const f = lcm.renderer.frame; if (f.flags.length !== 500) return false;
-  let far = 0; for (let i = 0; i < 500; i++) { const r = Math.hypot(f.xy[2*i], f.xy[2*i+1]); if (r > 200.001) return false; far = Math.max(far, r); } return far > 180; })()`, 3000) &&
+  let far = 0; for (let i = 0; i < 500; i++) { const r = Math.hypot(f.x(i), f.y(i)); if (r > 200.001) return false; far = Math.max(far, r); } return far > 180; })()`, 3000) &&
   await js("lcm.settings.values.arrangement === 'filled'"));
 await sleep(200);
 await shot("9b-start-polygon-filled");
 await js("lcm.settings.set('pattern', 'line'); lcm.settings.set('size', 600)");
-check("a line: robots on a line", await until(`(() => { const f = lcm.renderer.frame; return [...Array(f.flags.length).keys()].every((i) => Math.abs(f.xy[2*i+1]) < 1e-3); })()`, 3000));
+check("a line: robots on a line", await until(`(() => { const f = lcm.renderer.frame; return [...Array(f.flags.length).keys()].every((i) => Math.abs(f.y(i)) < 1e-3); })()`, 3000));
 const lineDistributions = await js("[...document.querySelectorAll('#set-distribution option')].map((o) => o.value)");
 check("only distributions that fit the pattern are offered", !lineDistributions.includes("gaussian") && lineDistributions.includes("even"), lineDistributions.join(", "));
 await js("lcm.settings.set('pattern', 'clusters'); lcm.settings.set('size', 500); lcm.settings.set('spread', 50)");
@@ -178,7 +178,7 @@ await js("lcm.settings.set('pattern', 'custom')");
 await js(`lcm.settings.set('custom', ${JSON.stringify("# my robots\n0, 0\n80 0\n40;69.3")})`);
 check("custom coordinates: the robot count is the number of lines", await until("lcm.renderer.frame.flags.length === 3 && lcm.settings.values.num_of_robots === 3", 3000));
 check("custom coordinates: the robot-count control is locked", await js("document.getElementById('set-num_of_robots-n').disabled"));
-const tri = await js("Array.from(lcm.renderer.frame.xy).map((v) => +v.toFixed(2))");
+const tri = await js("(() => { const f = lcm.renderer.frame; return [...Array(f.flags.length).keys()].flatMap((i) => [f.x(i), f.y(i)]).map((v) => +v.toFixed(2)); })()");
 check("custom coordinates are used exactly", JSON.stringify(tri) === JSON.stringify([0, 0, 80, 0, 40, 69.3]), JSON.stringify(tri));
 await js("document.getElementById('set-pattern').dispatchEvent(new Event('change'))");
 check("custom coordinates are edited in their own window", await js("!document.getElementById('coords').hidden && document.activeElement.id === 'set-custom'"));
@@ -195,7 +195,7 @@ check("JSON coordinates work", await until("lcm.renderer.frame.flags.length === 
 await js(`lcm.settings.set('custom', ${JSON.stringify(exported)})`);
 const roundTrip = await until(`(() => { const f = lcm.renderer.frame; return f.flags.length === 500; })()`, 4000);
 const cloudFirst = exported.split("\n")[1].split(",");
-const firstNow = await js("Array.from(lcm.renderer.frame.xy.slice(0, 2))");
+const firstNow = await js("(() => { const f = lcm.renderer.frame; return [f.x(0), f.y(0)]; })()");
 check("the simulator's own CSV export pastes back as a custom start", roundTrip && Math.abs(firstNow[0] - Number(cloudFirst[1])) < 1e-3 && Math.abs(firstNow[1] - Number(cloudFirst[2])) < 1e-3,
   `500 robots, first at (${firstNow.map((v) => v.toFixed(3)).join(", ")})`);
 await js("lcm.settings.reset()");
@@ -276,9 +276,9 @@ check("the stack size waits until some stacked points are asked for", !(await sh
 await js("lcm.settings.set('num_of_robots', 30); lcm.settings.set('multiplicities', 2); lcm.settings.set('multiplicity_size', 3)");
 check("with stacked points asked for, the stack size shows", await shownNow("multiplicity_size"));
 const stacked = await until(`(() => { const f = lcm.renderer.frame; if (!f || f.flags.length !== 30) return false;
-  const seen = new Set(); for (let i = 0; i < 30; i++) seen.add(f.xy[2*i] + "," + f.xy[2*i+1]); return seen.size === 26; })()`, 4000);
+  const seen = new Set(); for (let i = 0; i < 30; i++) seen.add(f.x(i) + "," + f.y(i)); return seen.size === 26; })()`, 4000);
 check("two stacked points of 3 robots leave 26 distinct start points", stacked,
-  JSON.stringify(await js(`(() => { const f = lcm.renderer.frame; const seen = new Set(); for (let i = 0; i < f.flags.length; i++) seen.add(f.xy[2*i] + "," + f.xy[2*i+1]);
+  JSON.stringify(await js(`(() => { const f = lcm.renderer.frame; const seen = new Set(); for (let i = 0; i < f.flags.length; i++) seen.add(f.x(i) + "," + f.y(i));
     return { robots: f.flags.length, distinct: seen.size, state: lcm.state, dirty: !document.getElementById("dirty").hidden, values: [lcm.settings.values.multiplicities, lcm.settings.values.multiplicity_size, lcm.settings.values.num_of_robots] }; })()`)));
 await js("lcm.settings.set('multiplicities', 0)");
 check("the stack size hides again at 0", !(await shownNow("multiplicity_size")));

@@ -211,8 +211,9 @@ export class Renderer {
     const r = Math.max(reach, this.robotRadius(f.flags.length) + 3);
     let best = -1, bestD = r * r;
     const xy = f.xy;
+    const fx = ox + (f.originX ?? 0) * s, fy = oy - (f.originY ?? 0) * s;
     for (let i = 0, n = f.flags.length; i < n; i++) {
-      const dx = ox + xy[2 * i] * s - sx, dy = oy - xy[2 * i + 1] * s - sy;
+      const dx = fx + xy[2 * i] * s - sx, dy = fy - xy[2 * i + 1] * s - sy;
       const d = dx * dx + dy * dy;
       if (d < bestD) { bestD = d; best = i; }
     }
@@ -229,8 +230,8 @@ export class Renderer {
     const s = this.scale;
     const ox = this.width / 2 + this.pan.x;
     const oy = this.height / 2 + this.pan.y;
-    const X = (x) => ox + x * s;
-    const Y = (y) => oy - y * s;
+    const WX = (x) => ox + x * s;
+    const WY = (y) => oy - y * s;
 
     // Start area (a drawing guide, not a wall: robots can move past it).
     const o = this.outline;
@@ -240,14 +241,14 @@ export class Renderer {
       ctx.setLineDash([5, 5]);
       ctx.beginPath();
       const rot = ((o.rotation ?? 0) * Math.PI) / 180;
-      const P = (x, y) => [X(x * Math.cos(rot) - y * Math.sin(rot)), Y(x * Math.sin(rot) + y * Math.cos(rot))];
+      const P = (x, y) => [WX(x * Math.cos(rot) - y * Math.sin(rot)), WY(x * Math.sin(rot) + y * Math.cos(rot))];
       if (o.kind === "rect") {
         const corners = [[-o.w / 2, -o.h / 2], [o.w / 2, -o.h / 2], [o.w / 2, o.h / 2], [-o.w / 2, o.h / 2]].map(([x, y]) => P(x, y));
         corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
         ctx.closePath();
       } else if (o.kind === "circle" || o.kind === "ring") {
-        ctx.moveTo(X(o.r), Y(0)); ctx.arc(X(0), Y(0), o.r * s, 0, 2 * Math.PI);
-        if (o.kind === "ring" && o.inner > 0) { ctx.moveTo(X(o.inner), Y(0)); ctx.arc(X(0), Y(0), o.inner * s, 0, 2 * Math.PI); }
+        ctx.moveTo(WX(o.r), WY(0)); ctx.arc(WX(0), WY(0), o.r * s, 0, 2 * Math.PI);
+        if (o.kind === "ring" && o.inner > 0) { ctx.moveTo(WX(o.inner), WY(0)); ctx.arc(WX(0), WY(0), o.inner * s, 0, 2 * Math.PI); }
       } else if (o.kind === "line") {
         ctx.moveTo(...P(-o.length / 2, 0)); ctx.lineTo(...P(o.length / 2, 0));
       } else if (o.kind === "polygon") {
@@ -263,6 +264,11 @@ export class Renderer {
     if (!frame) { this.lastDrawMs = performance.now() - t0; return; }
 
     const { xy, flags, fault, task, light, target, circle } = frame;
+    // The frame's numbers are offsets from its origin (see Frame in lcm-core): add the origin
+    // here in f64, so a swarm far from (0, 0) and tiny next to that distance stays distinct.
+    const fx = ox + (frame.originX ?? 0) * s, fy = oy - (frame.originY ?? 0) * s;
+    const X = (x) => fx + x * s;
+    const Y = (y) => fy - y * s;
     const n = flags.length;
     if (this.colorOf.length !== n) this.colorOf = new Uint8Array(n);
     const colorOf = this.colorOf, counts = this.counts;

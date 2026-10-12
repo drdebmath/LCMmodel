@@ -73,7 +73,7 @@ function fitToStart(f) {
   const xy = f.xy, n = f.flags.length, v = settings.values;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (let i = 0; i < n; i++) {
-    const x = xy[2 * i], y = xy[2 * i + 1];
+    const x = f.originX + xy[2 * i], y = f.originY + xy[2 * i + 1];
     if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
   }
   if (!v.open_world) {

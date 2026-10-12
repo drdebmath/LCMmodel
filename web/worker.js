@@ -141,6 +141,8 @@ function postFrame(extra = {}) {
     type: "frame",
     run,
     time: sim.time(),
+    originX: sim.frame_origin_x(),
+    originY: sim.frame_origin_y(),
     events: sim.event_count(),
     ticks: sim.tick_count?.() ?? 0,
     robots: n,

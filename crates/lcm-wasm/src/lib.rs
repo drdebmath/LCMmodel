@@ -281,7 +281,19 @@ impl WasmSimulation {
         self.frame.time
     }
 
-    /// `[x0, y0, x1, y1, …]`
+    /// World coordinates the frame's positions, targets and circle centres are
+    /// measured from (a robot's world position is origin + offset, added in f64).
+    #[must_use]
+    pub fn frame_origin_x(&self) -> f64 {
+        self.frame.origin[0]
+    }
+
+    #[must_use]
+    pub fn frame_origin_y(&self) -> f64 {
+        self.frame.origin[1]
+    }
+
+    /// `[x0, y0, x1, y1, …]`, offsets from the frame origin.
     #[must_use]
     pub fn xy(&self) -> js_sys::Float32Array {
         js_sys::Float32Array::from(self.frame.xy.as_slice())
