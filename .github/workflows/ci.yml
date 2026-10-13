@@ -1,8 +1,9 @@
 # Every check of the README's "Verify it yourself", on a GitHub-hosted
 # machine instead of a developer's: Rust tests, the native and WebAssembly
 # builds compared bit for bit, the flowcharts against the code, and the pages
-# in headless Chrome (preinstalled on the runner). Screenshots of the browser
-# checks are kept as an artifact of each run.
+# in headless Chrome (preinstalled on the runner). scripts/ci-check.sh turns
+# each failed check into an annotation on the run's Summary page, so the reason
+# shows without opening the log. Screenshots are kept as an artifact.
 name: CI
 
 on:
@@ -24,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Tests (core, algorithms, Python parity fixtures, CLI)
@@ -39,12 +40,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Install wasm-bindgen ${{ env.WASM_BINDGEN_VERSION }}
@@ -60,32 +61,38 @@ jobs:
 
       - name: Committed web/pkg matches the native build
         run: |
-          node scripts/check-wasm-parity.mjs
-          node scripts/check-seq-parity.mjs
+          bash scripts/ci-check.sh "Wasm parity (committed web/pkg)" node scripts/check-wasm-parity.mjs
+          bash scripts/ci-check.sh "SqGathering trace parity (committed web/pkg)" node scripts/check-seq-parity.mjs
       - name: Rebuild web/pkg from source and compare again
         run: |
           ./scripts/build-wasm.sh
-          node scripts/check-wasm-parity.mjs
-          node scripts/check-seq-parity.mjs
+          bash scripts/ci-check.sh "Wasm parity (rebuilt web/pkg)" node scripts/check-wasm-parity.mjs
+          bash scripts/ci-check.sh "SqGathering trace parity (rebuilt web/pkg)" node scripts/check-seq-parity.mjs
 
       - name: Flowcharts match the code
-        run: python3 scripts/gen-flowcharts.py --check
+        run: bash scripts/ci-check.sh "Flowcharts match the code" python3 scripts/gen-flowcharts.py --check
 
+      # Each browser check runs even if an earlier one failed, so one run
+      # reports every problem at once.
       - name: Flowchart page (headless Chrome)
-        run: node scripts/docs-check.mjs "$RUNNER_TEMP/shots/docs"
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci-check.sh "Flowchart page" node scripts/docs-check.mjs "$RUNNER_TEMP/shots/docs"
       - name: Phone, tablet and desktop layouts (headless Chrome)
-        run: node scripts/responsive-check.mjs "$RUNNER_TEMP/shots/responsive"
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci-check.sh "Layouts" node scripts/responsive-check.mjs "$RUNNER_TEMP/shots/responsive"
       - name: SqGathering on both pages (headless Chrome)
-        run: node scripts/sqgathering-check.mjs "$RUNNER_TEMP/shots/sqgathering"
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci-check.sh "SqGathering pages" node scripts/sqgathering-check.mjs "$RUNNER_TEMP/shots/sqgathering"
       - name: Simulator page (headless Chrome)
         # Its frame-rate targets (10,000 robots at 55+ fps) depend on the
         # machine; shared runners can miss them. A failure here is a warning.
+        if: ${{ !cancelled() }}
         continue-on-error: true
-        run: node scripts/ui-check.mjs "$RUNNER_TEMP/shots/ui"
+        run: bash scripts/ci-check.sh "Simulator page (frame-rate targets may miss on shared runners)" node scripts/ui-check.mjs "$RUNNER_TEMP/shots/ui"
 
       - name: Keep the screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: screenshots
           path: ${{ runner.temp }}/shots
