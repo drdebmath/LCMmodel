@@ -1426,22 +1426,22 @@ flowchart TD
     classDef k_decision fill:#fff4dc,stroke:#d18b00,color:#111
     classDef k_end fill:#e3f6e8,stroke:#1f9d55,color:#111,stroke-width:1.5px
     classDef k_out fill:#f1f2f5,stroke:#9aa1ad,color:#333
-    subgraph lane0["Look"]
+    subgraph lane0["From the snapshot"]
         q_comp(["Compute<br/><small>SqGathering::compute()</small>"])
-        q_obs["See Q′(t)<br/><small>observe()</small>"]
+        q_obs["See Q′(t)<br/><small>observe() · points within ε merge</small>"]
     end
     subgraph lane1["Gathered?"]
         q_one{"One occupied point?<br/><small>everyone stands here</small>"}
         q_term(["Terminate<br/><small>gathered</small>"])
     end
     subgraph lane2["Algorithm 8"]
-        q_kappa{"How many multiplicities κ?<br/><small>decide()</small>"}
+        q_kappa{"How many multiplicities κ?<br/><small>decide() · lines 1-3</small>"}
         q_k0[/"Move to the closest point<br/><small>κ = 0 · lines 14-16</small>"/]
-        q_k1{"On the multiplicity?<br/><small>κ = 1 · b</small>"}
-        q_km{"On a multiplicity?<br/><small>κ &gt; 1 · b</small>"}
-        q_hold[/"Stay<br/><small>κ = 1, b = 1 · lines 3-5</small>"/]
+        q_k1{"On the multiplicity?<br/><small>κ = 1 · b = 1? · lines 4-5</small>"}
+        q_km{"On a multiplicity?<br/><small>κ &gt; 1 · b = 1? · lines 9-10</small>"}
+        q_hold[/"Stay on it<br/><small>κ = 1, b = 1 · lines 3-5</small>"/]
         q_join[/"Move to the multiplicity<br/><small>κ = 1, b = 0 · lines 4-7</small>"/]
-        q_wait[/"Stay<br/><small>κ &gt; 1, b = 0 · lines 9-10</small>"/]
+        q_wait[/"Wait<br/><small>κ &gt; 1, b = 0 · lines 3, 9-10</small>"/]
         q_leave[/"Move to the midpoint<br/><small>κ &gt; 1, b = 1 · lines 9-13</small>"/]
     end
     class q_comp k_entry
@@ -1480,15 +1480,15 @@ flowchart TD
 | --- | --- |
 | Compute | Called from the COMPUTE phase of chart 2 with the robot's snapshot, during its turn of the sequential scheduler (chart 5). |
 | See Q′(t) | Robots closer than ε are grouped into points. Each point keeps one bit: single, or multiplicity (two or more robots). The robot also knows which point is its own. |
-| One occupied point? | If the robot sees a single point, every robot is on it: the swarm has gathered. |
-| Terminate | The robot stops for good. Once every robot has had its turn and terminated, the run ends (chart 1). |
+| One occupied point? | If the robot sees a single point, every robot is on it (visibility is unlimited): the swarm has gathered. Then κ = 1 and b = 1, so Algorithm 8 would keep it there anyway. |
+| Terminate | The robot stops for good and gets no more turns. Once every robot has had its turn and terminated, the run ends (chart 1). The paper's robots never stop; terminating here changes nothing, because every robot activated later would stay put. |
 | How many multiplicities κ? | Count the points marked multiplicity, and look at b, the bit of the robot's own point. Lines 1-3 of Algorithm 8. |
-| Move to the closest point | No multiplicity yet: go to the nearest occupied point to create one. Nothing lies between the robot and that point, so it never lands on anyone else. |
-| On the multiplicity? | With exactly one multiplicity, it is the gathering point. |
-| On a multiplicity? | Several multiplicities: robots must break all but one of them up. |
-| Stay | The robot is on the gathering point: it does not move. |
-| Move to the multiplicity | Head for the gathering point. The adversary may stop it after δ; it carries on in a later turn. |
-| Stay | A single robot waits while the multiplicities sort themselves out. |
+| Move to the closest point | No multiplicity yet: go to the nearest occupied point to create one there. Nothing lies between the robot and that point, so on the way it never meets a third robot. The move goes on in chart 2; the adversary may stop it after δ (chart 5). |
+| On the multiplicity? | With exactly one multiplicity, it is the gathering point. b tells the robot whether its own point is that multiplicity. |
+| On a multiplicity? | Several multiplicities: robots must break all but one of them up. Only robots standing on one (b = 1) act. |
+| Stay on it | The robot is on the gathering point: its target is where it stands. Chart 2 sees a target within ε and freezes it; its turn ends (chart 5). |
+| Move to the multiplicity | Head for the gathering point. The adversary may stop it after δ (chart 5); it carries on in a later turn. If it is stopped exactly on a single robot, that spot becomes a second multiplicity, κ > 1, and the robots sort it out (hand trace D). |
+| Wait | A single robot waits while the multiplicities sort themselves out: its target is where it stands, so chart 2 freezes it and its turn ends. |
 | Move to the midpoint | Leave the multiplicity for the midpoint between its point q and the closest occupied point q′. Nothing occupied is within half that distance, so the robot lands on a free spot wherever it is stopped. Once only one multiplicity is left, κ = 1. |
 
 `compute` — [`crates/lcm-algorithms/src/sq_gathering.rs:356`](../crates/lcm-algorithms/src/sq_gathering.rs#L356)
