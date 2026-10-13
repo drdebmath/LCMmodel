@@ -350,6 +350,45 @@ await setPlayback(playback);
 await js("document.getElementById('links').getAttribute('aria-pressed') === 'true' && document.getElementById('links').click()");
 check("back on Center of Gravity, the examples menu is hidden again", await js("document.getElementById('examples').hidden && document.getElementById('algorithm').value === 'Gathering'"));
 
+// Follow the swarm: the view zooms in as the swarm shrinks. It is display only.
+const TWO_ROBOTS = "lcm.settings.apply({ open_world: true, pattern: 'custom', custom: '-300, 0\\n300, 0', scheduler: 'sequential', turn_gap: 'none' })";
+const followRun = async (follow) => {
+  await click("#reset");
+  await js(TWO_ROBOTS);
+  await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+  await js(`(() => { if (lcm.renderer.follow !== ${follow}) document.getElementById('follow').click(); })()`);
+  await setPlayback("Infinity");
+  await click("#play");
+  const ended = await until("lcm.state === 'ended'", 30000);
+  await sleep(2200); // the view eases to its final zoom
+  return { ended, ...(await js(`(() => { const f = lcm.renderer.frame, r = lcm.renderer;
+    const [x0, y0] = r.toScreen(f.x(0), f.y(0)), [x1, y1] = r.toScreen(f.x(1), f.y(1));
+    const inside = [x0, y0, x1, y1].every((v, k) => v > 0 && v < (k % 2 ? r.height : r.width));
+    return { time: f.time, events: f.events, pos: [f.x(0), f.y(0), f.x(1), f.y(1)], apart: Math.hypot(x0 - x1, y0 - y1), inside, zoom: r.zoom,
+      scale: document.getElementById('hud_scale').textContent, pressed: document.getElementById('follow').getAttribute('aria-pressed') }; })()`)) };
+};
+const still = await followRun(false);
+const followed = await followRun(true);
+check("both runs reach the same end", still.ended && followed.ended && still.time === followed.time && still.events === followed.events
+  && JSON.stringify(still.pos) === JSON.stringify(followed.pos), `${still.time} / ${followed.time}, ${still.events} / ${followed.events} events`);
+check("without following, the two gathered robots (about 0.00002 apart) sit on the same pixel", still.apart < 1 && still.zoom === 1, `${still.apart.toFixed(3)} px apart`);
+check("following zooms in until the two robots fill the view, both on screen", followed.apart > 250 && followed.inside && followed.zoom > 1e6 && followed.pressed === "true", `${followed.apart.toFixed(0)} px apart, zoom ${followed.zoom.toExponential(1)}`);
+check("the scale bar follows the zoom (about 2×10⁻⁶ when following, tens when not)", /×10⁻/.test(followed.scale) && /^\d+$/.test(still.scale), `${still.scale} / ${followed.scale}`);
+await shot("follow-the-swarm");
+await key("Z", "KeyZ", 90);
+check("the Z key turns following off, and the button shows it", await js("!lcm.renderer.follow && document.getElementById('follow').getAttribute('aria-pressed') === 'false'"));
+await key("Z", "KeyZ", 90);
+check("the Z key turns it on again", await js("lcm.renderer.follow && document.getElementById('follow').getAttribute('aria-pressed') === 'true'"));
+await js("lcm.renderer.zoomAt(1.2)");
+check("zooming by hand takes over from following", await js("!lcm.renderer.follow && document.getElementById('follow').getAttribute('aria-pressed') === 'false'"));
+await js("document.getElementById('follow').click()");
+await click("#fit");
+check("Fit also stops following and shows the whole world again", await js("!lcm.renderer.follow && lcm.renderer.zoom === 1 && lcm.renderer.anchor.x === 0"));
+await click("#reset");
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.pattern === 'cloud' && lcm.renderer.frame.flags.length === 500", 3000);
+await setPlayback(playback);
+
 // Play straight after a settings change plays the new settings.
 await click("#reset");
 await until("lcm.state === 'ready'");

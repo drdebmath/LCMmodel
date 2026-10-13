@@ -90,7 +90,7 @@ function fitToStart(f) {
   const same = Math.abs(old.w - region.w) < old.w * 0.02 && Math.abs(old.h - region.h) < old.h * 0.02
     && Math.abs(old.cx - region.cx) < old.w * 0.02 && Math.abs(old.cy - region.cy) < old.h * 0.02;
   renderer.setView(region.w, region.h, region.cx, region.cy);
-  if (!same) renderer.resetView(); // a new start shape: show all of it; same shape: keep the user's view
+  if (!same && !renderer.follow) renderer.resetView(); // a new start shape: show all of it; same shape: keep the user's view
 }
 
 function onSettingChange() {
@@ -289,9 +289,31 @@ let hudAt = 0, rateFrom = null, rate = 0, draws = 0, fps = 0, fpsAt = performanc
 let legendAt = 0;
 renderer.onDraw = () => {
   draws++;
+  updateScale();
   const now = performance.now();
   if (state !== "running" || now - legendAt > 250) { legendAt = now; updateLegend(); }
 };
+
+/** The scale bar: the nearest 1, 2 or 5 × 10^k simulation units that makes a bar of about 90 px. */
+const SUPERSCRIPT = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+const fmtLength = (v) => {
+  if (v >= 1e-3) return String(+v.toPrecision(1));
+  const [m, e] = v.toExponential(0).split("e");
+  return `${m}×10${[...String(Number(e))].map((c) => SUPERSCRIPT[c]).join("")}`;
+};
+let scaleShown = "";
+function updateScale() {
+  const s = renderer.scale;
+  if (!(s > 0) || !isFinite(s)) return;
+  const want = 90 / s, pow = 10 ** Math.floor(Math.log10(want)), m = want / pow;
+  const len = (m >= 5 ? 5 : m >= 2 ? 2 : 1) * pow;
+  const px = Math.round(len * s), label = fmtLength(len);
+  const key = `${px}|${label}`;
+  if (key === scaleShown) return;
+  scaleShown = key;
+  $("hud_scale_bar").style.width = `${px}px`;
+  $("hud_scale").textContent = label;
+}
 
 function updateHud(force = false) {
   const now = performance.now();
@@ -395,6 +417,9 @@ function updateInsets() {
 $("zoom_in").addEventListener("click", () => renderer.zoomAt(1.25));
 $("zoom_out").addEventListener("click", () => renderer.zoomAt(0.8));
 $("fit").addEventListener("click", () => renderer.resetView());
+$("follow").addEventListener("click", toggleFollow);
+function toggleFollow() { renderer.setFollow(!renderer.follow); }
+renderer.onFollowChange = (on) => $("follow").setAttribute("aria-pressed", String(on));
 $("fullscreen").addEventListener("click", toggleFullscreen);
 function toggleFullscreen() {
   const doc = document, el = doc.documentElement;
@@ -542,6 +567,7 @@ window.addEventListener("keydown", (e) => {
     ArrowRight: () => step(e.shiftKey ? "time" : "event"),
     r: newRun, R: newRun,
     f: () => renderer.resetView(), F: toggleFullscreen,
+    z: toggleFollow, Z: toggleFollow,
     "+": () => renderer.zoomAt(1.25), "=": () => renderer.zoomAt(1.25), "-": () => renderer.zoomAt(0.8),
     l: toggleLights, L: toggleLights,
     v: toggleLinks, V: toggleLinks,

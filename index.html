@@ -63,6 +63,7 @@
     <div class="hud-row"><span class="k">Terminated</span><span class="v" id="hud_term">0 / 0</span></div>
     <div class="progress" aria-hidden="true"><div id="hud_bar"></div></div>
     <div class="hud-plot hud-extra"><div class="hud-row"><span class="k" title="How far the farthest robot is from the middle of the swarm, as the robots take their moves (logarithmic): it falls as the swarm gathers">Swarm size</span><span class="v" id="hud_spread">—</span></div><canvas id="hud_plot" width="440" height="110" aria-label="Swarm size over time"></canvas></div>
+    <div class="hud-row hud-extra"><span class="k" title="How long the bar is in the simulation's own units. Zoom in, or follow the swarm, and it shrinks with it">Scale</span><span class="v scale"><span id="hud_scale_bar" aria-hidden="true"></span><span id="hud_scale">—</span></span></div>
     <div class="hud-row hud-extra" id="hud_epochs_row" hidden><span class="k" title="Rounds in which every robot still moving has had its turn">Epochs</span><span class="v" id="hud_epochs">0</span></div>
     <div class="hud-row hud-extra"><span class="k" title="What the robots did: each Look and each arrival">Robot events</span><span class="v" id="hud_events">0</span></div>
     <div class="hud-row hud-extra"><span class="k" title="Visualize ticks, one every sampling interval. They belong to no robot">Ticks</span><span class="v" id="hud_ticks">0</span></div>
@@ -87,6 +88,7 @@
   <div id="tools" class="panel" role="toolbar" aria-label="View">
     <button id="zoom_in" class="btn" title="Zoom in (+)" aria-label="Zoom in"><span data-icon="plus"></span></button>
     <button id="zoom_out" class="btn" title="Zoom out (−)" aria-label="Zoom out"><span data-icon="minus"></span></button>
+    <button id="follow" class="btn" aria-pressed="false" title="Follow the swarm: zoom in as it shrinks (Z)" aria-label="Follow the swarm"><span data-icon="follow"></span></button>
     <button id="fit" class="btn" title="Fit the world in view (F)" aria-label="Fit the world in view"><span data-icon="fit"></span></button>
     <button id="fullscreen" class="btn" title="Full screen (Shift + F)" aria-label="Full screen" aria-pressed="false"><span data-icon="fullscreen"></span></button>
     <button id="lights" class="btn" aria-pressed="false" title="Show lights (L)" aria-label="Show lights"><span data-icon="light"></span></button>
@@ -120,6 +122,7 @@
         <span class="combo"><kbd>Shift + →</kbd></span><span>Step one unit of simulated time</span>
         <span class="combo"><kbd>R</kbd></span><span>Reset with the current settings</span>
         <span class="combo"><kbd>F</kbd></span><span>Fit the world in view</span>
+        <span class="combo"><kbd>Z</kbd></span><span>Follow the swarm: zoom in as it shrinks</span>
         <span class="combo"><kbd>Shift + F</kbd></span><span>Full screen on / off</span>
         <span class="combo"><kbd>+</kbd> / <kbd>−</kbd></span><span>Zoom in / out (or scroll)</span>
         <span class="combo"><kbd>Drag</kbd></span><span>Pan · click a robot to inspect it</span>

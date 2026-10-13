@@ -47,6 +47,8 @@ for (const [name, w, h, dpr, touch] of SIZES) {
   const l = await layout();
   check(`simulator, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !l.sideways && !l.overlaps.length && !l.offscreen.length, JSON.stringify(l));
   await shot(`sim-${name}`);
+  const stray = await js(`(() => { const t = document.getElementById('tools').getBoundingClientRect(); const bs = [...document.querySelectorAll('#tools .btn')].filter((b) => getComputedStyle(b).display !== 'none'); return bs.filter((b) => { const r = b.getBoundingClientRect(); return r.left < t.left - 0.5 || r.right > t.right + 0.5 || r.top < t.top - 0.5 || r.bottom > t.bottom + 0.5 || r.right > innerWidth || r.bottom > innerHeight; }).map((b) => b.id || b.title); })()`);
+  check(`simulator, ${name}: every view-tool button fits inside its panel and on screen`, stray.length === 0, stray.join(", "));
   // Go-To-Center adds an examples menu to the toolbar, which can wrap it onto another row.
   await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'GoToCenter'; s.dispatchEvent(new Event('change')); })()`);
   await sleep(500);

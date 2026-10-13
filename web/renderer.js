@@ -33,6 +33,9 @@ export const LIGHTS = [null, "#3b82f6", "#ef4444", "#22c55e"];
 // Level of detail: draw these only up to this many robots.
 export const LOD = { outlines: 2000, targets: 2000, visibility: 1000, circles: 1000, links: 400 };
 
+// Circles bigger than this many CSS px cannot be seen (a swarm followed in close next to a visibility
+// radius, say): skip them instead of asking the canvas for a huge arc.
+const HUGE = 1e6;
 export const STATE_NAMES = ["Wait", "Look", "Move", "Crash"];
 const STATE_MOVE = 2, STATE_CRASH = 3, FROZEN = 4, TERMINATED = 8;
 
@@ -58,6 +61,15 @@ export class Renderer {
     this.outline = null;
     this.zoom = 1;
     this.pan = { x: 0, y: 0 };
+    // The world point drawn at screen (width/2 + pan.x, height/2 + pan.y). It is (0, 0) normally and
+    // the swarm's centre while following it, so a tiny swarm far from (0, 0) is positioned as
+    // (its centre - anchor) * scale and stays exact however far in the view has zoomed.
+    this.anchor = { x: 0, y: 0 };
+    this.follow = false;     // zoom in and out with the swarm (see stepFollow)
+    this.needAnchor = false;
+    this.swarm = null;       // { x, y, extent }: centre and radius of the robots that have not crashed
+    this.lastStep = 0;
+    this.onFollowChange = null;
     // CSS px covered by floating panels; the world is fitted into what's left.
     this.insets = { left: 0, right: 0, top: 0, bottom: 0 };
     this.options = { showLights: false, visibility: null, links: false, allowedRegion: false };
@@ -103,12 +115,68 @@ export class Renderer {
     requestAnimationFrame(() => { this.pending = false; this.draw(); });
   }
 
-  setFrame(frame) { this.frame = frame; this.requestDraw(); }
+  setFrame(frame) { this.frame = frame; if (this.follow) this.measureSwarm(); this.requestDraw(); }
+
+  /** Centre (the frame's origin, the centroid of the robots that have not crashed) and radius. */
+  measureSwarm() {
+    const f = this.frame;
+    if (!f) { this.swarm = null; return; }
+    const { xy, flags } = f;
+    let far = 0, any = false;
+    for (let i = 0, n = flags.length; i < n; i++) {
+      if ((flags[i] & 3) === STATE_CRASH) continue;
+      any = true;
+      const d = xy[2 * i] * xy[2 * i] + xy[2 * i + 1] * xy[2 * i + 1];
+      if (d > far) far = d;
+    }
+    this.swarm = any ? { x: f.originX ?? 0, y: f.originY ?? 0, extent: Math.sqrt(far) } : null;
+  }
+
+  /** Follow the swarm: the view zooms in as it shrinks (and out if it spreads). Display only. */
+  setFollow(on) {
+    if (on === this.follow) return;
+    this.follow = on;
+    if (on) { this.needAnchor = true; this.lastStep = performance.now(); this.measureSwarm(); }
+    this.onFollowChange?.(on);
+    this.requestDraw();
+  }
+
+  /** One animation step of the follow view, called from draw(). */
+  stepFollow() {
+    const sw = this.swarm;
+    if (!sw) return;
+    const now = performance.now();
+    const dt = Math.min(0.1, Math.max(0.001, (now - this.lastStep) / 1000));
+    this.lastStep = now;
+    if (this.needAnchor) {
+      // Re-anchor on the swarm without moving anything on screen, then ease to the middle.
+      const [px, py] = this.toScreen(sw.x, sw.y);
+      this.pan = { x: px - this.width / 2, y: py - this.height / 2 };
+      this.needAnchor = false;
+    }
+    this.anchor = { x: sw.x, y: sw.y };
+    const { left, right, top, bottom } = this.insets;
+    const k = 1 - Math.exp(-dt / 0.25);
+    let gap = 0;
+    // A swarm gathered to a point (radius 0) has nothing to zoom to: hold the zoom. Below 1e-9 the
+    // positions themselves (doubles near 100) have run out of digits.
+    if (sw.extent > 1e-9) {
+      const w = Math.max(100, this.width - left - right), h = Math.max(100, this.height - top - bottom);
+      const target = (0.92 * Math.min(w, h)) / (2 * sw.extent) / (this.scale / this.zoom);
+      const next = Math.exp(Math.log(this.zoom) + (Math.log(target) - Math.log(this.zoom)) * k);
+      this.zoom = Math.min(1e13, Math.max(0.05, next));
+      gap = Math.abs(Math.log(target / this.zoom));
+    }
+    const cx = (left - right) / 2, cy = (top - bottom) / 2;
+    this.pan.x += (cx - this.pan.x) * k;
+    this.pan.y += (cy - this.pan.y) * k;
+    if (gap > 1e-3 || Math.hypot(cx - this.pan.x, cy - this.pan.y) > 0.2) this.requestDraw();
+  }
   /** The region "Fit" frames: w × h world units centred on (cx, cy). */
   setView(w, h, cx = 0, cy = 0) {
     const fitted = this.isFitted();
     this.world = { w: Math.max(1e-6, w), h: Math.max(1e-6, h), cx, cy };
-    if (fitted) this.resetView(); else this.requestDraw();
+    if (fitted && !this.follow) this.fitView(); else this.requestDraw();
   }
   /** The start-area outline (see startOutline in start.js), or null for none. */
   setOutline(outline) { this.outline = outline; this.requestDraw(); }
@@ -119,14 +187,19 @@ export class Renderer {
     this.zoom = 1;
     const s = this.scale;
     this.zoom = zoom;
-    return { x: (left - right) / 2 - this.world.cx * s, y: (top - bottom) / 2 + this.world.cy * s };
+    return { x: (left - right) / 2 - (this.world.cx - this.anchor.x) * s, y: (top - bottom) / 2 + (this.world.cy - this.anchor.y) * s };
   }
   isFitted() {
     const p = this.fittedPan();
     return this.zoom === 1 && Math.abs(this.pan.x - p.x) < 0.5 && Math.abs(this.pan.y - p.y) < 0.5;
   }
-  /** Fit the view region into the area the panels leave free. */
+  /** The Fit button: stop following and fit the view region into the area the panels leave free. */
   resetView() {
+    this.setFollow(false);
+    this.fitView();
+  }
+  fitView() {
+    this.anchor = { x: 0, y: 0 };
     this.zoom = 1;
     this.pan = this.fittedPan();
     this.requestDraw();
@@ -135,7 +208,7 @@ export class Renderer {
   setInsets(insets) {
     const fitted = this.isFitted();
     this.insets = insets;
-    if (fitted) this.resetView(); // keep a fitted view fitted; leave a zoomed one alone
+    if (fitted && !this.follow) this.fitView(); // keep a fitted view fitted; leave a zoomed one alone
   }
 
   get scale() {
@@ -146,30 +219,32 @@ export class Renderer {
 
   toScreen(x, y) {
     const s = this.scale;
-    return [this.width / 2 + this.pan.x + x * s, this.height / 2 + this.pan.y - y * s];
+    return [this.width / 2 + this.pan.x + (x - this.anchor.x) * s, this.height / 2 + this.pan.y - (y - this.anchor.y) * s];
   }
 
   toWorld(sx, sy) {
     const s = this.scale;
-    return [(sx - this.width / 2 - this.pan.x) / s, -(sy - this.height / 2 - this.pan.y) / s];
+    return [this.anchor.x + (sx - this.width / 2 - this.pan.x) / s, this.anchor.y - (sy - this.height / 2 - this.pan.y) / s];
   }
 
   /** Zoom by `factor`, keeping the world point under (mx, my) (CSS px) still. */
   zoomAt(factor, mx = this.width / 2, my = this.height / 2) {
+    this.setFollow(false); // zooming by hand takes over from following
     const [wx, wy] = this.toWorld(mx, my);
-    this.zoom = Math.min(400, Math.max(0.05, this.zoom * factor));
+    this.zoom = Math.min(1e13, Math.max(0.05, this.zoom * factor));
     const s = this.scale;
-    this.pan.x = mx - this.width / 2 - wx * s;
-    this.pan.y = my - this.height / 2 + wy * s;
+    this.pan.x = mx - this.width / 2 - (wx - this.anchor.x) * s;
+    this.pan.y = my - this.height / 2 + (wy - this.anchor.y) * s;
     this.requestDraw();
   }
 
-  panBy(dx, dy) { this.pan.x += dx; this.pan.y += dy; this.requestDraw(); }
+  panBy(dx, dy) { this.setFollow(false); this.pan.x += dx; this.pan.y += dy; this.requestDraw(); }
 
   centerOn(x, y) {
+    this.setFollow(false);
     const s = this.scale, { left, right, top, bottom } = this.insets;
-    this.pan.x = (left - right) / 2 - x * s;
-    this.pan.y = (top - bottom) / 2 + y * s;
+    this.pan.x = (left - right) / 2 - (x - this.anchor.x) * s;
+    this.pan.y = (top - bottom) / 2 + (y - this.anchor.y) * s;
     this.requestDraw();
   }
 
@@ -211,7 +286,7 @@ export class Renderer {
     const r = Math.max(reach, this.robotRadius(f.flags.length) + 3);
     let best = -1, bestD = r * r;
     const xy = f.xy;
-    const fx = ox + (f.originX ?? 0) * s, fy = oy - (f.originY ?? 0) * s;
+    const fx = ox + ((f.originX ?? 0) - this.anchor.x) * s, fy = oy - ((f.originY ?? 0) - this.anchor.y) * s;
     for (let i = 0, n = f.flags.length; i < n; i++) {
       const dx = fx + xy[2 * i] * s - sx, dy = fy - xy[2 * i + 1] * s - sy;
       const d = dx * dx + dy * dy;
@@ -227,11 +302,12 @@ export class Renderer {
     ctx.fillStyle = this.theme.bg;
     ctx.fillRect(0, 0, this.width, this.height);
 
+    if (this.follow && frame) this.stepFollow();
     const s = this.scale;
     const ox = this.width / 2 + this.pan.x;
     const oy = this.height / 2 + this.pan.y;
-    const WX = (x) => ox + x * s;
-    const WY = (y) => oy - y * s;
+    const WX = (x) => ox + (x - this.anchor.x) * s;
+    const WY = (y) => oy - (y - this.anchor.y) * s;
 
     // Start area (a drawing guide, not a wall: robots can move past it).
     const o = this.outline;
@@ -266,7 +342,7 @@ export class Renderer {
     const { xy, flags, fault, task, light, target, circle } = frame;
     // The frame's numbers are offsets from its origin (see Frame in lcm-core): add the origin
     // here in f64, so a swarm far from (0, 0) and tiny next to that distance stays distinct.
-    const fx = ox + (frame.originX ?? 0) * s, fy = oy - (frame.originY ?? 0) * s;
+    const fx = ox + ((frame.originX ?? 0) - this.anchor.x) * s, fy = oy - ((frame.originY ?? 0) - this.anchor.y) * s;
     const X = (x) => fx + x * s;
     const Y = (y) => fy - y * s;
     const n = flags.length;
@@ -278,7 +354,7 @@ export class Renderer {
     const V = this.options.visibility;
 
     // Visibility circles (behind everything); the links replace them when they are shown.
-    if (V && n <= LOD.visibility && !this.options.links) {
+    if (V && n <= LOD.visibility && !this.options.links && V * s < HUGE) {
       ctx.strokeStyle = "rgba(100,110,200,.22)";
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
@@ -318,7 +394,7 @@ export class Renderer {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
         const cr = circle[3 * i + 2];
-        if (!(cr >= 0)) continue;
+        if (!(cr >= 0) || cr * s > HUGE) continue;
         const cx = X(circle[3 * i]), cy = Y(circle[3 * i + 1]);
         ctx.moveTo(cx + cr * s, cy);
         ctx.arc(cx, cy, cr * s, 0, 2 * Math.PI);
@@ -380,12 +456,12 @@ export class Renderer {
       const x = X(xy[2 * i]), y = Y(xy[2 * i + 1]);
       ctx.strokeStyle = this.theme.accent;
       if (strong) {
-        if (V && !((flags[i] & 3) === STATE_CRASH)) {
+        if (V && V * s < HUGE && !((flags[i] & 3) === STATE_CRASH)) {
           ctx.globalAlpha = 0.35;
           ctx.beginPath(); ctx.arc(x, y, V * s, 0, 2 * Math.PI); ctx.stroke();
           ctx.globalAlpha = 1;
         }
-        if (this.options.allowedRegion && V && !((flags[i] & 3) === STATE_CRASH)) {
+        if (this.options.allowedRegion && V && V * s < HUGE && !((flags[i] & 3) === STATE_CRASH)) {
           // Go-To-Center: the destination must stay inside the disc of radius V/2 around the
           // midpoint with every robot it sees; where the discs overlap is the allowed region.
           const xi = xy[2 * i], yi = xy[2 * i + 1];
@@ -400,7 +476,7 @@ export class Renderer {
           ctx.strokeStyle = this.theme.accent;
         }
         const cr = circle[3 * i + 2];
-        if (cr >= 0) {
+        if (cr >= 0 && cr * s < HUGE) {
           ctx.strokeStyle = "rgba(255,150,0,0.9)"; ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.arc(X(circle[3 * i]), Y(circle[3 * i + 1]), cr * s, 0, 2 * Math.PI); ctx.stroke();
           ctx.strokeStyle = this.theme.accent;
