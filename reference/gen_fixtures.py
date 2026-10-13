@@ -8,6 +8,7 @@ Run from the repository root (needs numpy, Python >= 3.12):
     python reference/gen_fixtures.py
 """
 import json
+import math
 import os
 import sys
 
@@ -68,6 +69,12 @@ def config(**over):
     return c
 
 
+def ring(n, r):
+    """n points at equal angular spacing on the circle of radius r (centre origin)."""
+    return [[r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n)]
+            for k in range(n)]
+
+
 CASES = {
     # Gathering drives these; together they cover every core behaviour.
     "gathering_8": config(),
@@ -85,6 +92,13 @@ CASES = {
     "sec_20":              config(algorithm="SEC", num_of_robots=20, random_seed=4),
     "sec_fault_crash":     config(algorithm="SEC", num_of_robots=10,
                                   num_of_faults=3, fault_type="crash", random_seed=20),
+    # Uniform Circle Formation cases.
+    "circle_formation_edge_8":     config(algorithm="CircleFormation", num_of_robots=8,
+                                          initial_positions=ring(8, 200.0), random_seed=1),
+    "circle_formation_8":          config(algorithm="CircleFormation", random_seed=1),
+    "circle_formation_6":          config(algorithm="CircleFormation", num_of_robots=6, random_seed=3),
+    "circle_formation_fault_crash": config(algorithm="CircleFormation", num_of_robots=10,
+                                           num_of_faults=3, fault_type="crash", random_seed=20),
 }
 
 

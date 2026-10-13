@@ -1,0 +1,92 @@
+# Every check of the README's "Verify it yourself", on a GitHub-hosted
+# machine instead of a developer's: Rust tests, the native and WebAssembly
+# builds compared bit for bit, the flowcharts against the code, and the pages
+# in headless Chrome (preinstalled on the runner). Screenshots of the browser
+# checks are kept as an artifact of each run.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  WASM_BINDGEN_VERSION: "0.2.129"
+
+jobs:
+  rust:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests (core, algorithms, Python parity fixtures, CLI)
+        run: cargo test --workspace
+      - name: Lints (reported, not enforced)
+        run: |
+          rustup component add clippy
+          cargo clippy --workspace --all-targets
+
+  wasm-and-pages:
+    name: WebAssembly parity, flowcharts and pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install wasm-bindgen ${{ env.WASM_BINDGEN_VERSION }}
+        run: |
+          v="$WASM_BINDGEN_VERSION"
+          name="wasm-bindgen-$v-x86_64-unknown-linux-musl"
+          curl -sSfL -o wb.tgz "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$v/$name.tar.gz"
+          tar xzf wb.tgz
+          sudo install "$name/wasm-bindgen" /usr/local/bin/
+          wasm-bindgen --version
+      - name: Native CLI
+        run: cargo build --release -p lcm-cli
+
+      - name: Committed web/pkg matches the native build
+        run: |
+          node scripts/check-wasm-parity.mjs
+          node scripts/check-seq-parity.mjs
+      - name: Rebuild web/pkg from source and compare again
+        run: |
+          ./scripts/build-wasm.sh
+          node scripts/check-wasm-parity.mjs
+          node scripts/check-seq-parity.mjs
+
+      - name: Flowcharts match the code
+        run: python3 scripts/gen-flowcharts.py --check
+
+      - name: Flowchart page (headless Chrome)
+        run: node scripts/docs-check.mjs "$RUNNER_TEMP/shots/docs"
+      - name: Phone, tablet and desktop layouts (headless Chrome)
+        run: node scripts/responsive-check.mjs "$RUNNER_TEMP/shots/responsive"
+      - name: SqGathering on both pages (headless Chrome)
+        run: node scripts/sqgathering-check.mjs "$RUNNER_TEMP/shots/sqgathering"
+      - name: Simulator page (headless Chrome)
+        # Its frame-rate targets (10,000 robots at 55+ fps) depend on the
+        # machine; shared runners can miss them. A failure here is a warning.
+        continue-on-error: true
+        run: node scripts/ui-check.mjs "$RUNNER_TEMP/shots/ui"
+
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore

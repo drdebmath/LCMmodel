@@ -17,9 +17,6 @@
  * Page -> worker
  *   {type: "hello"}                  reply {type: "ready", algorithms}
  *   {type: "start", config, run}     new simulation (paused); reply with its first frame.
- *                                    A sequential algorithm (group "sequential") runs on
- *                                    WasmSeqSimulation with options `config.sequential`;
- *                                    its time and events count rounds
  *                                    `run` is echoed on every frame so the page can
  *                                    drop frames that belong to an earlier run
  *   {type: "play"} / {type: "pause"}
@@ -43,7 +40,7 @@ const version = new URL(self.location.href).searchParams.get("v");
 const suffix = version ? `?v=${encodeURIComponent(version)}` : "";
 let wasm = null;
 
-const STOP = ["budget", "until-time", "ended", "max-events", "max-time", "stalled"];
+const STOP = ["budget", "until-time", "ended", "max-events", "max-time", "stalled", "max-turns"];
 const SLICE_MS = 6;
 const IDLE_MS = 4;
 const ready = (async () => {
@@ -113,8 +110,10 @@ function postFrame(extra = {}) {
     run,
     time: sim.time(),
     events: sim.event_count(),
+    ticks: sim.tick_count?.() ?? 0,
     robots: n,
     terminated: sim.terminated_count(),
+    epochs: sim.sequential?.() ? sim.epochs_completed() : null,
     ended: sim.ended(),
     stop,
     playing,
@@ -152,16 +151,9 @@ self.onmessage = async ({ data }) => {
       case "hello":
         self.postMessage({ type: "ready", version, algorithms: JSON.parse(wasm.algorithms()) });
         break;
-      case "start": {
+      case "start":
         sim?.free();
-        sim = null;
-        // Sequential algorithms (the "Sequential ›" menu) run one robot per
-        // round on their own scheduler; `sequential` carries their options.
-        const { sequential, ...config } = data.config;
-        const group = JSON.parse(wasm.algorithms()).find((a) => a.key === config.algorithm)?.group;
-        sim = group === "sequential"
-          ? new wasm.WasmSeqSimulation(JSON.stringify(config), JSON.stringify(sequential ?? {}))
-          : new wasm.WasmSimulation(JSON.stringify(config));
+        sim = new wasm.WasmSimulation(JSON.stringify(data.config));
         run = data.run ?? run + 1;
         playing = false;
         stop = "running";
@@ -170,7 +162,6 @@ self.onmessage = async ({ data }) => {
         sinceMs = 0;
         postFrame();
         break;
-      }
       case "play":
         if (sim && stop === "running" && !playing) { playing = true; generation++; reanchor(); yieldThenSlice(); }
         break;

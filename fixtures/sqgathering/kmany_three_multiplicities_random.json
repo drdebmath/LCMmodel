@@ -1,8 +1,14 @@
 {
   "algorithm": "SqGathering",
-  "positions": [[-20, 5], [-20, 5], [-20, 5], [15, 12], [15, 12], [3, -18], [3, -18], [30, -4], [-8, 22]],
-  "schedule": {"kind": "shuffled", "seed": 2026},
-  "movement": {"kind": "non-rigid", "delta": 1.5, "stop": {"kind": "random", "seed": 7}},
-  "frames": {"kind": "random", "seed": 11},
-  "max_rounds": 100000
+  "scheduler": "sequential",
+  "turn_gap": "none",
+  "num_of_robots": 40,
+  "random_seed": 2026,
+  "multiplicities": 3,
+  "multiplicity_size": 4,
+  "activation_order": "random",
+  "rigid_movement": false,
+  "delta": 1.5,
+  "stop_policy": "random",
+  "max_turns": 100000
 }

@@ -524,6 +524,65 @@ pub fn generate(spec: &StartSpec, n: usize, seed: u64) -> Vec<Point> {
     points
 }
 
+/// How many robots stand on each multiplicity: `size` if given (at least 2),
+/// else a third of the robots for one multiplicity, or up to 4 each for several.
+fn multiplicity_size(n: usize, k: usize, size: usize) -> Result<usize, String> {
+    let size = match size {
+        0 if k == 1 => (n / 3).max(2),
+        0 => 4.min(n / k).max(2),
+        1 => return Err("a multiplicity needs at least 2 robots".to_owned()),
+        s => s,
+    };
+    if k * size > n {
+        return Err(format!(
+            "{k} multiplicities of {size} robots need {} robots, there are {n}",
+            k * size
+        ));
+    }
+    Ok(size)
+}
+
+/// Checks that `k` multiplicities of `size` robots (0: chosen for you) fit
+/// among `n` robots.
+///
+/// # Errors
+/// A size of 1, or more robots asked for than there are.
+pub fn check_multiplicities(n: usize, k: usize, size: usize) -> Result<(), String> {
+    if k == 0 {
+        return Ok(());
+    }
+    multiplicity_size(n, k, size).map(|_| ())
+}
+
+/// Makes `k` multiplicity points of `size` robots each: picks `k` robots at
+/// random (from `seed`, with a stream of their own) as anchors and moves
+/// `size - 1` other robots onto each. The rest stay where they were.
+///
+/// # Errors
+/// See [`check_multiplicities`].
+pub fn stack_multiplicities(
+    points: &mut [Point],
+    k: usize,
+    size: usize,
+    seed: u64,
+) -> Result<(), String> {
+    if k == 0 {
+        return Ok(());
+    }
+    let n = points.len();
+    let size = multiplicity_size(n, k, size)?;
+    let mut order: Vec<usize> = (0..n).collect();
+    Rng::new(seed ^ 0x4D55_4C54).shuffle(&mut order);
+    let per = size - 1;
+    for j in 0..k {
+        let anchor = points[order[j]];
+        for t in 0..per {
+            points[order[k + j * per + t]] = anchor;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

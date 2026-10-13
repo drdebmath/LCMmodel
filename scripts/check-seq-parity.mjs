@@ -1,7 +1,7 @@
-// SqGathering (Algorithm 8, sequential scheduler): runs every config in
-// fixtures/sqgathering through the native CLI (`lcm seq`) and the browser
-// build (web/pkg, in Node), both as one batch call and round by round, and
-// requires the same trace and report down to the last bit. Budget-limited
+// SqGathering (Algorithm 8) on the core's sequential scheduler: runs every
+// config in fixtures/sqgathering through the native CLI (`lcm seq`) and the
+// browser build (web/pkg, in Node), both as one batch call and turn by turn,
+// and requires the same trace and report down to the last bit. Turn-limited
 // runs must say "incomplete" on both sides.
 //
 //   cargo build --release -p lcm-cli && ./scripts/build-wasm.sh
@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { initSync, sq_gathering_run, WasmSqGathering } from "../web/pkg/lcm_wasm.js";
+import { initSync, sq_gathering_trace, WasmSqTrace } from "../web/pkg/lcm_wasm.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 initSync({ module: readFileSync(join(root, "web/pkg/lcm_wasm_bg.wasm")) });
@@ -40,13 +40,13 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
 
   const tracePath = join(scratch, file + ".jsonl");
   const out = spawnSync(native, ["seq", path, "--format", "json", "--trace", tracePath], { encoding: "utf8" });
-  if (out.status !== 0 && out.status !== 3) throw new Error(`${file}: lcm exited ${out.status}\n${out.stderr}`);
+  if (![0, 3, 4].includes(out.status)) throw new Error(`${file}: lcm exited ${out.status}\n${out.stderr}`);
   const nativeReport = JSON.parse(out.stdout.trim().split("\n").pop());
   const nativeTrace = readFileSync(tracePath, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
 
-  const batch = JSON.parse(sq_gathering_run(text, true));
+  const batch = JSON.parse(sq_gathering_trace(text, true));
 
-  const stepper = new WasmSqGathering(text);
+  const stepper = new WasmSqTrace(text);
   const stepped = [];
   for (let r = stepper.step(); r !== "null"; r = stepper.step()) stepped.push(JSON.parse(r));
   const steppedReport = JSON.parse(stepper.report());
@@ -58,7 +58,7 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
     ?? (exitMatches ? null : `exit ${out.status} but status ${nativeReport.status}`);
   if (diff) failures++;
   const label = nativeReport.status === "incomplete" ? "INCOMPLETE (budget-limited)" : nativeReport.status;
-  console.log(`${diff ? "FAIL" : "ok  "} ${file.padEnd(38)} rounds=${String(nativeReport.rounds).padEnd(5)} ${label}${diff ? `\n     ${diff}` : ""}`);
+  console.log(`${diff ? "FAIL" : "ok  "} ${file.padEnd(38)} turns=${String(nativeReport.turns).padEnd(5)} ${label}${diff ? `\n     ${diff}` : ""}`);
 }
 console.log(failures ? `\n${failures} fixture(s) differ` : "\nSqGathering: wasm == native (bit for bit), batch == stepped");
 process.exit(failures ? 1 : 0);

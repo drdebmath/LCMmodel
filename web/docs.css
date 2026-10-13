@@ -177,6 +177,10 @@ svg text { font-family: var(--font); fill: var(--text); }
   .docs-main { grid-template-columns: 220px minmax(0, 1fr) 0; }
   body.has-detail .docs-main { grid-template-columns: 220px minmax(0, 1fr) 360px; }
 }
+/* The side panel's card opens the simulator; this header button only takes over
+ * where that card is hidden (see below). */
+.docs-bar .open-sim { display: none; }
+
 /* "About this chart" only exists on small screens (see below). */
 .about-btn { display: none; }
 
@@ -189,6 +193,7 @@ svg text { font-family: var(--font); fill: var(--text); }
   html, body { height: 100%; overflow: hidden; }
   body.docs { height: 100vh; height: 100dvh; }
   .docs-bar { height: 48px; gap: 4px; }
+  .docs-bar .open-sim { display: inline-flex; }
   .docs-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   body.has-detail .docs-main { grid-template-columns: none; }
 

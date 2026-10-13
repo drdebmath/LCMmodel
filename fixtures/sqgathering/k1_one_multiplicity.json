@@ -1,8 +1,43 @@
 {
   "algorithm": "SqGathering",
-  "positions": [[0, 0], [0, 0], [3, 4], [-6, 0]],
-  "schedule": {"kind": "explicit", "order": [2, 0, {"robot": 3, "stop": 0.5}, 2, 2, {"robot": 3, "stop": 1}], "then": "round-robin"},
-  "movement": {"kind": "non-rigid", "delta": 2, "stop": {"kind": "delta"}},
-  "frames": {"kind": "global"},
-  "max_rounds": 1000
+  "scheduler": "sequential",
+  "turn_gap": "none",
+  "num_of_robots": 4,
+  "initial_positions": [
+    [
+      0,
+      0
+    ],
+    [
+      0,
+      0
+    ],
+    [
+      3,
+      4
+    ],
+    [
+      -6,
+      0
+    ]
+  ],
+  "rigid_movement": false,
+  "delta": 2,
+  "stop_policy": "delta",
+  "schedule": [
+    2,
+    0,
+    {
+      "robot": 3,
+      "stop": 0.5
+    },
+    2,
+    2,
+    {
+      "robot": 3,
+      "stop": 1
+    }
+  ],
+  "schedule_end": "round_robin",
+  "max_turns": 1000
 }

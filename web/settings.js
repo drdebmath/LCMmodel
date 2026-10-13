@@ -68,6 +68,11 @@ export const SETTINGS = [
     hint: "Size of the world box; with the original pattern robots start at random inside it." },
   { key: "height_bound", group: "start", label: "World height", kind: "range", min: 50, max: 1000, step: 10, value: 600,
     showIf: (v) => !v.open_world, more: (v) => v.pattern !== "box" },
+  { key: "multiplicities", group: "start", label: "Stacked points", kind: "range", min: 0, max: 50, step: 1, value: 0, more: true,
+    hint: "Start with this many spots where several robots stand on top of each other (multiplicities), made from the start above. 0: none." },
+  { key: "multiplicity_size", group: "start", label: "Robots per stacked point", kind: "range", min: 0, max: 200, step: 1, value: 0, more: true,
+    showIf: (v) => v.multiplicities > 0,
+    hint: "At least 2. 0 lets the simulator choose: a third of the robots for one stacked point, up to 4 each for several." },
   { key: "custom", group: "start", label: "Positions", kind: "text", local: true,
     value: "# One robot per line: x, y\n-100, -100\n100, -100\n100, 100\n-100, 100",
     showIf: (v) => v.pattern === "custom" },
@@ -75,7 +80,17 @@ export const SETTINGS = [
   { key: "robot_speeds", group: "movement", label: "Speed", kind: "range", min: 0.1, max: 10, step: 0.1, value: 1,
     hint: "Distance a robot covers per unit of simulated time." },
   { key: "rigid_movement", group: "movement", label: "Rigid movement", kind: "switch", value: true,
-    hint: "Rigid: a robot always reaches its target. (In the original, non-rigid robots also reach it.)" },
+    hint: "Rigid: a robot always reaches its target. Off: set a minimum move δ below and robots can be stopped on the way. (Without δ, non-rigid robots still arrive, as in the original.)" },
+  { key: "delta", group: "movement", label: "Minimum move δ", kind: "range", min: 0, max: 500, step: 1, value: 0,
+    showIf: (v) => !v.rigid_movement,
+    hint: "A robot can be stopped on the way to its target, but never before it has covered δ (or reached the target, if that is nearer). 0: robots always arrive, as in the original." },
+  { key: "stop_policy", group: "movement", label: "Where it stops", kind: "select", value: "random",
+    options: [["delta", "Right after δ"], ["random", "Anywhere after δ, at random"], ["fraction", "After a fraction of the way"]],
+    showIf: (v) => !v.rigid_movement && v.delta > 0,
+    hint: "Who decides where a stopped robot ends up: the worst case (just δ), a random point, or a fixed fraction of its way." },
+  { key: "stop_fraction", group: "movement", label: "Fraction of the way", kind: "range", min: 0.05, max: 1, step: 0.05, value: 0.5,
+    showIf: (v) => !v.rigid_movement && v.delta > 0 && v.stop_policy === "fraction",
+    hint: "How far along its way a stopped robot gets (never less than δ)." },
   { key: "unlimited_visibility", group: "visibility", label: "Unlimited visibility", kind: "switch", value: true, local: true,
     hint: "Every robot sees every other robot." },
   { key: "visibility_radius", group: "visibility", label: "Radius", kind: "range", min: 10, max: 1000, step: 10, value: 150,
@@ -86,11 +101,27 @@ export const SETTINGS = [
     enabledBy: (v) => v.num_of_faults > 0,
     options: [["crash", "Crash: stops for good"], ["byzantine", "Byzantine: moves erratically"],
       ["omission", "Omission: skips half its moves"], ["delay", "Delay: 40 % speed"], ["mixed", "Mixed: all four"]] },
+  { key: "scheduler", group: "timing", label: "Scheduler", kind: "select", value: "async",
+    options: [["async", "Async: robots act whenever they wake"], ["sequential", "Sequential: one robot at a time"]],
+    hint: "Async: every robot wakes on its own random clock, so many can be moving at once. Sequential: one robot does its whole Look, Compute and Move while every other robot stays still." },
+  { key: "activation_order", group: "timing", label: "Turn order", kind: "select", value: "round_robin",
+    options: [["round_robin", "Round-robin: 0, 1, 2, …"], ["random", "Random: reshuffled every epoch"]],
+    showIf: (v) => v.scheduler === "sequential",
+    hint: "Who goes next. Each epoch, every robot still moving gets exactly one turn; crashed and terminated robots are skipped. Random uses the seed, so a run repeats." },
+  { key: "turn_gap", group: "timing", label: "Pause between turns", kind: "select", value: "random",
+    options: [["random", "Random (rate λ)"], ["none", "None"]],
+    showIf: (v) => v.scheduler === "sequential",
+    hint: "Simulated time between one robot stopping and the next one looking. None: the next robot looks at once." },
+  { key: "max_turns", group: "timing", label: "Turn limit", kind: "number", min: 0, max: 1000000000, value: 0,
+    showIf: (v) => v.scheduler === "sequential",
+    hint: "Stop after this many turns (one robot's whole Look, Compute and Move each). 0: no limit." },
   { key: "lambda_rate", group: "timing", label: "Activation rate λ", kind: "range", min: 0.1, max: 20, step: 0.1, value: 5,
-    hint: "Robots wake up after exponential delays with this rate (mean 1/λ)." },
+    enabledBy: (v) => v.scheduler !== "sequential" || v.turn_gap === "random",
+    hint: "Async: robots wake up after exponential delays with this rate (mean 1/λ). Sequential: the random pause between turns has this rate." },
   { key: "sampling_rate", group: "timing", label: "Sampling interval", kind: "range", min: 0.05, max: 1, step: 0.05, value: 0.1,
     hint: "Period of the scheduler's Visualize tick (kept for parity with the original)." },
-  { key: "threshold_precision", group: "timing", label: "Precision (10⁻ᵖ)", kind: "range", min: 2, max: 10, step: 1, value: 5,
+  { key: "threshold_precision", group: "timing", label: "Precision (10⁻ᵖ)", kind: "range", min: 2, max: 15, step: 1, value: 5,
+    note: (v) => `ε = ${Math.pow(10, -v.threshold_precision).toFixed(v.threshold_precision)} world units`,
     hint: "ε = 10^-p: moves shorter than ε count as arrived; robots within ε count as gathered." },
 ];
 
@@ -342,6 +373,8 @@ export function readConfig(values, algorithm, customPoints = []) {
   const config = { algorithm };
   for (const s of SETTINGS) if (!s.local) config[s.key] = values[s.key];
   config.visibility_radius = values.unlimited_visibility ? null : values.visibility_radius;
+  config.delta = !values.rigid_movement && values.delta > 0 ? values.delta : null;
+  config.max_turns = values.scheduler === "sequential" && values.max_turns > 0 ? values.max_turns : null;
   config.open_world = values.open_world;
   config.start = null;
   config.initial_positions = null;

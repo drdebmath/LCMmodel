@@ -18,7 +18,10 @@ pub mod start;
 pub use algorithm::{
     Algorithm, Assignment, Decision, Look, Model, OverlayUpdate, Plan, Scratch, TaskColor, View,
 };
-pub use config::{ConfigError, FaultSelection, SimConfig, MAX_ROBOTS};
+pub use config::{
+    Activation, ActivationOrder, ConfigError, FaultSelection, ScheduleEnd, SchedulerKind,
+    SimConfig, StopPolicy, TurnGap, MAX_ROBOTS,
+};
 pub use event::{Event, EventKind, EventQueue};
 pub use frame::{flag_state, Frame, FLAG_FROZEN, FLAG_HAS_TARGET, FLAG_TERMINATED};
 pub use geom::{Circle, Point};

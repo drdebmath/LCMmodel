@@ -120,9 +120,11 @@ const onScreen = (await js(`(() => { const r = lcm.renderer, f = r.frame; let ou
   for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.xy[2*i], f.xy[2*i+1]); if (x < 0 || y < 0 || x > r.width || y > r.height) out++; } return out; })()`));
 check("the view fits the whole cloud", onScreen === 0, `${onScreen} robots off screen`);
 const visibleStart = () => js(`[...document.querySelectorAll('[data-group="start"] .field')].filter((f) => f.offsetParent && !f.closest('.more-body')).map((f) => f.dataset.key)`);
+// "More options" always holds the stacked-points setting, and nothing else for a simple start.
+const moreStart = () => js(`[...document.querySelectorAll('[data-more="start"] .field')].filter((f) => f.offsetParent).map((f) => f.dataset.key)`);
 const cloudFields = await visibleStart();
-check("the cloud start shows only the world switch, pattern and spread", JSON.stringify(cloudFields) === JSON.stringify(["open_world", "pattern", "spread"]) &&
-  await js("document.querySelector('[data-more=\"start\"]').hidden"), cloudFields.join(", "));
+check("the cloud start shows only the world switch, pattern and spread, and More options only the stacked points", JSON.stringify(cloudFields) === JSON.stringify(["open_world", "pattern", "spread"]) &&
+  JSON.stringify(await js(`(() => { const d = document.querySelector('[data-more="start"]'); d.open = true; return [...d.querySelectorAll('.field')].filter((f) => f.offsetParent).map((f) => f.dataset.key); })()`)) === JSON.stringify(["multiplicities"]), cloudFields.join(", "));
 check("no '?' icons; help is on the labels", await js("document.querySelectorAll('#settings .hint').length === 0 && document.querySelectorAll('#settings label.has-hint').length > 5"));
 await shot("8-start-cloud");
 await js("lcm.settings.set('open_world', false)");
@@ -142,7 +144,7 @@ const circleFields = await visibleStart();
 const circleSummary = await js("document.getElementById('start-summary').textContent");
 check("a circle's edge: pattern, arrangement, distribution and diameter, nothing else",
   JSON.stringify(circleFields) === JSON.stringify(["open_world", "pattern", "arrangement", "distribution", "size"]) && await js("lcm.settings.values.distribution === 'even'") &&
-  await js("document.querySelector('[data-key=\"size\"] label').textContent === 'Diameter' && document.querySelector('[data-more=\"start\"]').hidden"),
+  await js("document.querySelector('[data-key=\"size\"] label').textContent === 'Diameter'") && JSON.stringify(await moreStart()) === JSON.stringify(["multiplicities"]),
   circleFields.join(", "));
 check("one sentence says what the start gives", circleSummary === "500 robots evenly spaced on the edge of a circle 400 wide.", circleSummary);
 const arrangements = await js("[...document.querySelectorAll('#set-arrangement option')].map((o) => o.value).join(',')");
@@ -198,6 +200,100 @@ check("the simulator's own CSV export pastes back as a custom start", roundTrip 
   `500 robots, first at (${firstNow.map((v) => v.toFixed(3)).join(", ")})`);
 await js("lcm.settings.reset()");
 await until("lcm.settings.values.pattern === 'cloud' && lcm.renderer.frame.flags.length === 500", 3000);
+
+// Precision shows the tolerance it stands for, and goes up to 15.
+const epsNote = () => js("document.querySelector('[data-key=\"threshold_precision\"] .note').textContent");
+check("precision shows ε in world units", (await epsNote()) === "ε = 0.00001 world units", await epsNote());
+await js("lcm.settings.set('threshold_precision', 15)");
+check("precision goes up to 15 and the note follows", (await epsNote()) === "ε = 0.000000000000001 world units" && (await js("lcm.settings.values.threshold_precision")) === 15, await epsNote());
+await js("lcm.settings.set('threshold_precision', 50)");
+check("precision cannot go past 15", (await js("lcm.settings.values.threshold_precision")) === 15);
+await js("lcm.settings.set('threshold_precision', 5)");
+
+// The sequential scheduler: one robot at a time, turns counted in epochs.
+const shown = (key) => `!document.querySelector('[data-key="${key}"]').hidden`;
+check("async is the default; turn order, pause and epochs only show for sequential",
+  (await js("lcm.settings.values.scheduler")) === "async" && !(await js(shown("activation_order"))) && !(await js(shown("turn_gap"))) &&
+  (await js("document.getElementById('hud_epochs_row').hidden")));
+await js("lcm.settings.set('scheduler', 'sequential'); lcm.settings.set('num_of_robots', 30); lcm.settings.set('robot_speeds', 10)");
+check("sequential shows the turn order and the pause between turns", (await js(shown("activation_order"))) && (await js(shown("turn_gap"))));
+await js("lcm.settings.set('turn_gap', 'none')");
+check("with no pause between turns, λ is greyed out", await js("document.getElementById('set-lambda_rate').disabled"));
+await js("lcm.settings.set('turn_gap', 'random'); lcm.settings.set('activation_order', 'random')");
+check("λ sets the random pause", !(await js("document.getElementById('set-lambda_rate').disabled")));
+await until("lcm.state === 'ready' && lcm.renderer.frame.robots === 30", 3000);
+await js(`window.__seq = { frames: 0, maxMoving: 0 }; window.__seqTimer = setInterval(() => {
+  const f = lcm.renderer.frame; let moving = 0;
+  for (let i = 0; i < f.flags.length; i++) if ((f.flags[i] & 3) === 2) moving++;
+  __seq.frames++; __seq.maxMoving = Math.max(__seq.maxMoving, moving);
+}, 30)`);
+await click("#play");
+await sleep(3000);
+await js("clearInterval(__seqTimer)");
+// Then at Max speed: at normal speed a single move takes seconds.
+const playback = await js("document.getElementById('playback').value");
+const setPlayback = (v) => js(`document.getElementById('playback').value = '${v}'; document.getElementById('playback').dispatchEvent(new Event('change'))`);
+await setPlayback("Infinity");
+const epochsUp = await until("lcm.stats.epochs >= 2", 8000);
+await setPlayback(playback);
+const seq = await js("({ ...__seq, epochs: lcm.stats.epochs, row: !document.getElementById('hud_epochs_row').hidden, text: document.getElementById('hud_epochs').textContent })");
+check("sequential: the epoch counter shows and climbs", epochsUp && seq.row && Number(seq.text) === seq.epochs, JSON.stringify(seq));
+check("sequential: never more than one robot moving at once", seq.frames > 20 && seq.maxMoving <= 1, JSON.stringify(seq));
+const hudNum = (id) => js(`Number(document.getElementById('${id}').textContent.replace(/,/g, ''))`);
+const [robotEvents, ticks, allEvents] = [await hudNum("hud_events"), await hudNum("hud_ticks"), await js("lcm.renderer.frame.events")];
+check("Events are split into robot events and ticks that add up to the total", ticks > 0 && robotEvents > 0 && robotEvents + ticks === allEvents, `${robotEvents} + ${ticks} = ${allEvents}`);
+await shot("12-sequential");
+await click("#reset");
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.scheduler === 'async' && lcm.renderer.frame.flags.length === 500", 3000);
+check("back on async the epoch counter hides", await js("document.getElementById('hud_epochs_row').hidden"));
+
+// Non-rigid movement: the minimum move δ and where a robot is stopped.
+const shownNow = (key) => js(`!document.querySelector('[data-key="${key}"]').hidden`);
+check("δ and where it stops are hidden while movement is rigid", !(await shownNow("delta")) && !(await shownNow("stop_policy")));
+await js("lcm.settings.set('rigid_movement', false)");
+check("non-rigid movement shows δ, but not the stopping rules until δ is set", (await shownNow("delta")) && !(await shownNow("stop_policy")));
+await js("lcm.settings.set('delta', 20)");
+check("with δ set, the stopping policy shows; the fraction waits for its policy", (await shownNow("stop_policy")) && !(await shownNow("stop_fraction")));
+await js("lcm.settings.set('stop_policy', 'fraction')");
+check("the fraction shows for the fraction policy", await shownNow("stop_fraction"));
+await js("lcm.settings.set('stop_policy', 'random'); lcm.settings.set('scheduler', 'sequential'); lcm.settings.set('num_of_robots', 30); lcm.settings.set('robot_speeds', 10)");
+await until("lcm.state === 'ready' && lcm.renderer.frame.robots === 30", 3000);
+await setPlayback("Infinity");
+await click("#play");
+const nonRigidEnds = await until("lcm.state === 'ended'", 20000);
+const nonRigid = await js("({ terminated: lcm.stats.terminated, stop: lcm.stats.stop, status: document.getElementById('hud_status').textContent })");
+check("a sequential run with non-rigid δ-stops still gathers all robots", nonRigidEnds && nonRigid.terminated === 30 && nonRigid.stop === "ended", JSON.stringify(nonRigid));
+await click("#reset");
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.rigid_movement === true && lcm.renderer.frame.flags.length === 500", 3000);
+await setPlayback(playback);
+
+// Starting with robots stacked on a few points, and the turn limit.
+await click("#reset");
+await until("lcm.state === 'ready'", 3000);
+check("the stack size waits until some stacked points are asked for", !(await shownNow("multiplicity_size")) && !(await shownNow("max_turns")));
+await js("lcm.settings.set('num_of_robots', 30); lcm.settings.set('multiplicities', 2); lcm.settings.set('multiplicity_size', 3)");
+check("with stacked points asked for, the stack size shows", await shownNow("multiplicity_size"));
+const stacked = await until(`(() => { const f = lcm.renderer.frame; if (!f || f.flags.length !== 30) return false;
+  const seen = new Set(); for (let i = 0; i < 30; i++) seen.add(f.xy[2*i] + "," + f.xy[2*i+1]); return seen.size === 26; })()`, 4000);
+check("two stacked points of 3 robots leave 26 distinct start points", stacked,
+  JSON.stringify(await js(`(() => { const f = lcm.renderer.frame; const seen = new Set(); for (let i = 0; i < f.flags.length; i++) seen.add(f.xy[2*i] + "," + f.xy[2*i+1]);
+    return { robots: f.flags.length, distinct: seen.size, state: lcm.state, dirty: !document.getElementById("dirty").hidden, values: [lcm.settings.values.multiplicities, lcm.settings.values.multiplicity_size, lcm.settings.values.num_of_robots] }; })()`)));
+await js("lcm.settings.set('multiplicities', 0)");
+check("the stack size hides again at 0", !(await shownNow("multiplicity_size")));
+await js("lcm.settings.set('scheduler', 'sequential'); lcm.settings.set('max_turns', 12); lcm.settings.set('robot_speeds', 10)");
+check("the turn limit shows for the sequential scheduler", await shownNow("max_turns"));
+await until("lcm.state === 'ready' && lcm.renderer.frame.robots === 30", 3000);
+await setPlayback("Infinity");
+await click("#play");
+const limited = await until("lcm.state === 'ended'", 20000);
+const turnLimit = await js("({ stop: lcm.stats.stop, status: document.getElementById('hud_status').textContent })");
+check("a run stops at the turn limit and says so", limited && turnLimit.stop === "max-turns" && /turn limit/.test(turnLimit.status), JSON.stringify(turnLimit));
+await click("#reset");
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.max_turns === 0 && lcm.renderer.frame.flags.length === 500", 3000);
+await setPlayback(playback);
 
 // Play straight after a settings change plays the new settings.
 await click("#reset");

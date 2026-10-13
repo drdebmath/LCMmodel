@@ -11,12 +11,22 @@
 //!    occupied point q′ (a point no other robot occupies), else stays;
 //! 3. κ = 0: moves to the closest point occupied by another robot.
 //!
-//! This module is the pure decision rule. It is *not* the generic
-//! centre-of-gravity `Gathering` of the async simulator; the sequential
-//! scheduler that drives it lives in [`crate::seq`].
+//! [`SqGathering`] is the rule as an [`Algorithm`] of the core: it runs under
+//! the core's sequential scheduler (`scheduler: "sequential"`), which gives
+//! one robot a whole Look-Compute-Move per turn and stops non-rigid moves
+//! after δ. Its registry entry ([`plan`]) refuses the asynchronous scheduler,
+//! limited visibility and faults, which the paper's model does not have. It
+//! is *not* the generic centre-of-gravity `Gathering`.
+//!
+//! Weak multiplicity detection is part of the robots' model here: the robot
+//! turns its snapshot into Q′(t) itself ([`observe`]), keeping one bit per
+//! occupied point. Points closer than ε (`10^-threshold_precision`) are one.
 
 use lcm_core::geom::dist;
-use lcm_core::Point;
+use lcm_core::{
+    Algorithm, ConfigError, Decision as CoreDecision, Look, OverlayUpdate, Plan, Point, Rng,
+    SchedulerKind, Scratch, SimConfig,
+};
 
 /// One element of Q′(t): an occupied point and its multiplicity bit.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,7 +44,7 @@ pub struct Observation {
     pub me: usize,
 }
 
-/// Points closer than this are one location (Q groups co-located robots).
+/// Points closer than this are one location when no ε is given (tests).
 pub const DEFAULT_COINCIDENCE: f64 = 1e-9;
 
 /// Distinct locations of `positions` (first-seen order) and how many robots
@@ -332,6 +342,49 @@ impl LocalFrame {
 #[must_use]
 pub fn decide_in_frame(obs: &Observation, frame: &LocalFrame) -> Decision {
     decide(&frame.localize(obs))
+}
+
+/// Algorithm 8 as an algorithm of the core. Stateless: robots are oblivious.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SqGathering;
+
+impl Algorithm for SqGathering {
+    fn key(&self) -> &'static str {
+        "SqGathering"
+    }
+
+    /// One robot's Compute: Q′(t) from its snapshot, then the rule. The
+    /// robot terminates when it sees a single occupied point: everyone is
+    /// gathered there, and every robot activated from now on would stay.
+    fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision {
+        let obs = observe(&look.view.pos, look.me_index, look.model.eps);
+        let decision = decide(&obs);
+        CoreDecision {
+            target: decision.destination(&obs),
+            terminate: obs.points.len() == 1,
+            overlay: OverlayUpdate::Keep,
+        }
+    }
+}
+
+/// The registry entry's plan builder: SqGathering needs the paper's model.
+///
+/// # Errors
+/// The asynchronous scheduler, limited visibility, or faulty robots.
+pub fn plan(config: &SimConfig) -> Result<Plan, ConfigError> {
+    let refuse = |message: &str| Err(ConfigError::Unsupported(message.to_owned()));
+    if config.scheduler != SchedulerKind::Sequential {
+        return refuse(
+            "SqGathering needs the sequential scheduler (Settings → Scheduler → Sequential):              with more than one robot active at once, gathering is unsolvable even with              multiplicity detection (Lemma 8 of the paper)",
+        );
+    }
+    if config.visibility_radius.is_some() {
+        return refuse("SqGathering assumes unlimited visibility: turn on Unlimited visibility");
+    }
+    if config.num_of_faults > 0 {
+        return refuse("SqGathering assumes no faulty robots: set Faulty robots to 0");
+    }
+    Ok(Plan::single(Box::new(SqGathering)))
 }
 
 #[cfg(test)]

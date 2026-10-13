@@ -1,8 +1,8 @@
 //! `lcm run <config.json>`  — run a configuration to the end and print a summary.
 //! `lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]`
 //!                          — throughput of the core on this machine.
-//! `lcm seq [config.json] [flags]` — a sequential-scheduler algorithm
-//!                          (SqGathering) with its round-by-round trace; see `seq.rs`.
+//! `lcm seq [config.json] [flags]` — SqGathering on the sequential scheduler,
+//!                          turn by turn (see `seq.rs`).
 
 mod seq;
 
@@ -14,13 +14,8 @@ fn main() {
     let result = match args.first().map(String::as_str) {
         Some("run") => run(&args[1..]),
         Some("bench") => bench(&args[1..]),
-        Some("seq") => match seq::run(&args[1..]) {
-            Ok(0) => Ok(()),
-            Ok(code) => std::process::exit(code),
-            Err(e) => Err(e),
-        },
-        _ => Err(format!("usage: lcm run <config.json> | lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]
-       {}", seq::USAGE)),
+        Some("seq") => seq::run(&args[1..]).map(|code| if code != 0 { std::process::exit(code) }),
+        _ => Err("usage: lcm run <config.json> | lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]".to_owned()),
     };
     if let Err(message) = result {
         eprintln!("{message}");
@@ -48,6 +43,8 @@ fn run(args: &[String]) -> Result<(), String> {
         "events": sim.event_count(),
         "time": sim.time(),
         "terminated": sim.robots().terminated.iter().filter(|t| **t).count(),
+        "turns": sim.turn_count(),
+        "epochs": sim.epochs_completed(),
         "robots": sim.robots().len(),
         "wall_seconds": elapsed,
     });

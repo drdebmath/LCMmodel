@@ -36,6 +36,9 @@ pub struct Robots {
     pub pos: Vec<Point>,
     pub start_pos: Vec<Point>,
     pub target: Vec<Option<Point>>,
+    /// Non-rigid movement: where the adversary stops the robot on its way to
+    /// `target`. `None`: it walks all the way to `target`.
+    pub stop: Vec<Option<Point>>,
     pub start_time: Vec<Option<f64>>,
     pub speed: Vec<f64>,
     pub state: Vec<RobotState>,
@@ -57,6 +60,7 @@ impl Robots {
             pos: positions.to_vec(),
             start_pos: positions.to_vec(),
             target: vec![None; n],
+            stop: vec![None; n],
             start_time: vec![None; n],
             speed: vec![speed; n],
             state: vec![RobotState::Wait; n],
@@ -82,11 +86,18 @@ impl Robots {
         self.pos.is_empty()
     }
 
+    /// Where robot `i` is walking to: the point the adversary stopped it at,
+    /// if it was stopped short, otherwise its target.
+    #[must_use]
+    pub fn goal(&self, i: usize) -> Option<Point> {
+        self.stop[i].or(self.target[i])
+    }
+
     /// `Robot.get_position(t)`.
     #[must_use]
     pub fn position_at(&self, i: usize, t: f64, eps: f64) -> Point {
         let (RobotState::Move, Some(start), Some(target)) =
-            (self.state[i], self.start_time[i], self.target[i])
+            (self.state[i], self.start_time[i], self.goal(i))
         else {
             return self.pos[i];
         };

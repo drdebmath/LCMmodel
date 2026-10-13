@@ -1,5 +1,6 @@
-/* SqGathering page: Algorithm 8 under the sequential scheduler, one round at
- * a time. The Rust core (web/pkg, `WasmSqGathering`) plays the rounds; this
+/* SqGathering page: Algorithm 8 under the sequential scheduler, one turn at
+ * a time. The Rust core plays the run on its sequential scheduler
+ * (web/pkg, `WasmSqTrace` over an ordinary simulation); this
  * page only records them for playback and draws them. Presets are the
  * configs in fixtures/sqgathering, the same files `lcm seq` and
  * scripts/check-seq-parity.mjs run. */
@@ -8,17 +9,17 @@ import { icon, renderIcons } from "./icons.js";
 
 const PRESETS = [
   { file: "k0_no_multiplicity.json", label: "κ = 0 · no multiplicity",
-    blurb: "All points single. The active robot moves to its closest occupied point; round 2 creates the first multiplicity, after which κ = 1. Hand trace A." },
+    blurb: "All points single. The active robot moves to its closest occupied point; turn 2 creates the first multiplicity, after which κ = 1. Hand trace A." },
   { file: "k1_one_multiplicity.json", label: "κ = 1 · one multiplicity",
     blurb: "One multiplicity at the origin. Singles walk to it (stopped after δ by the adversary); a robot on it stays. Hand trace B." },
   { file: "kmany_two_multiplicities.json", label: "κ > 1 · two multiplicities",
     blurb: "Two multiplicities. Singles wait; a robot on a multiplicity heads for the midpoint towards its closest point, which breaks the tie. Hand trace C." },
   { file: "nonrigid_collision.json", label: "Non-rigid stop on a robot",
     blurb: "The adversary stops a joining robot exactly on a single robot, creating a second multiplicity (κ = 2) — twice. The algorithm still gathers." },
-  { file: "kmany_three_multiplicities_random.json", label: "κ = 3 · random frames",
-    blurb: "Three multiplicities, nine robots, a shuffled fair schedule, random stopping points and private frames with random rotation, scale and handedness." },
+  { file: "kmany_three_multiplicities_random.json", label: "κ = 3 · 40 robots, random",
+    blurb: "Three stacked points of 4 robots among 40, a fresh random turn order every epoch and random stopping points (δ = 1.5)." },
   { file: "budget_incomplete.json", label: "Budget-limited run",
-    blurb: "Only 25 rounds allowed: the run stops before gathering and is reported as INCOMPLETE, not as a result." },
+    blurb: "Only 25 turns allowed: the run stops before gathering and is reported as INCOMPLETE, not as a result." },
 ];
 
 const ALGO = [
@@ -57,6 +58,7 @@ const TOL = 1e-9;
 let wasm = null;
 let config = null;       // the SeqConfig being played
 let presetSchedule = null;
+let presetConfig = null;   // the preset's own settings, which the form only overrides
 let sim = null;
 let history = [];        // [{positions: [[x,y]…], round: object|null, raw: string|null}]
 let at = 0;              // index into history being shown
@@ -107,7 +109,8 @@ async function loadPreset(file) {
   const res = await fetch(`../fixtures/sqgathering/${file}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`${file}: ${res.status}`);
   const cfg = await res.json();
-  presetSchedule = cfg.schedule;
+  presetSchedule = cfg.schedule ?? null;
+  presetConfig = cfg;
   fillForm(cfg);
   $("preset_blurb").textContent = PRESETS.find((p) => p.file === file)?.blurb ?? "";
   try { window.history.replaceState(null, "", `#${file.replace(/\.json$/, "")}`); } catch {}
@@ -117,12 +120,15 @@ async function loadPreset(file) {
 function start(cfg) {
   pause();
   sim?.free();
-  sim = new wasm.WasmSqGathering(JSON.stringify(cfg));
+  sim = new wasm.WasmSqTrace(JSON.stringify(cfg));
   config = cfg;
-  history = [{ positions: cfg.positions.map((p) => [p[0], p[1]]), round: null, raw: null }];
+  const flat = sim.start_positions();
+  const startPositions = [];
+  for (let i = 0; i < flat.length; i += 2) startPositions.push([flat[i], flat[i + 1]]);
+  history = [{ positions: startPositions, round: null, raw: null }];
   at = 0;
-  const xs = cfg.positions.map((p) => p[0]);
-  const ys = cfg.positions.map((p) => p[1]);
+  const xs = startPositions.map((p) => p[0]);
+  const ys = startPositions.map((p) => p[1]);
   // Every move goes to an occupied point or a midpoint, so robots never leave
   // the convex hull of the start: these bounds hold for the whole run.
   bounds = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
@@ -138,7 +144,7 @@ function forward() {
   if (at < history.length - 1) { at++; render(); return true; }
   if (finished()) return false;
   const raw = sim.step();
-  if (raw === "null") return false;
+  if (raw === "null") { render(); return false; } // the run just stopped: show why
   const round = JSON.parse(raw);
   const positions = history[history.length - 1].positions.map((p) => p.slice());
   positions[round.robot] = round.stop.slice();
@@ -170,7 +176,7 @@ function render() {
   panels();
   $("scrub").max = String(history.length - 1 + (finished() ? 0 : 1));
   $("scrub").value = String(at);
-  $("scrub_label").textContent = `round ${at}${at === history.length - 1 && finished() ? " (end)" : ""}`;
+  $("scrub_label").textContent = `turn ${at}${at === history.length - 1 && finished() ? " (end)" : ""}`;
   $("back").disabled = at === 0;
   $("restart").disabled = at === 0;
   $("step").disabled = at === history.length - 1 && finished();
@@ -214,7 +220,7 @@ function draw() {
   const { positions, round } = history[at];
   if (round) {
     const [px, py] = [sx(round.position[0]), sy(round.position[1])];
-    if (config.movement.kind === "non-rigid") el("circle", { cx: px, cy: py, r: config.movement.delta * scale, class: "delta-ring" }, svg);
+    if (!config.rigid_movement && config.delta) el("circle", { cx: px, cy: py, r: config.delta * scale, class: "delta-ring" }, svg);
     const moved = !same(round.position, round.destination);
     if (moved) {
       el("line", { x1: px, y1: py, x2: sx(round.destination[0]), y2: sy(round.destination[1]), class: "mv-planned", "marker-end": "url(#arrow)" }, svg);
@@ -259,13 +265,15 @@ function panels() {
   const last = at === history.length - 1;
   if (gs.length === 1) {
     status.className = "status gathered";
-    status.textContent = `Gathered at ${pt(gs[0].at)} after ${at} rounds. Every robot now sees κ = 1, b = 1 and stays.`;
-  } else if (last && sim.status() === "incomplete") {
+    status.textContent = last && sim.status() === "gathered"
+      ? JSON.parse(sim.report()).note.replace(/^g/, "G") + "."
+      : `Gathered at ${pt(gs[0].at)} after ${at} turns. Every robot now sees κ = 1, b = 1: each one terminates on its next turn.`;
+  } else if (last && (sim.status() === "incomplete" || sim.status() === "stalled")) {
     status.className = "status incomplete";
     status.textContent = JSON.parse(sim.report()).note;
   } else {
     status.className = "status";
-    status.textContent = `Running · budget ${config.max_rounds} rounds · ${config.movement.kind === "rigid" ? "rigid moves" : `non-rigid, δ = ${fmt(config.movement.delta)}`}`;
+    status.textContent = `Running on the core's sequential scheduler · turn limit ${config.max_turns ?? "none"} · ${config.rigid_movement || !config.delta ? "rigid moves" : `non-rigid, δ = ${fmt(config.delta)}`}`;
   }
 
   $("a_robot").textContent = round ? `r${round.robot}` : "";
@@ -276,7 +284,7 @@ function panels() {
   $("a_from").textContent = round ? pt(round.position) : "—";
   $("a_dest").textContent = round ? pt(round.destination) : "—";
   $("a_stop").textContent = round
-    ? `${pt(round.stop)} · ${same(round.position, round.destination) ? "stays" : round.reached ? "reached" : `stopped after ${fmt(round.travelled)}`}`
+    ? `${pt(round.stop)} · ${round.terminated ? "terminates" : same(round.position, round.destination) ? "stays" : round.reached ? "reached" : `stopped after ${fmt(Math.hypot(round.stop[0] - round.position[0], round.stop[1] - round.position[1]))}`}`
     : "—";
   const path = round ? PATHS[round.rule] : null;
   $("a_rule").innerHTML = round
@@ -309,7 +317,7 @@ function appendTraceRow(i) {
   const r = history[i].round;
   const tr = document.createElement("tr");
   tr.dataset.i = String(i);
-  tr.innerHTML = `<td>${r.round}</td><td>${r.epoch}</td><td>r${r.robot}</td><td>${r.kappa}</td><td>${r.on_multiplicity ? 1 : 0}</td>`
+  tr.innerHTML = `<td>${r.turn}</td><td>${r.epoch}</td><td>r${r.robot}</td><td>${r.kappa}</td><td>${r.on_multiplicity ? 1 : 0}</td>`
     + `<td class="rule">${r.rule}</td><td>${r.lines}</td><td>${pt(r.position)}</td><td>${pt(r.destination)}</td><td>${pt(r.stop)}${r.reached ? "" : " ⏸"}</td>`;
   tr.addEventListener("click", () => { pause(); at = i; render(); });
   $("trace").appendChild(tr);
@@ -317,15 +325,16 @@ function appendTraceRow(i) {
 
 // ---------------------------------------------------------------- settings
 function fillForm(cfg) {
-  $("f_positions").value = cfg.positions.map((p) => `${p[0]},${p[1]}`).join("; ");
-  $("f_schedule").value = "preset";
-  $("f_movement").value = cfg.movement.kind;
-  $("f_delta").value = String(cfg.movement.delta ?? 1);
-  const stop = cfg.movement.stop?.kind ?? "delta";
-  $("f_stop").value = stop === "fraction" ? "half" : stop;
-  $("f_frames").value = cfg.frames?.kind ?? "global";
-  $("f_budget").value = String(cfg.max_rounds ?? 10000);
-  $("f_seed").value = String(cfg.schedule.seed ?? cfg.frames?.seed ?? 1);
+  const given = cfg.initial_positions ?? null;
+  $("f_positions").value = given ? given.map((p) => `${p[0]},${p[1]}`).join("; ") : "";
+  $("f_positions").placeholder = given ? "" : `${cfg.num_of_robots} robots from the seed (leave empty to keep them)`;
+  $("f_schedule").value = cfg.schedule ? "preset" : cfg.activation_order === "random" ? "random" : "round-robin";
+  $("f_movement").value = cfg.rigid_movement === false && cfg.delta ? "non-rigid" : "rigid";
+  $("f_delta").value = String(cfg.delta ?? 1);
+  $("f_stop").value = cfg.stop_policy === "fraction" ? "half" : cfg.stop_policy ?? "random";
+  $("f_multiplicities").value = String(cfg.multiplicities ?? 0);
+  $("f_budget").value = String(cfg.max_turns ?? 10000);
+  $("f_seed").value = String(cfg.random_seed ?? 12345);
   syncForm();
 }
 
@@ -341,13 +350,26 @@ function readForm() {
     if (xy.length !== 2 || !xy.every(Number.isFinite)) throw new Error(`"${s}" is not x,y`);
     return xy;
   });
-  const seed = Math.max(0, Math.floor(Number($("f_seed").value) || 0));
-  const schedule = { preset: presetSchedule, "round-robin": { kind: "round-robin" }, shuffled: { kind: "shuffled", seed } }[$("f_schedule").value];
-  const stopKind = $("f_stop").value;
-  const stop = stopKind === "random" ? { kind: "random", seed } : stopKind === "half" ? { kind: "fraction", value: 0.5 } : { kind: "delta" };
-  const movement = $("f_movement").value === "rigid" ? { kind: "rigid" } : { kind: "non-rigid", delta: Number($("f_delta").value), stop };
-  const frames = $("f_frames").value === "random" ? { kind: "random", seed } : { kind: "global" };
-  return { algorithm: "SqGathering", positions, schedule, movement, frames, max_rounds: Math.max(0, Math.floor(Number($("f_budget").value) || 0)) };
+  // An ordinary core SimConfig on the sequential scheduler (what `lcm seq` reads).
+  const cfg = { ...presetConfig, algorithm: "SqGathering", scheduler: "sequential" };
+  if (positions.length) { cfg.initial_positions = positions; cfg.num_of_robots = positions.length; }
+  cfg.random_seed = Math.max(0, Math.floor(Number($("f_seed").value) || 0));
+  const order = $("f_schedule").value;
+  cfg.schedule = order === "preset" ? presetSchedule : null;
+  if (order !== "preset") cfg.activation_order = order === "random" ? "random" : "round_robin";
+  const rigid = $("f_movement").value === "rigid";
+  cfg.rigid_movement = rigid;
+  cfg.delta = rigid ? null : Number($("f_delta").value);
+  const stop = $("f_stop").value;
+  cfg.stop_policy = stop === "half" ? "fraction" : stop;
+  cfg.stop_fraction = 0.5;
+  // A named stopping point needs non-rigid moves: keep only the robots.
+  if (rigid && cfg.schedule) cfg.schedule = cfg.schedule.map((a) => (typeof a === "number" ? a : a.robot));
+  cfg.multiplicities = Math.max(0, Math.floor(Number($("f_multiplicities").value) || 0));
+  if (!cfg.multiplicities) cfg.multiplicity_size = 0;
+  const turns = Math.floor(Number($("f_budget").value) || 0);
+  cfg.max_turns = turns > 0 ? turns : null;
+  return cfg;
 }
 
 function apply() {

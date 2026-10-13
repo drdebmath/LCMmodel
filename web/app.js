@@ -37,112 +37,7 @@ window.lcm = { renderer, client, settings, parseCoordinates, stats: {}, ready: n
   get state() { return state; } };
 
 /* ------------------------------------------------------------ run control */
-function config() {
-  const c = readConfig(settings.values, $("algorithm").value, settings.customPoints);
-  if (isSequential(c.algorithm)) c.sequential = { ...seqOptions };
-  return c;
-}
-
-/* --------------------------------------------------------- algorithm menu
- * "Asynchronous" algorithms run on the event-driven core; "Sequential ›"
- * opens a flyout with the algorithms that run one robot per round
- * (WasmSeqSimulation) and their options. The hidden #algorithm select holds
- * the choice, so everything else reads and listens to it as before. */
-const SEQ_STORE = "lcm-seq-options";
-const seqOptions = { schedule: "shuffled", stop: "random", frames: "random", multiplicities: 0, multiplicity_size: 0 };
-const SEQ_NUMBERS = new Set(["multiplicities", "multiplicity_size"]);
-try { Object.assign(seqOptions, JSON.parse(localStorage.getItem(SEQ_STORE) || "{}")); } catch {}
-let runSequential = false; // the running simulation is a sequential one
-
-function isSequential(key) { return algorithms.find((a) => a.key === key)?.group === "sequential"; }
-
-function menuItem(a) {
-  const detail = a.detail ? `<span class="menu-detail">${a.detail}</span>` : "";
-  return `<button class="menu-item" type="button" role="menuitemradio" aria-checked="false" data-key="${a.key}">`
-    + `<span class="menu-text"><span class="menu-name">${a.name}</span>${detail}</span></button>`;
-}
-
-function buildAlgoMenu(list) {
-  $("algorithm").innerHTML = list.map((a) => `<option value="${a.key}">${a.name}</option>`).join("");
-  $("algo_async").innerHTML = list.filter((a) => a.group !== "sequential").map(menuItem).join("");
-  $("algo_seq").innerHTML = list.filter((a) => a.group === "sequential").map(menuItem).join("");
-  for (const b of document.querySelectorAll("#algo_menu [data-key]")) b.addEventListener("click", () => pickAlgorithm(b.dataset.key));
-  for (const el of document.querySelectorAll("[data-seq]")) {
-    const v = seqOptions[el.dataset.seq];
-    el.value = el.dataset.seq === "multiplicity_size" && !v ? "" : String(v);
-  }
-  syncAlgoMenu();
-}
-
-function syncAlgoMenu() {
-  const key = $("algorithm").value;
-  const a = algorithms.find((x) => x.key === key);
-  $("algo_label").textContent = a ? (a.group === "sequential" ? `Sequential › ${a.name}` : a.name) : "Algorithm";
-  for (const b of document.querySelectorAll("#algo_menu [data-key]")) b.setAttribute("aria-checked", String(b.dataset.key === key));
-  $("algo_seq_toggle").classList.toggle("current", isSequential(key));
-  // Movement and δ mirror the Rigid movement and Speed settings.
-  const rigid = settings.values.rigid_movement;
-  $("seq_movement").value = rigid ? "rigid" : "non-rigid";
-  if (document.activeElement !== $("seq_delta")) $("seq_delta").value = String(settings.values.robot_speeds);
-  $("seq_delta").disabled = rigid;
-  const stop = document.querySelector('[data-seq="stop"]');
-  stop.disabled = rigid;
-  stop.title = rigid ? "Choose Non-rigid movement to let the adversary stop robots" : "";
-}
-
-function openAlgoMenu(open) {
-  $("algo_menu").hidden = !open;
-  $("algo_button").setAttribute("aria-expanded", String(open));
-  if (open) { syncAlgoMenu(); openSeqMenu(isSequential($("algorithm").value)); }
-}
-function openSeqMenu(open) {
-  $("algo_sub").hidden = !open;
-  $("algo_seq_toggle").setAttribute("aria-expanded", String(open));
-}
-
-/** A choice made in the menu applies at once: it starts a new run, even
- * while one is playing (other settings wait for Reset once a run started). */
-function pickAlgorithm(key) {
-  openAlgoMenu(false);
-  if ($("algorithm").value === key && state === "ready") return;
-  $("algorithm").value = key;
-  syncAlgoMenu();
-  if (newRun()) {
-    const a = algorithms.find((x) => x.key === key);
-    toast(a?.group === "sequential"
-      ? `${a.name} selected · one robot per round${seqOptions.multiplicities ? ` · starts with κ = ${seqOptions.multiplicities} (rings mark multiplicities)` : ""} · press Play`
-      : `${a?.name ?? key} selected`);
-  }
-}
-function applySequentialChange() {
-  syncAlgoMenu();
-  if (isSequential($("algorithm").value)) newRun();
-}
-
-$("algo_picker").addEventListener("click", (e) => e.stopPropagation());
-$("algo_button").addEventListener("click", () => openAlgoMenu($("algo_menu").hidden));
-$("algo_seq_toggle").addEventListener("click", () => openSeqMenu($("algo_sub").hidden));
-// With a mouse, pointing at "Sequential" opens its flyout (it stays open until the menu closes).
-if (matchMedia("(hover: hover)").matches && innerWidth > 760) {
-  $("algo_seq_toggle").addEventListener("mouseenter", () => openSeqMenu(true));
-}
-for (const sel of document.querySelectorAll("[data-seq]")) {
-  sel.addEventListener("change", () => {
-    seqOptions[sel.dataset.seq] = SEQ_NUMBERS.has(sel.dataset.seq) ? Math.max(0, Math.floor(Number(sel.value) || 0)) : sel.value;
-    try { localStorage.setItem(SEQ_STORE, JSON.stringify(seqOptions)); } catch {}
-    applySequentialChange();
-  });
-}
-$("seq_movement").addEventListener("change", () => {
-  settings.set("rigid_movement", $("seq_movement").value === "rigid", false);
-  applySequentialChange();
-});
-$("seq_delta").addEventListener("change", () => {
-  const v = Number($("seq_delta").value);
-  if (Number.isFinite(v) && v > 0) settings.set("robot_speeds", v, false);
-  applySequentialChange();
-});
-document.addEventListener("click", () => openAlgoMenu(false));
+function config() { return readConfig(settings.values, $("algorithm").value, settings.customPoints); }
 
 let fitPending = false; // fit the view to the new run's first frame
 
@@ -161,15 +56,13 @@ function newRun({ quiet = false } = {}) {
   fitPending = true;
   inspector.leave(); // the robot under the pointer belonged to the old run
   renderer.options.visibility = c.visibility_radius;
+  renderer.options.multiplicities = Boolean(algorithms.find((a) => a.key === c.algorithm)?.multiplicities);
   inspector.select(-1);
   $("hud_last").hidden = true;
   dirty = false;
   $("dirty").hidden = true;
   client.stop();
   client.speed(Number($("playback").value));
-  runSequential = isSequential(c.algorithm);
-  $("hud_time_label").textContent = runSequential ? "Round" : "Time";
-  $("hud_term_label").textContent = runSequential ? "Gathered" : "Terminated";
   client.start(c);
   setState("ready");
   return true;
@@ -202,7 +95,6 @@ function fitToStart(f) {
 
 function onSettingChange() {
   if (state === "loading") return;
-  syncAlgoMenu();
   if (state === "ready") {
     clearTimeout(restartTimer);
     restartTimer = setTimeout(() => newRun({ quiet: true }), 120); // debounce slider drags and typing
@@ -224,7 +116,6 @@ function setState(next) {
   $("step_time").disabled = !canRun;
   $("reset").disabled = next === "loading";
   $("algorithm").disabled = next === "loading";
-  $("algo_button").disabled = next === "loading";
   updateHud(true);
 }
 
@@ -244,7 +135,7 @@ function step(unit) {
 
 client.on("ready", (list) => {
   algorithms = list;
-  buildAlgoMenu(list);
+  $("algorithm").innerHTML = list.map((a) => `<option value="${a.key}">${a.name}</option>`).join("");
   $("loading_text").textContent = "Building the swarm…";
   newRun();
 });
@@ -293,9 +184,9 @@ function updateHud(force = false) {
   if (now - fpsAt >= 1000) { fps = (draws * 1000) / (now - fpsAt); draws = 0; fpsAt = now; }
   const statusText = {
     loading: "Loading…", ready: "Ready", running: "Running", paused: "Paused",
-    ended: frame?.ended ? (runSequential ? "Ended · gathered" : "Ended · all terminated")
-      : runSequential && frame?.stop === "max-events" ? "Incomplete · round budget hit"
-      : runSequential && frame?.stop === "stalled" ? "Stalled · floating-point limit" : `Stopped (${frame?.stop})`,
+    ended: frame?.ended ? "Ended · all terminated"
+      : frame?.stop === "stalled" ? "Stalled · nothing can move any more"
+      : frame?.stop === "max-turns" ? "Stopped · turn limit reached" : `Stopped (${frame?.stop})`,
   }[state];
   $("hud_status").textContent = statusText;
   $("hud_status").className = `hud-status${state === "ended" ? " ended" : ""}`;
@@ -305,18 +196,21 @@ function updateHud(force = false) {
     if (dt > 0) rate = 0.6 * rate + 0.4 * ((frame.events - rateFrom.events) / dt);
   } else if (state !== "running") rate = 0;
   rateFrom = { wall: now, events: frame.events };
-  $("hud_time").textContent = runSequential ? frame.time.toLocaleString() : frame.time.toFixed(2);
+  $("hud_time").textContent = frame.time.toFixed(2);
   $("hud_term").textContent = `${frame.terminated.toLocaleString()} / ${frame.robots.toLocaleString()}`;
   $("hud_bar").style.width = `${(100 * frame.terminated) / Math.max(1, frame.robots)}%`;
-  $("hud_events").textContent = frame.events.toLocaleString();
+  $("hud_epochs_row").hidden = frame.epochs == null;
+  if (frame.epochs != null) $("hud_epochs").textContent = frame.epochs.toLocaleString();
+  $("hud_events").textContent = (frame.events - frame.ticks).toLocaleString();
+  $("hud_ticks").textContent = frame.ticks.toLocaleString();
   $("hud_rate").textContent = state === "running" ? Math.round(rate).toLocaleString() : "—";
   const lod = frame.robots > LOD.outlines ? " · simplified drawing" : "";
   $("hud_perf").textContent = state === "running"
     ? `Draw ${renderer.lastDrawMs.toFixed(1)} ms · ${Math.round(fps)} fps · worker ${Math.round(frame.busy * 100)} %${lod}`
     : `Draw ${renderer.lastDrawMs.toFixed(1)} ms${lod}`;
   window.lcm.stats = {
-    time: frame.time, events: frame.events, eventsPerSecond: Math.round(rate), robots: frame.robots,
-    terminated: frame.terminated, fps: Math.round(fps), drawMs: renderer.lastDrawMs, busy: frame.busy, stop: frame.stop, state,
+    time: frame.time, events: frame.events, ticks: frame.ticks, eventsPerSecond: Math.round(rate), robots: frame.robots,
+    terminated: frame.terminated, epochs: frame.epochs, fps: Math.round(fps), drawMs: renderer.lastDrawMs, busy: frame.busy, stop: frame.stop, state,
   };
 }
 setInterval(() => { if (state === "running") updateHud(); }, 250);
@@ -342,7 +236,19 @@ $("play").addEventListener("click", play);
 $("step_event").addEventListener("click", () => step("event"));
 $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
-$("algorithm").addEventListener("change", onSettingChange);
+$("algorithm").addEventListener("change", () => {
+  // An algorithm that only works under the sequential scheduler (SqGathering)
+  // switches it on, rather than failing with the async default.
+  const a = algorithms.find((x) => x.key === $("algorithm").value);
+  if (a?.sequential_only && settings.values.scheduler !== "sequential") {
+    settings.set("scheduler", "sequential", false);
+    toast(`${a.name} runs one robot at a time: Scheduler set to Sequential`);
+  }
+  // A new algorithm is a new experiment: start it now, even mid-run.
+  if (state === "loading") return;
+  if (state === "ready") onSettingChange();
+  else newRun();
+});
 $("playback").addEventListener("change", (e) => client.speed(Number(e.target.value)));
 $("defaults").addEventListener("click", () => settings.reset());
 $("toggle_settings").addEventListener("click", toggleSettings);
@@ -512,7 +418,6 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (!$("shortcuts").hidden) openShortcuts(false);
     else if (!$("export_menu").hidden) $("export_menu").hidden = true;
-    else if (!$("algo_menu").hidden) { openAlgoMenu(false); $("algo_button").focus(); }
     else inspector.select(-1);
     return;
   }
