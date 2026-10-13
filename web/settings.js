@@ -335,6 +335,8 @@ export function buildSettings(root, onChange) {
     /** Errors that stop a run from being built (custom coordinates only). */
     get problem() { return values.pattern === "custom" && customResult.errors.length ? customResult.errors : null; },
     get customPoints() { return customResult.points; },
+    /** Sets several settings at once (in the order given) and restarts the run once. */
+    apply(entries) { for (const [key, value] of Object.entries(entries)) set(key, value, false); onChange(null, values); },
     reset() { for (const s of SETTINGS) values[s.key] = s.value; refresh(); for (const s of SETTINGS) show(s.key); refresh(); onChange(null, values); },
   };
 }

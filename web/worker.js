@@ -67,6 +67,35 @@ const channel = new MessageChannel();
 channel.port1.onmessage = ({ data }) => slice(data);
 const yieldThenSlice = () => channel.port2.postMessage(generation);
 
+// Swarm size over the robots' moves (Looks and arrivals, not the clock ticks), sampled here as the
+// simulation advances (not once per drawn frame), so a run that ends between two frames still has
+// a curve. Time would squeeze the convergence against the right edge: the first long walks take
+// most of the time. At most ~300 points: when full, every other point is dropped.
+const TRACE_MAX = 300;
+let trace = [];       // robot events, size, robot events, size, ...
+let traceGap = 0;
+let traceNext = 0;
+let traceCostMs = 0;  // wall time spent sampling, kept under ~10% of the run so a big swarm pays little
+let traceStartMs = 0;
+function tracePoint(force = false) {
+  const t = sim.event_count() - sim.tick_count();
+  if (!force && t < traceNext) return;
+  const began = performance.now();
+  if (!force && traceCostMs > 0.1 * (began - traceStartMs)) return;
+  const size = sim.swarm_size();
+  traceCostMs += performance.now() - began;
+  const n = trace.length;
+  if (n && trace[n - 2] === t) trace[n - 1] = size; else trace.push(t, size);
+  traceNext = t + traceGap;
+  if (trace.length > 2 * TRACE_MAX) {
+    const kept = [];
+    for (let k = 0; k < trace.length - 2; k += 4) kept.push(trace[k], trace[k + 1]);
+    kept.push(trace[trace.length - 2], trace[trace.length - 1]);
+    trace = kept;
+    traceGap = Math.max(traceGap * 2, t / TRACE_MAX);
+  }
+}
+
 function reanchor() { anchor = { wall: performance.now(), sim: sim ? sim.time() : 0 }; }
 
 function slice(gen) {
@@ -76,7 +105,10 @@ function slice(gen) {
   let caughtUp = false;
   while (performance.now() - start < SLICE_MS) {
     const t0 = performance.now();
-    const code = sim.advance(batch, due);
+    // A call never covers more than ~1% of what has run so far, so the swarm-size curve gets
+    // enough points however fast the run goes (the cost is a few hundred extra calls per run).
+    const code = sim.advance(Math.min(batch, Math.max(64, Math.floor(sim.event_count() / 100))), due);
+    tracePoint();
     const took = performance.now() - t0;
     if (code === 1) { caughtUp = true; break; }          // reached the time the clock allows
     if (code !== 0) { stop = STOP[code]; playing = false; break; }
@@ -86,7 +118,7 @@ function slice(gen) {
   busyMs += performance.now() - start;
   // Falling more than a quarter second behind: drop the backlog rather than burst to catch up.
   if (!caughtUp && speed !== Infinity && due - sim.time() > speed * 0.25) reanchor();
-  if (!playing) postFrame();       // tell the page it ended without waiting to be asked
+  if (!playing) { tracePoint(true); postFrame(); }  // tell the page it ended without waiting to be asked
   else if (caughtUp) setTimeout(slice, IDLE_MS, gen);
   else yieldThenSlice();
 }
@@ -114,6 +146,7 @@ function postFrame(extra = {}) {
     robots: n,
     terminated: sim.terminated_count(),
     epochs: sim.sequential?.() ? sim.epochs_completed() : null,
+    trace: Float64Array.from(trace),
     ended: sim.ended(),
     stop,
     playing,
@@ -141,6 +174,7 @@ function step(unit, amount) {
     if (code >= 2) stop = STOP[code];
   }
   if (sim.ended()) stop = "ended";
+  tracePoint(true);
   postFrame({ lastEvent });
 }
 
@@ -158,6 +192,8 @@ self.onmessage = async ({ data }) => {
         playing = false;
         stop = "running";
         batch = 64;
+        trace = []; traceGap = 0; traceNext = 0; traceCostMs = 0; traceStartMs = performance.now();
+        tracePoint(true);
         busyMs = 0;
         sinceMs = 0;
         postFrame();

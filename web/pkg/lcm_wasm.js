@@ -219,6 +219,15 @@ export class WasmSimulation {
         return v1;
     }
     /**
+     * How far the farthest robot that has not crashed is from the centre of those robots
+     * right now: a measure of how spread out the swarm is, for the page's convergence plot.
+     * @returns {number}
+     */
+    swarm_size() {
+        const ret = wasm.wasmsimulation_swarm_size(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * `[tx0, ty0, …]`, NaN where a robot has no target.
      * @returns {Float32Array}
      */

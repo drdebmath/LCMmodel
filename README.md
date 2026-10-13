@@ -4,7 +4,7 @@ A simulator for Look-Compute-Move robots in the Asynchronous System
 
 ## Rust + WebAssembly version (branch `rust-core`)
 
-The simulator core has been ported to Rust and runs in the browser as WebAssembly, in a background worker, with **no Python or Pyodide**. The math is unchanged. The Rust core runs its own simulations from the settings (it does not need Python or any recorded data); to prove it matches, its tests run the same settings and seeds as recorded Python runs and compare the two event by event. So far the core and three algorithms (Gathering, Smallest Enclosing Circle, and Uniform Circle Formation) are ported; the other algorithms follow.
+The simulator core has been ported to Rust and runs in the browser as WebAssembly, in a background worker, with **no Python or Pyodide**. The math is unchanged. The Rust core runs its own simulations from the settings (it does not need Python or any recorded data); to prove it matches, its tests run the same settings and seeds as recorded Python runs and compare the two event by event. So far the core and four algorithms (Gathering, Smallest Enclosing Circle, Uniform Circle Formation and Go-To-Center) are ported; the other algorithms follow.
 
 **Try it** (no install, runs entirely in your browser, CPU only):
 
@@ -22,6 +22,13 @@ The simulator core has been ported to Rust and runs in the browser as WebAssembl
 - **Stacked starts:** under Start → More options, *Stacked points* makes the run begin with that many spots where several robots stand on top of each other (multiplicities), for algorithms that must cope with robots sharing a point.
 
 **What's where:** [`report.md`](report.md) is the full report (method, results, every test). [`docs/core-schema.md`](docs/core-schema.md) is the core's contract. The code is in `crates/` (Rust) and `web/` (browser page; `index.html` at the root opens it, the original page is in `old/`).
+
+**From the command line:** `cargo build --release -p lcm-cli`, then `./target/release/lcm run config.json` runs a configuration (the same settings as the page, see [`docs/core-schema.md`](docs/core-schema.md)) and prints a one-line JSON summary. Add `--trace trace.jsonl` (or `trace.csv`) to also write what every robot event did: the robot, the event, its position and target, the circle its algorithm computed, and at each Look which robots it could see. `--ticks` adds the clock ticks. For example, Go-To-Center on a chain of three robots with limited sight, one at a time:
+
+```json
+{"algorithm": "GoToCenter", "num_of_robots": 3, "initial_positions": [[-80, 10], [0, 0], [95, -5]],
+ "visibility_radius": 100, "scheduler": "sequential", "turn_gap": "none", "robot_speeds": 20}
+```
 
 **Verify it yourself** (Rust, Node ≥ 22, Chrome; Python with numpy for the Python comparisons):
 

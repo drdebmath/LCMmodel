@@ -71,6 +71,7 @@ version = "0.1.0"
 dependencies = [
  "lcm-algorithms",
  "lcm-core",
+ "serde",
  "serde_json",
 ]
 

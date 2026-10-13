@@ -47,6 +47,19 @@ for (const [name, w, h, dpr, touch] of SIZES) {
   const l = await layout();
   check(`simulator, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !l.sideways && !l.overlaps.length && !l.offscreen.length, JSON.stringify(l));
   await shot(`sim-${name}`);
+  // Go-To-Center adds an examples menu to the toolbar, which can wrap it onto another row.
+  await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'GoToCenter'; s.dispatchEvent(new Event('change')); })()`);
+  await sleep(500);
+  const g = await layout();
+  check(`simulator with Go-To-Center and its examples menu, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !g.sideways && !g.overlaps.length && !g.offscreen.length, JSON.stringify(g));
+  await shot(`sim-${name}-gtc`);
+  // The opened menu must stay on screen and not run past either edge.
+  await js("document.getElementById('examples').click()");
+  await sleep(200);
+  const m = await js(`(() => { const r = document.getElementById('examples_menu').getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom), w: innerWidth, h: innerHeight }; })()`);
+  check(`examples menu open, ${name}: fully on screen`, m.l >= 0 && m.r <= m.w && m.t >= 0 && m.b <= m.h, JSON.stringify(m));
+  await shot(`sim-${name}-examples-menu`);
+  await js("document.getElementById('examples').click()");
 }
 
 // Phone specifics.
