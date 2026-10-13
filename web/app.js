@@ -140,31 +140,86 @@ const TWO_GROUPS = "-170, -10\n-150, 15\n-135, -20\n-160, 30\n150, -25\n165, 10\
 const GTC_SEQUENTIAL = { scheduler: "sequential", turn_gap: "none", rigid_movement: true, robot_speeds: 25 };
 const EXAMPLES = {
   GoToCenter: [
-    { label: "Three robots in a chain, limited sight", links: true,
+    { label: "Three robots in a chain", note: "Limited sight: each robot sees only its neighbour", links: true,
       set: { open_world: true, pattern: "custom", custom: CHAIN, unlimited_visibility: false, visibility_radius: 100, ...GTC_SEQUENTIAL } },
-    { label: "The same chain, unlimited sight", links: false,
-      set: { open_world: true, pattern: "custom", custom: CHAIN, unlimited_visibility: true, ...GTC_SEQUENTIAL } },
-    { label: "A swarm of 40, limited sight", links: true,
+    { label: "A swarm of 40", note: "Limited sight (110), links drawn", links: true,
       set: { open_world: true, pattern: "cloud", num_of_robots: 40, spread: 70, unlimited_visibility: false, visibility_radius: 110, ...GTC_SEQUENTIAL } },
-    { label: "Two groups out of sight of each other", links: true,
+    { label: "Two groups", note: "Out of sight of each other", links: true,
       set: { open_world: true, pattern: "custom", custom: TWO_GROUPS, unlimited_visibility: false, visibility_radius: 100, ...GTC_SEQUENTIAL } },
   ],
 };
+// Choosing an example overwrites several settings. "None" puts back what they were before the first
+// example was chosen (`before`), so trying examples never loses the setup the user had.
+let activeExample = -1;
+let before = null; // { values, links }
+function setLinks(on) {
+  renderer.options.links = on;
+  $("links").setAttribute("aria-pressed", String(on));
+}
+function renderExamplesMenu() {
+  const list = EXAMPLES[$("algorithm").value] ?? [];
+  const items = [{ label: "None", note: "Your own settings" }, ...list];
+  $("examples_menu").innerHTML = items.map((e, k) => {
+    const on = k - 1 === activeExample;
+    return `<button class="btn menu-item" role="menuitemradio" aria-checked="${on}" data-example="${k - 1}">`
+      + `<span class="tick" data-icon="check" data-size="16"></span>`
+      + `<span class="text"><span class="title">${e.label}</span><span class="note">${e.note}</span></span></button>`;
+  }).join("");
+  renderIcons($("examples_menu"));
+  $("examples").setAttribute("aria-pressed", String(activeExample >= 0));
+}
 function updateExamples() {
   const list = EXAMPLES[$("algorithm").value];
-  const select = $("examples");
-  select.hidden = !list;
-  $("toolbar").classList.toggle("has-examples", Boolean(list));
-  if (list) select.innerHTML = `<option value="">Examples…</option>` + list.map((e, i) => `<option value="${i}">${e.label}</option>`).join("");
+  activeExample = -1; // another algorithm: the old choice no longer means anything
+  before = null;
+  openExamples(false);
+  $("examples").hidden = !list;
+  if (list) renderExamplesMenu();
   updateInsets(); // the toolbar may have wrapped onto another row
 }
-$("examples").addEventListener("change", (e) => {
-  const example = EXAMPLES[$("algorithm").value]?.[Number(e.target.value)];
-  e.target.value = "";
-  if (!example) return;
-  renderer.options.links = example.links;
-  $("links").setAttribute("aria-pressed", String(example.links));
-  settings.apply(example.set);
+function openExamples(open) {
+  const menu = $("examples_menu"), button = $("examples");
+  menu.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+  if (!open) return;
+  const r = button.getBoundingClientRect();
+  menu.style.top = `${Math.round(r.bottom + 6)}px`;
+  menu.style.left = `${Math.max(8, Math.min(Math.round(r.left), innerWidth - menu.offsetWidth - 8))}px`;
+  (menu.querySelector("[aria-checked=true]") ?? menu.querySelector("[role=menuitemradio]"))?.focus();
+}
+function chooseExample(index) {
+  const list = EXAMPLES[$("algorithm").value] ?? [];
+  if (index < 0) {
+    if (before) { setLinks(before.links); settings.apply(before.values); }
+    before = null;
+  } else if (list[index]) {
+    const example = list[index];
+    before ??= {
+      links: renderer.options.links,
+      values: Object.fromEntries([...new Set(list.flatMap((e) => Object.keys(e.set)))].map((key) => [key, settings.values[key]])),
+    };
+    setLinks(example.links);
+    settings.apply(example.set);
+  } else return;
+  activeExample = index;
+  renderExamplesMenu();
+}
+$("examples").addEventListener("click", (e) => { e.stopPropagation(); openExamples($("examples_menu").hidden); });
+$("examples_menu").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const item = e.target.closest("[data-example]");
+  if (!item) return;
+  chooseExample(Number(item.dataset.example));
+  openExamples(false);
+  $("examples").focus();
+});
+$("examples_menu").addEventListener("keydown", (e) => {
+  const items = [...$("examples_menu").querySelectorAll("[role=menuitemradio]")];
+  const at = items.indexOf(document.activeElement);
+  const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1 }[e.key];
+  if (to === undefined) return;
+  e.preventDefault();
+  items[(to + items.length) % items.length].focus();
 });
 
 client.on("ready", (list) => {
@@ -372,8 +427,8 @@ function toggleLights() {
   renderer.requestDraw();
 }
 
-$("export").addEventListener("click", (e) => { e.stopPropagation(); $("export_menu").hidden = !$("export_menu").hidden; });
-document.addEventListener("click", () => { $("export_menu").hidden = true; });
+$("export").addEventListener("click", (e) => { e.stopPropagation(); openExamples(false); $("export_menu").hidden = !$("export_menu").hidden; });
+document.addEventListener("click", () => { $("export_menu").hidden = true; openExamples(false); });
 for (const b of document.querySelectorAll("[data-export]")) {
   b.addEventListener("click", () => (b.dataset.export === "png" ? exportPng() : exportCsv()));
 }
@@ -474,6 +529,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (!$("shortcuts").hidden) openShortcuts(false);
     else if (!$("export_menu").hidden) $("export_menu").hidden = true;
+    else if (!$("examples_menu").hidden) { openExamples(false); $("examples").focus(); }
     else inspector.select(-1);
     return;
   }

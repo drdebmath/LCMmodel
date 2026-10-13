@@ -303,19 +303,38 @@ check("the examples menu is hidden for an algorithm without examples", await js(
 check("the allowed region is only drawn for Go-To-Center", (await js("lcm.renderer.options.allowedRegion")) === false);
 await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'GoToCenter'; s.dispatchEvent(new Event('change')); })()`);
 await sleep(300);
-const exampleLabels = await js("[...document.querySelectorAll('#examples option')].map((o) => o.textContent)");
-check("Go-To-Center offers four ready-made examples", !(await js("document.getElementById('examples').hidden")) && exampleLabels.length === 5 && /chain/i.test(exampleLabels[1]), exampleLabels.join(" | "));
-await js(`(() => { const s = document.getElementById('examples'); s.value = '0'; s.dispatchEvent(new Event('change')); })()`);
+const pickExample = async (i) => { await click("#examples"); await click(`#examples_menu [data-example="${i}"]`); };
+check("the examples button is a toolbar button that opens a menu", await js("(() => { const b = document.getElementById('examples'); return b.tagName === 'BUTTON' && !b.hidden && b.getAttribute('aria-haspopup') === 'menu' && b.getAttribute('aria-expanded') === 'false' && document.getElementById('examples_menu').hidden; })()"));
+await click("#examples");
+const exampleLabels = await js("[...document.querySelectorAll('#examples_menu .title')].map((o) => o.textContent)");
+check("Go-To-Center offers None and three ready-made examples", exampleLabels.length === 4 && exampleLabels[0] === "None" && /chain/i.test(exampleLabels[1]), exampleLabels.join(" | "));
+check("the open menu sits under its button, on screen, with None marked", await js(`(() => { const m = document.getElementById('examples_menu').getBoundingClientRect(), b = document.getElementById('examples').getBoundingClientRect();
+  return document.getElementById('examples').getAttribute('aria-expanded') === 'true' && m.top >= b.bottom && m.left >= 0 && m.right <= innerWidth && m.bottom <= innerHeight
+    && document.querySelector('#examples_menu [data-example="-1"]').getAttribute('aria-checked') === 'true' && document.querySelectorAll('#examples_menu [aria-checked=true]').length === 1; })()`));
+await shot("examples-menu");
+await key("ArrowDown", "ArrowDown", 40);
+check("the arrow keys move through the menu", await js("document.activeElement.dataset.example === '0'"));
+await key("Escape", "Escape", 27);
+check("Escape closes the menu and returns to its button", await js("document.getElementById('examples_menu').hidden && document.activeElement.id === 'examples'"));
+await js("lcm.settings.apply({ num_of_robots: 123 })");
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 123", 3000);
+await pickExample(0);
 check("the chain example sets up three robots with limited sight and the links on", await until("lcm.renderer.frame && lcm.renderer.frame.robots === 3 && lcm.settings.values.visibility_radius === 100 && lcm.settings.values.unlimited_visibility === false", 4000)
   && (await js("document.getElementById('links').getAttribute('aria-pressed')")) === "true" && (await js("lcm.renderer.options.allowedRegion")) === true);
-check("the menu goes back to its title after a choice", (await js("document.getElementById('examples').value")) === "");
+check("the menu closes after a choice, and the choice is marked", await js("document.getElementById('examples_menu').hidden && document.getElementById('examples').getAttribute('aria-pressed') === 'true' && document.querySelector('#examples_menu [data-example=\"0\"]').getAttribute('aria-checked') === 'true'"));
+await pickExample(-1);
+check("None puts back the settings from before the example", await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 123 && lcm.settings.values.pattern === 'cloud' && lcm.settings.values.unlimited_visibility === true", 4000)
+  && (await js("document.getElementById('links').getAttribute('aria-pressed')")) === "false" && (await js("document.getElementById('examples').getAttribute('aria-pressed')")) === "false");
+await js("lcm.settings.apply({ num_of_robots: 500 })");
+await pickExample(0);
+await until("lcm.renderer.frame && lcm.renderer.frame.robots === 3", 4000);
 const withLinks = await js("lcm.renderer.requestDraw(), new Promise((r) => requestAnimationFrame(() => r(lcm.renderer.canvas.toDataURL())))");
 await js("document.getElementById('links').click()");
 const withoutLinks = await js("lcm.renderer.requestDraw(), new Promise((r) => requestAnimationFrame(() => r(lcm.renderer.canvas.toDataURL())))");
 check("the links button draws and removes the lines between robots", withLinks !== withoutLinks && (await js("document.getElementById('links').getAttribute('aria-pressed')")) === "false");
 await js("window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', bubbles: true }))");
 check("the V key toggles the links too", (await js("lcm.renderer.options.links")) === true);
-await js(`(() => { const s = document.getElementById('examples'); s.value = '2'; s.dispatchEvent(new Event('change')); })()`);
+await pickExample(1);
 await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 40", 4000);
 await setPlayback("Infinity");
 await click("#play");
