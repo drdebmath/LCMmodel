@@ -56,6 +56,7 @@ function newRun({ quiet = false } = {}) {
   fitPending = true;
   inspector.leave(); // the robot under the pointer belonged to the old run
   renderer.options.visibility = c.visibility_radius;
+  renderer.options.multiplicities = Boolean(algorithms.find((a) => a.key === c.algorithm)?.multiplicities);
   inspector.select(-1);
   $("hud_last").hidden = true;
   dirty = false;
@@ -235,7 +236,19 @@ $("play").addEventListener("click", play);
 $("step_event").addEventListener("click", () => step("event"));
 $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
-$("algorithm").addEventListener("change", onSettingChange);
+$("algorithm").addEventListener("change", () => {
+  // An algorithm that only works under the sequential scheduler (SqGathering)
+  // switches it on, rather than failing with the async default.
+  const a = algorithms.find((x) => x.key === $("algorithm").value);
+  if (a?.sequential_only && settings.values.scheduler !== "sequential") {
+    settings.set("scheduler", "sequential", false);
+    toast(`${a.name} runs one robot at a time: Scheduler set to Sequential`);
+  }
+  // A new algorithm is a new experiment: start it now, even mid-run.
+  if (state === "loading") return;
+  if (state === "ready") onSettingChange();
+  else newRun();
+});
 $("playback").addEventListener("change", (e) => client.speed(Number(e.target.value)));
 $("defaults").addEventListener("click", () => settings.reset());
 $("toggle_settings").addEventListener("click", toggleSettings);

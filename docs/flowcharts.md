@@ -15,6 +15,7 @@ explains itself, steps marked `</>` open their code, and a guided tour walks thr
 3. [Gathering (center of gravity)](#3-gathering-center-of-gravity) — Each robot goes to the average of what it sees
 4. [In the browser](#4-in-the-browser) — Page, worker and Rust core working together
 5. [The sequential scheduler](#5-the-sequential-scheduler) — One robot at a time, turn by turn
+6. [SqGathering (Algorithm 8)](#6-sqgathering-algorithm-8) — Gathering with weak multiplicity detection, one robot per turn
 
 ---
 
@@ -932,7 +933,7 @@ function slice(gen) {
 }
 ```
 
-`advance` — [`crates/lcm-wasm/src/lib.rs:71`](../crates/lcm-wasm/src/lib.rs#L71)
+`advance` — [`crates/lcm-wasm/src/lib.rs:83`](../crates/lcm-wasm/src/lib.rs#L83)
 
 ```rust
 /// Handles up to `max_events` events, stopping early before the first
@@ -977,7 +978,7 @@ function postFrame(extra = {}) {
 }
 ```
 
-`fill_frame` — [`crates/lcm-wasm/src/lib.rs:221`](../crates/lcm-wasm/src/lib.rs#L221)
+`fill_frame` — [`crates/lcm-wasm/src/lib.rs:233`](../crates/lcm-wasm/src/lib.rs#L233)
 
 ```rust
 /// Captures the current state straight into caller-owned arrays, so the
@@ -1085,6 +1086,27 @@ draw(ctx = this.ctx, dpr = this.dpr) {
       const cx = X(circle[3 * i]), cy = Y(circle[3 * i + 1]);
       ctx.moveTo(cx + cr * s, cy);
       ctx.arc(cx, cy, cr * s, 0, 2 * Math.PI);
+    }
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+
+  // Multiplicity points (several robots on one spot), for algorithms that
+  // work with them: one ring of fixed screen size per spot.
+  if (this.options.multiplicities && n <= LOD.circles) {
+    const seen = new Map();
+    for (let i = 0; i < n; i++) {
+      const key = `${xy[2 * i]},${xy[2 * i + 1]}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    ctx.strokeStyle = "rgba(255,120,40,0.95)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const [key, count] of seen) {
+      if (count < 2) continue;
+      const [x, y] = key.split(",").map(Number);
+      ctx.moveTo(X(x) + 11, Y(y));
+      ctx.arc(X(x), Y(y), 11, 0, 2 * Math.PI);
     }
     ctx.stroke();
     ctx.lineWidth = 1;
@@ -1387,6 +1409,212 @@ fn limited_target(&mut self, i: usize, destination: Point) -> Point {
         destination
     } else {
         interpolate(from, destination, covered / length)
+    }
+}
+```
+
+---
+
+## 6. SqGathering (Algorithm 8)
+
+Algorithm 8 of "Universal pattern formation by oblivious robots under sequential schedulers" (arXiv:2412.10733, Section 6). The active robot sees each occupied point only as single or multiplicity, counts the multiplicities κ, and follows one of three rules. It runs only under the sequential scheduler of chart 5: the registry refuses the async one.
+
+```mermaid
+flowchart TD
+    classDef k_entry fill:#e8eefd,stroke:#2f5bea,color:#111,stroke-width:1.5px
+    classDef k_step fill:#ffffff,stroke:#9aa1ad,color:#111
+    classDef k_decision fill:#fff4dc,stroke:#d18b00,color:#111
+    classDef k_end fill:#e3f6e8,stroke:#1f9d55,color:#111,stroke-width:1.5px
+    classDef k_out fill:#f1f2f5,stroke:#9aa1ad,color:#333
+    subgraph lane0["From the snapshot"]
+        q_comp(["Compute<br/><small>SqGathering::compute()</small>"])
+        q_obs["See Q′(t)<br/><small>observe() · points within ε merge</small>"]
+    end
+    subgraph lane1["Gathered?"]
+        q_one{"One occupied point?<br/><small>everyone stands here</small>"}
+        q_term(["Terminate<br/><small>gathered</small>"])
+    end
+    subgraph lane2["Algorithm 8"]
+        q_kappa{"How many multiplicities κ?<br/><small>decide() · lines 1-3</small>"}
+        q_k0[/"Move to the closest point<br/><small>κ = 0 · lines 14-16</small>"/]
+        q_k1{"On the multiplicity?<br/><small>κ = 1 · b = 1? · lines 4-5</small>"}
+        q_km{"On a multiplicity?<br/><small>κ &gt; 1 · b = 1? · lines 9-10</small>"}
+        q_hold[/"Stay on it<br/><small>κ = 1, b = 1 · lines 3-5</small>"/]
+        q_join[/"Move to the multiplicity<br/><small>κ = 1, b = 0 · lines 4-7</small>"/]
+        q_wait[/"Wait<br/><small>κ &gt; 1, b = 0 · lines 3, 9-10</small>"/]
+        q_leave[/"Move to the midpoint<br/><small>κ &gt; 1, b = 1 · lines 9-13</small>"/]
+    end
+    class q_comp k_entry
+    class q_obs k_step
+    class q_one k_decision
+    class q_term k_end
+    class q_kappa k_decision
+    class q_k0 k_out
+    class q_k1 k_decision
+    class q_km k_decision
+    class q_hold k_out
+    class q_join k_out
+    class q_wait k_out
+    class q_leave k_out
+    q_comp --> q_obs
+    q_obs --> q_one
+    q_one -- "yes" --> q_term
+    q_one -- "no" --> q_kappa
+    q_kappa -- "κ = 0" --> q_k0
+    q_kappa -- "κ = 1" --> q_k1
+    q_kappa -- "κ &gt; 1" --> q_km
+    q_k1 -- "yes" --> q_hold
+    q_k1 -- "no" --> q_join
+    q_km -- "no" --> q_wait
+    q_km -- "yes" --> q_leave
+```
+
+- Weak multiplicity detection: one bit per point, never a count. Two robots on a point and five robots on a point look the same.
+- Why the sequential scheduler: without multiplicity detection Gathering is unsolvable under any sequential scheduler (Theorem 4); with more than one robot active at once it is unsolvable even with detection (Lemma 8). So SqGathering refuses the async scheduler, limited visibility and faults.
+- In the paper robots never terminate. Here a robot that sees a single occupied point terminates: everyone is there, and every robot activated later would stay, so it changes nothing and lets the run end.
+- Points closer than ε (10^-precision) are one point. Equally close points are told apart by their coordinates; any fixed choice is allowed.
+- A move cut short after δ can stop on a single robot and make a second multiplicity; the κ > 1 rule then separates them again.
+- With several large multiplicities, each robot leaving one halves the distance of the robot that left before it. After enough of them it is closer than ε, cannot leave, and the run ends Stalled (chart 5): a precision limit, not a flaw of the algorithm.
+
+| Step | What happens |
+| --- | --- |
+| Compute | Called from the COMPUTE phase of chart 2 with the robot's snapshot, during its turn of the sequential scheduler (chart 5). |
+| See Q′(t) | Robots closer than ε are grouped into points. Each point keeps one bit: single, or multiplicity (two or more robots). The robot also knows which point is its own. |
+| One occupied point? | If the robot sees a single point, every robot is on it (visibility is unlimited): the swarm has gathered. Then κ = 1 and b = 1, so Algorithm 8 would keep it there anyway. |
+| Terminate | The robot stops for good and gets no more turns. Once every robot has had its turn and terminated, the run ends (chart 1). The paper's robots never stop; terminating here changes nothing, because every robot activated later would stay put. |
+| How many multiplicities κ? | Count the points marked multiplicity, and look at b, the bit of the robot's own point. Lines 1-3 of Algorithm 8. |
+| Move to the closest point | No multiplicity yet: go to the nearest occupied point to create one there. Nothing lies between the robot and that point, so on the way it never meets a third robot. The move goes on in chart 2; the adversary may stop it after δ (chart 5). |
+| On the multiplicity? | With exactly one multiplicity, it is the gathering point. b tells the robot whether its own point is that multiplicity. |
+| On a multiplicity? | Several multiplicities: robots must break all but one of them up. Only robots standing on one (b = 1) act. |
+| Stay on it | The robot is on the gathering point: its target is where it stands. Chart 2 sees a target within ε and freezes it; its turn ends (chart 5). |
+| Move to the multiplicity | Head for the gathering point. The adversary may stop it after δ (chart 5); it carries on in a later turn. If it is stopped exactly on a single robot, that spot becomes a second multiplicity, κ > 1, and the robots sort it out (hand trace D). |
+| Wait | A single robot waits while the multiplicities sort themselves out: its target is where it stands, so chart 2 freezes it and its turn ends. |
+| Move to the midpoint | Leave the multiplicity for the midpoint between its point q and the closest occupied point q′. Nothing occupied is within half that distance, so the robot lands on a free spot wherever it is stopped. Once only one multiplicity is left, κ = 1. |
+
+`compute` — [`crates/lcm-algorithms/src/sq_gathering.rs:356`](../crates/lcm-algorithms/src/sq_gathering.rs#L356)
+
+```rust
+/// One robot's Compute: Q′(t) from its snapshot, then the rule. The
+/// robot terminates when it sees a single occupied point: everyone is
+/// gathered there, and every robot activated from now on would stay.
+fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision {
+    let obs = observe(&look.view.pos, look.me_index, look.model.eps);
+    let decision = decide(&obs);
+    CoreDecision {
+        target: decision.destination(&obs),
+        terminate: obs.points.len() == 1,
+        overlay: OverlayUpdate::Keep,
+    }
+}
+```
+
+`observe` — [`crates/lcm-algorithms/src/sq_gathering.rs:91`](../crates/lcm-algorithms/src/sq_gathering.rs#L91)
+
+```rust
+/// What robot `i` observes under weak multiplicity detection, in global
+/// coordinates. Two robots sharing a point and five sharing a point give the
+/// same observation.
+#[must_use]
+pub fn observe(positions: &[Point], i: usize, tolerance: f64) -> Observation {
+    let (groups, counts, owner) = occupancy(positions, tolerance);
+    Observation {
+        points: groups
+            .iter()
+            .zip(&counts)
+            .map(|(&at, &c)| Observed {
+                at,
+                multiplicity: c >= 2,
+            })
+            .collect(),
+        me: owner[i],
+    }
+}
+```
+
+`decide` — [`crates/lcm-algorithms/src/sq_gathering.rs:243`](../crates/lcm-algorithms/src/sq_gathering.rs#L243)
+
+```rust
+/// Algorithm 8 on one observation.
+#[must_use]
+pub fn decide(obs: &Observation) -> Decision {
+    let kappa = obs.points.iter().filter(|o| o.multiplicity).count();
+    let b = obs.points[obs.me].multiplicity;
+    let (rule, action) = match kappa {
+        1 if b => (Rule::HoldMultiplicity, Action::Stay),
+        1 => {
+            let m = obs
+                .points
+                .iter()
+                .position(|o| o.multiplicity)
+                .unwrap_or(obs.me);
+            (Rule::JoinMultiplicity, Action::MoveTo(m))
+        }
+        0 => match closest(obs) {
+            Some(j) => (Rule::MoveToClosest, Action::MoveTo(j)),
+            None => (Rule::Alone, Action::Stay),
+        },
+        _ if b => match closest(obs) {
+            Some(j) => (Rule::LeaveMultiplicity, Action::Midpoint(j)),
+            // κ > 1 means at least two points, so there is always one.
+            None => (Rule::Alone, Action::Stay),
+        },
+        _ => (Rule::WaitForSeparation, Action::Stay),
+    };
+    Decision {
+        kappa,
+        on_multiplicity: b,
+        rule,
+        action,
+    }
+}
+```
+
+`closest` — [`crates/lcm-algorithms/src/sq_gathering.rs:215`](../crates/lcm-algorithms/src/sq_gathering.rs#L215)
+
+```rust
+/// The occupied point closest to the robot's own. Equally close points are
+/// told apart by the robot's own coordinates (x, then y): any deterministic
+/// choice is allowed, and a disoriented robot's choice depends on its frame.
+fn closest(obs: &Observation) -> Option<usize> {
+    let q = obs.points[obs.me].at;
+    let mut best: Option<(usize, f64)> = None;
+    for (j, o) in obs.points.iter().enumerate() {
+        if j == obs.me {
+            continue;
+        }
+        let d = dist(q, o.at);
+        best = match best {
+            None => Some((j, d)),
+            Some((k, bd)) => {
+                let tie = (d - bd).abs() <= 1e-12 * bd.max(1e-300);
+                let at = o.at;
+                let other = obs.points[k].at;
+                if (!tie && d < bd) || (tie && (at.x, at.y) < (other.x, other.y)) {
+                    Some((j, d))
+                } else {
+                    Some((k, bd))
+                }
+            }
+        };
+    }
+    best.map(|(j, _)| j)
+}
+```
+
+`destination` — [`crates/lcm-algorithms/src/sq_gathering.rs:200`](../crates/lcm-algorithms/src/sq_gathering.rs#L200)
+
+```rust
+/// The destination in the coordinates of `obs`.
+#[must_use]
+pub fn destination(&self, obs: &Observation) -> Point {
+    let q = obs.points[obs.me].at;
+    match self.action {
+        Action::Stay => q,
+        Action::MoveTo(j) => obs.points[j].at,
+        Action::Midpoint(j) => {
+            let r = obs.points[j].at;
+            Point::new(0.5 * (q.x + r.x), 0.5 * (q.y + r.y))
+        }
     }
 }
 ```

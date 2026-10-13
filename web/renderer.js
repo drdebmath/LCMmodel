@@ -60,7 +60,7 @@ export class Renderer {
     this.pan = { x: 0, y: 0 };
     // CSS px covered by floating panels; the world is fitted into what's left.
     this.insets = { left: 0, right: 0, top: 0, bottom: 0 };
-    this.options = { showLights: false, visibility: null };
+    this.options = { showLights: false, visibility: null, multiplicities: false };
     this.frame = null;
     this.selected = -1;
     this.hovered = -1;
@@ -295,6 +295,27 @@ export class Renderer {
         const cx = X(circle[3 * i]), cy = Y(circle[3 * i + 1]);
         ctx.moveTo(cx + cr * s, cy);
         ctx.arc(cx, cy, cr * s, 0, 2 * Math.PI);
+      }
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+
+    // Multiplicity points (several robots on one spot), for algorithms that
+    // work with them: one ring of fixed screen size per spot.
+    if (this.options.multiplicities && n <= LOD.circles) {
+      const seen = new Map();
+      for (let i = 0; i < n; i++) {
+        const key = `${xy[2 * i]},${xy[2 * i + 1]}`;
+        seen.set(key, (seen.get(key) ?? 0) + 1);
+      }
+      ctx.strokeStyle = "rgba(255,120,40,0.95)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (const [key, count] of seen) {
+        if (count < 2) continue;
+        const [x, y] = key.split(",").map(Number);
+        ctx.moveTo(X(x) + 11, Y(y));
+        ctx.arc(X(x), Y(y), 11, 0, 2 * Math.PI);
       }
       ctx.stroke();
       ctx.lineWidth = 1;

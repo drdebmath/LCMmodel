@@ -9,15 +9,20 @@
 //! work with by returning [`ConfigError::Unsupported`].
 //!
 //! Gathering and SEC are ported; they drive the core's parity tests. Uniform
-//! Circle Formation is ported too.
+//! Circle Formation is ported too. SqGathering (Algorithm 8 of the
+//! sequential-schedulers paper) is new: it refuses any scheduler but the
+//! sequential one.
 
 mod circle_formation;
 mod gathering;
 mod sec;
+pub mod sq_gathering;
+pub mod sq_trace;
 
 pub use circle_formation::CircleFormation;
 pub use gathering::Gathering;
 pub use sec::Sec;
+pub use sq_gathering::SqGathering;
 
 use lcm_core::{Algorithm, ConfigError, Plan, SimConfig, Simulation};
 
@@ -48,7 +53,22 @@ pub const REGISTRY: &[Entry] = &[
         name: "Uniform Circle Formation",
         build: one::<CircleFormation>,
     },
+    Entry {
+        key: "SqGathering",
+        name: "SqGathering",
+        build: sq_gathering::plan,
+    },
 ];
+
+/// What the page should set up before running algorithm `key`, as
+/// `(needs the sequential scheduler, works with multiplicity points)`.
+#[must_use]
+pub fn requirements(key: &str) -> (bool, bool) {
+    match key {
+        "SqGathering" => (true, true),
+        _ => (false, false),
+    }
+}
 
 /// The plan of algorithm `key` for a run with this `config`.
 ///
