@@ -153,7 +153,7 @@ lcm run fixtures/sqgathering/k1_one_multiplicity.json   # the same run, core sum
 a limit reports `INCOMPLETE (budget-limited)` and exits 3; a stalled run exits 4.
 
 **In the browser** (`python scripts/serve.py`, then http://localhost:8000/):
-- the simulator: Algorithm → *SqGathering (sequential, Alg. 8)*. The scheduler switches to
+- the simulator: Algorithm → *SqGathering*. The scheduler switches to
   Sequential; Settings → Start → *Stacked points* gives κ > 0 starts, Settings → Movement sets δ and
   where robots stop. Multiplicity points are drawn with a ring.
 - the step-by-step view `/web/sqgathering.html`: a preset per multiplicity case, with the active

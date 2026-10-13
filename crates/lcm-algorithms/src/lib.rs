@@ -55,7 +55,7 @@ pub const REGISTRY: &[Entry] = &[
     },
     Entry {
         key: "SqGathering",
-        name: "SqGathering (sequential, Alg. 8)",
+        name: "SqGathering",
         build: sq_gathering::plan,
     },
 ];
