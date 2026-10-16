@@ -273,6 +273,7 @@ impl WasmSimulation {
             "light": r.light[i].map(|l| format!("{l:?}")),
             "task": r.task[i].map(|t| format!("{t:?}")),
             "target": point(r.target[i]),
+            "goal": point(r.goal(i)),
             "move_start": point(r.start_time[i].map(|_| r.start_pos[i])),
             "speed": r.speed[i],
             "travelled": r.travelled[i],

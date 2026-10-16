@@ -72,7 +72,7 @@ export class Renderer {
     this.onFollowChange = null;
     // CSS px covered by floating panels; the world is fitted into what's left.
     this.insets = { left: 0, right: 0, top: 0, bottom: 0 };
-    this.options = { showLights: false, visibility: null, links: false, allowedRegion: false };
+    this.options = { showLights: false, visibility: null, links: false, allowedRegion: false, walk: null };
     this.frame = null;
     this.selected = -1;
     this.hovered = -1;
@@ -129,6 +129,12 @@ export class Renderer {
       const d = xy[2 * i] * xy[2 * i] + xy[2 * i + 1] * xy[2 * i + 1];
       if (d > far) far = d;
     }
+    // While a turn is played one at a time, the walking robot's destination must be in view too.
+    const w = this.options.walk;
+    if (w && f.target && f.target[2 * w.robot] === f.target[2 * w.robot]) {
+      const tx = f.target[2 * w.robot], ty = f.target[2 * w.robot + 1];
+      far = Math.max(far, tx * tx + ty * ty);
+    }
     this.swarm = any ? { x: f.originX ?? 0, y: f.originY ?? 0, extent: Math.sqrt(far) } : null;
   }
 
@@ -148,15 +154,21 @@ export class Renderer {
     const now = performance.now();
     const dt = Math.min(0.1, Math.max(0.001, (now - this.lastStep) / 1000));
     this.lastStep = now;
+    // Playing a turn at a time: the camera stands still while a robot walks, so the only thing that
+    // moves on screen is the robot, and it re-frames (quickly) while the next decision is shown.
+    const walk = this.options.walk;
+    if (walk && walk.phase === "move") return;
     if (this.needAnchor) {
       // Re-anchor on the swarm without moving anything on screen, then ease to the middle.
       const [px, py] = this.toScreen(sw.x, sw.y);
       this.pan = { x: px - this.width / 2, y: py - this.height / 2 };
       this.needAnchor = false;
     }
-    this.anchor = { x: sw.x, y: sw.y };
     const { left, right, top, bottom } = this.insets;
-    const k = 1 - Math.exp(-dt / 0.25);
+    const k = 1 - Math.exp(-dt / (walk ? Math.max(0.06, walk.settle / 4) : 0.25));
+    this.anchor = walk
+      ? { x: this.anchor.x + (sw.x - this.anchor.x) * k, y: this.anchor.y + (sw.y - this.anchor.y) * k }
+      : { x: sw.x, y: sw.y };
     let gap = 0;
     // A swarm gathered to a point (radius 0) has nothing to zoom to: hold the zoom. Below 1e-9 the
     // positions themselves (doubles near 100) have run out of digits.
@@ -170,7 +182,8 @@ export class Renderer {
     const cx = (left - right) / 2, cy = (top - bottom) / 2;
     this.pan.x += (cx - this.pan.x) * k;
     this.pan.y += (cy - this.pan.y) * k;
-    if (gap > 1e-3 || Math.hypot(cx - this.pan.x, cy - this.pan.y) > 0.2) this.requestDraw();
+    const drift = walk ? Math.hypot(sw.x - this.anchor.x, sw.y - this.anchor.y) * this.scale : 0;
+    if (gap > 1e-3 || drift > 0.2 || Math.hypot(cx - this.pan.x, cy - this.pan.y) > 0.2) this.requestDraw();
   }
   /** The region "Fit" frames: w × h world units centred on (cx, cy). */
   setView(w, h, cx = 0, cy = 0) {
@@ -389,7 +402,7 @@ export class Renderer {
     // Circles the robots computed (SEC and friends).
     if (n <= LOD.circles) {
       // With a robot selected, everyone else's circle fades so its own stands out.
-      ctx.strokeStyle = this.selected >= 0 ? "rgba(255,150,0,0.16)" : "rgba(255,150,0,0.55)";
+      ctx.strokeStyle = this.selected >= 0 || this.options.walk ? "rgba(255,150,0,0.16)" : "rgba(255,150,0,0.55)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
@@ -448,6 +461,52 @@ export class Renderer {
           if (light[i] === l) ctx.drawImage(sp.canvas, snap(X(xy[2 * i]) - sp.half), snap(Y(xy[2 * i + 1]) - sp.half), sp.size, sp.size);
         }
       }
+    }
+
+    // Playing a turn at a time: name the robots, ring the one whose turn it is, and show where the
+    // algorithm sends it. While it decides, thin lines show whom it looked at.
+    const walk = this.options.walk;
+    if (walk && walk.robot < n) {
+      const i = walk.robot, rx = X(xy[2 * i]), ry = Y(xy[2 * i + 1]);
+      const has = target[2 * i] === target[2 * i];
+      const tx = has ? X(target[2 * i]) : rx, ty = has ? Y(target[2 * i + 1]) : ry;
+      const accent = this.theme.accent;
+      ctx.save();
+      // The circle this robot worked out stands out; the other robots' circles are faded (above).
+      const cr = circle[3 * i + 2];
+      if (cr >= 0 && cr * s < HUGE) {
+        ctx.strokeStyle = "rgba(255,150,0,0.95)"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(X(circle[3 * i]), Y(circle[3 * i + 1]), cr * s, 0, 2 * Math.PI); ctx.stroke();
+      }
+      if (walk.phase === "decide" && n <= 24) {
+        ctx.strokeStyle = "rgba(110,120,190,.55)"; ctx.lineWidth = 1.3; ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        for (let j = 0; j < n; j++) {
+          if (j === i || (flags[j] & 3) === STATE_CRASH) continue;
+          if (V && Math.hypot(xy[2 * j] - xy[2 * i], xy[2 * j + 1] - xy[2 * i + 1]) > V) continue;
+          ctx.moveTo(rx, ry); ctx.lineTo(X(xy[2 * j]), Y(xy[2 * j + 1]));
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (has) {
+        ctx.strokeStyle = accent; ctx.lineWidth = 2.2; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.lineWidth = 3.4;
+        ctx.beginPath(); ctx.moveTo(tx - 8, ty - 8); ctx.lineTo(tx + 8, ty + 8); ctx.moveTo(tx + 8, ty - 8); ctx.lineTo(tx - 8, ty + 8); ctx.stroke();
+      }
+      ctx.strokeStyle = accent; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(rx, ry, Math.max(r, 2) + 6, 0, 2 * Math.PI); ctx.stroke();
+      if (n <= 12) {
+        ctx.font = "600 13px system-ui, sans-serif"; ctx.lineJoin = "round"; ctx.textBaseline = "alphabetic";
+        for (let j = 0; j < n; j++) {
+          if ((flags[j] & 3) === STATE_CRASH) continue;
+          const label = `R${j}`, lx = X(xy[2 * j]) + Math.max(r, 2) + 6, ly = Y(xy[2 * j + 1]) - Math.max(r, 2) - 6;
+          ctx.lineWidth = 4; ctx.strokeStyle = this.theme.bg; ctx.strokeText(label, lx, ly);
+          ctx.fillStyle = j === i ? accent : this.theme.text; ctx.fillText(label, lx, ly);
+        }
+      }
+      ctx.restore();
     }
 
     // Hovered and selected robots, drawn in full at any swarm size.

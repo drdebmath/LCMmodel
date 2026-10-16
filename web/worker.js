@@ -61,7 +61,9 @@ let stop = "running";
 let speed = Infinity;           // simulated time units per wall second
 let anchor = { wall: 0, sim: 0 };
 let perTurn = null;             // seconds each walk takes, in turn-paced playback; null otherwise
-let pace = null;                // the walk being played: { from, arrival, progress 0..1 }
+let pace = null;                // the turn being played: { from, arrival, progress, settle, robot, ... }.
+                                // progress runs from -settle/perTurn to 0 while the robot's decision is shown
+                                // (the walk has not started), then from 0 to 1 over the walk
 let lastPace = 0;               // wall time of the previous paced slice
 let batch = 64;      // events per advance() call, tuned so one call takes ~1 ms
 let busyMs = 0;      // compute time since the last frame was sent
@@ -137,16 +139,32 @@ function pacedSlice(gen) {
       pace.progress = Math.min(1, pace.progress + dt / perTurn);
       dt = 0;  // this slice's time counts once
       // The last step is exactly the arrival time, not "from + 1 × (arrival - from)", which can
-      // round to a hair less and never handle the arrival.
-      until = pace.progress >= 1 ? pace.arrival : pace.from + pace.progress * (pace.arrival - pace.from);
+      // round to a hair less and never handle the arrival. Before the walk starts the robots
+      // stand where they were when it looked.
+      until = pace.progress >= 1 ? pace.arrival
+        : pace.progress <= 0 ? pace.from
+        : pace.from + pace.progress * (pace.arrival - pace.from);
     }
     const code = sim.advance_to_move(FAST_EVENTS, until);
     tracePoint();
     if (code === 7) {
       // A robot started a walk: the first of the run, the next turn's (which can begin at the very
       // instant the last one ends, with no gap), or the one that follows a skipped turn.
-      const arrival = sim.arrival_time(sim.moved_robot());
-      pace = arrival > sim.time() ? { from: sim.time(), arrival, progress: 0 } : null;
+      const robot = sim.moved_robot();
+      const arrival = sim.arrival_time(robot);
+      if (arrival > sim.time()) {
+        // What the page tells the viewer: who walks, where the algorithm sends it, how far it really
+        // goes (the adversary may stop it short), and the time to show the decision before the walk.
+        const info = JSON.parse(sim.robot_info(robot));
+        const goal = info.goal ?? info.target ?? [info.x, info.y];
+        const target = info.target ?? goal;
+        const settle = Math.min(0.6, Math.max(0.15, 0.3 * perTurn));
+        pace = {
+          from: sim.time(), arrival, progress: -settle / perTurn, settle, robot, algorithm: info.algorithm,
+          length: Math.hypot(goal[0] - info.x, goal[1] - info.y),
+          cut: Math.hypot(goal[0] - target[0], goal[1] - target[1]) > 1e-9,
+        };
+      } else pace = null;
     } else if (code === 1) {  // reached `until`, and no walk began there
       if (pace.progress >= 1) pace = null;
       else { sim.set_view_time(until); waiting = true; break; }
@@ -210,6 +228,11 @@ function postFrame(extra = {}) {
     terminated: sim.terminated_count(),
     epochs: sim.sequential?.() ? sim.epochs_completed() : null,
     turns: sim.sequential?.() ? sim.turn_count() : null,
+    // While a turn is played one at a time: who is walking, in which beat, how far, and the settle time.
+    walk: perTurn !== null && pace
+      ? { robot: pace.robot, phase: pace.progress < 0 ? "decide" : "move", length: pace.length, cut: pace.cut,
+          settle: pace.settle, algorithm: pace.algorithm }
+      : null,
     trace: Float64Array.from(trace),
     ended: sim.ended(),
     stop,

@@ -20,7 +20,7 @@ const SIZES = [
   ["laptop", 1280, 720, 1, false],
   ["desktop", 1920, 1080, 1, false],
 ];
-const PANELS = ["toolbar", "settings", "hud", "legend", "tools", "inspector"];
+const PANELS = ["toolbar", "settings", "hud", "legend", "tools", "inspector", "turn_caption"];
 
 async function size(w, h, dpr, touch) {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: dpr, mobile: touch });
@@ -62,6 +62,16 @@ for (const [name, w, h, dpr, touch] of SIZES) {
   const pb = await js("(() => { const r = document.getElementById('playback').getBoundingClientRect(); return { w: Math.round(r.width) }; })()");
   check(`simulator with the sequential scheduler's per-turn speeds, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !q.sideways && !q.overlaps.length && !q.offscreen.length, JSON.stringify({ ...q, playback: pb }));
   await shot(`sim-${name}-sequential`);
+  // Played a turn at a time, a caption appears: it must fit among the other panels at this size too.
+  await js("(() => { const s = document.getElementById('playback'); s.value = 'turn:3'; s.dispatchEvent(new Event('change')); })()");
+  await js("document.getElementById('play').click()");
+  await sleep(900);
+  const c = await layout();
+  const cap = await js("(() => { const e = document.getElementById('turn_caption'); return { shown: !e.hidden, text: e.innerText.slice(0, 40) }; })()");
+  check(`played a turn at a time, ${name}: the caption is shown and fits (no overlaps, nothing cut off)`, cap.shown && !c.sideways && !c.overlaps.length && !c.offscreen.length, JSON.stringify({ ...c, cap }));
+  await shot(`sim-${name}-turn-caption`);
+  await js("document.getElementById('play').click()");
+  await js("(() => { const s = document.getElementById('playback'); s.value = '20'; s.dispatchEvent(new Event('change')); })()");
   await js("lcm.settings.apply({ scheduler: 'async' })");
   await sleep(300);
   // The opened menu must stay on screen and not run past either edge.

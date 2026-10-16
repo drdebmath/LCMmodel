@@ -448,6 +448,31 @@ await click("#play");
 check("within one 3-second turn the robot glides steadily along its walk", glide.every((g, i) => !i || g.x > glide[i - 1].x) && glide[4].x - glide[0].x > 40
   && glide.every((g) => g.turns === glide[0].turns && g.robotEvents === glide[0].robotEvents), JSON.stringify(glide.map((g) => +g.x.toFixed(1))));
 
+// The turn view: a caption says whose turn it is and why; the camera stands still while the robot walks.
+await click("#reset");
+await js(TWO_ROBOTS);
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+await js("(() => { if (!lcm.renderer.follow) document.getElementById('follow').click(); })()");
+await setPlayback("turn:3");
+await click("#play");
+await until("lcm.renderer.frame.turns >= 3", 20000);
+const seen = [];
+for (let k = 0; k < 16; k++) {
+  await sleep(250);
+  seen.push(await js(`({ phase: lcm.renderer.options.walk?.phase ?? null, robot: lcm.renderer.options.walk?.robot ?? null, turns: lcm.renderer.frame.turns,
+    hidden: document.getElementById('turn_caption').hidden, cap: document.getElementById('turn_caption').innerText, zoom: lcm.renderer.zoom, ax: lcm.renderer.anchor.x })`));
+}
+await click("#play");
+const decide = seen.find((x) => x.phase === "decide");
+const move = seen.filter((x) => x.phase === "move");
+check("a turn starts with its decision: a caption names the robot and gives the rule in words", !!decide && !decide.hidden && /Turn \d+/.test(decide.cap) && /Robot \d/.test(decide.cap) && /looks and decides/.test(decide.cap) && /average position/.test(decide.cap), decide?.cap);
+check("then the walk: the caption says how far it goes", move.length >= 3 && move.every((x) => !x.hidden && /moves/.test(x.cap) && /walks [\d.]+ units/.test(x.cap)), move[0]?.cap);
+check("the camera stands still while the robot walks (same zoom, same centre in every frame of a walk)",
+  move.length >= 3 && move.every((x, i) => i === 0 || x.turns !== move[i - 1].turns || (x.zoom === move[i - 1].zoom && x.ax === move[i - 1].ax)), JSON.stringify(move.map((x) => [x.turns, +x.zoom.toFixed(4)])));
+await setPlayback("20");
+await sleep(500);
+check("the caption goes away when the run is not played turn by turn", await js("document.getElementById('turn_caption').hidden && !lcm.renderer.options.walk"));
+
 // Late, tiny turns take as long on screen as early ones: play to turn ~19 (the gap has halved that many
 // times), then switch to 1 s per turn in mid-run and watch one walk.
 await click("#reset");

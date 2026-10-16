@@ -282,8 +282,28 @@ function drawTrace() {
 }
 const fmtSize = (v) => (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v >= 1e-3 ? v.toFixed(3) : v.toExponential(1));
 
+/* Playing a turn at a time: say, in plain words, whose turn it is and what the algorithm does. */
+const RULES = {
+  Gathering: "It goes to the average position of all the robots it sees (the centre of gravity).",
+  SEC: "It goes to the nearest point of the smallest circle around the robots it sees.",
+  GoToCenter: "It heads for the centre of the smallest circle around the robots it sees, but never so far that it could lose sight of a neighbour.",
+};
+const fmtNumber = (v) => (v === 0 ? "0" : v >= 1e-3 ? String(+v.toPrecision(3)) : v.toExponential(2));
+function updateCaption(f) {
+  const el = $("turn_caption"), w = f.walk;
+  el.hidden = !w;
+  if (!w) return;
+  const who = `<strong>Turn ${(f.turns ?? 0).toLocaleString()}</strong> · Robot ${w.robot}`;
+  const rule = RULES[$("algorithm").value] ?? "";
+  el.innerHTML = w.phase === "decide"
+    ? `<div class="cap-head">${who} looks and decides</div><div class="cap-body">${rule || "It looks at the others and picks its destination, the ✕."}</div>`
+    : `<div class="cap-head">${who} moves</div><div class="cap-body">It walks ${fmtNumber(w.length)} units to the ✕.${w.cut ? " The adversary stops it short of its destination (non-rigid movement)." : ""}</div>`;
+}
+
 client.on("frame", (f) => {
   frame = f;
+  renderer.options.walk = f.walk ?? null;
+  updateCaption(f);
   if (f.trace) trace.points = f.trace;
   if (fitPending) { fitPending = false; fitToStart(f); }
   renderer.setFrame(f);
@@ -406,7 +426,15 @@ $("step_event").addEventListener("click", () => step("event"));
 $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
 $("algorithm").addEventListener("change", () => { updateExamples(); onSettingChange(); });
-$("playback").addEventListener("change", () => client.speed(playbackSpeed()));
+$("playback").addEventListener("change", () => {
+  const speed = playbackSpeed();
+  client.speed(speed);
+  if (typeof speed !== "object") {  // not played a turn at a time any more: drop the turn caption and marks at once
+    $("turn_caption").hidden = true;
+    renderer.options.walk = null;
+    renderer.requestDraw();
+  }
+});
 $("defaults").addEventListener("click", () => settings.reset());
 $("toggle_settings").addEventListener("click", toggleSettings);
 $("close_settings").addEventListener("click", toggleSettings);
