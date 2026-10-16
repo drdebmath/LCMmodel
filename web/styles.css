@@ -243,6 +243,11 @@ a.btn { text-decoration: none; }
   #hud { gap: 4px; padding: 10px 14px; }
 }
 
+/* A short laptop screen: the view tools (eleven of them) take two columns, so they stay clear of the status panel. */
+@media (min-width: 761px) and (min-height: 521px) and (max-height: 800px) {
+  #tools { display: grid; grid-template-columns: repeat(2, auto); gap: 2px; }
+}
+
 /* The caption while a turn is played one at a time: above the legend, left-aligned with it. */
 #turn_caption { left: 12px; bottom: 56px; width: min(500px, calc(100vw - 100px)); padding: 10px 14px; display: grid; gap: 3px; z-index: 5; }
 #settings:not([hidden]) ~ #turn_caption { left: 324px; width: min(500px, calc(100vw - 440px)); }

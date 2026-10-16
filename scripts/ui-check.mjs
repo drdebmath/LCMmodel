@@ -448,6 +448,31 @@ await click("#play");
 check("within one 3-second turn the robot glides steadily along its walk", glide.every((g, i) => !i || g.x > glide[i - 1].x) && glide[4].x - glide[0].x > 40
   && glide.every((g) => g.turns === glide[0].turns && g.robotEvents === glide[0].robotEvents), JSON.stringify(glide.map((g) => +g.x.toFixed(1))));
 
+// The grid: behind everything, labelled, and still readable however far the view is zoomed in.
+check("a grid is on by default, with a button that shows it", await js("lcm.renderer.options.grid === true && document.getElementById('grid').getAttribute('aria-pressed') === 'true'"));
+const gridPixels = () => js(`(() => { const r = lcm.renderer; r.draw(); const g = r.canvas.getContext('2d').getImageData(0, 0, r.canvas.width, r.canvas.height).data; let n = 0; for (let i = 0; i < g.length; i += 4) if (g[i] !== g[0] || g[i + 1] !== g[1] || g[i + 2] !== g[2]) n++; return n; })()`);
+const withGrid = await gridPixels();
+await key("G", "KeyG", 71);
+const withoutGrid = await gridPixels();
+check("the G key hides the grid (it draws lines), and again shows it", await js("lcm.renderer.options.grid === false && document.getElementById('grid').getAttribute('aria-pressed') === 'false'") && withGrid > withoutGrid + 500, `${withGrid} vs ${withoutGrid} non-background pixels`);
+await key("G", "KeyG", 71);
+check("and shows it again", await js("lcm.renderer.options.grid === true"));
+await click("#reset");
+await js(TWO_ROBOTS);
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+await js("(() => { if (!lcm.renderer.follow) document.getElementById('follow').click(); })()");
+await setPlayback("Infinity");
+await click("#play");
+await until("lcm.state === 'ended'", 30000);
+await sleep(2500);
+const deep = await js("({ grid: lcm.renderer.gridState, zoom: lcm.renderer.zoom, end: document.getElementById('turn_caption').innerText, hidden: document.getElementById('turn_caption').hidden })");
+check("zoomed in about 30 million times, the grid still has labelled lines 80 px apart or more, at a spacing near the robots' gap", deep.zoom > 1e6 && deep.grid && deep.grid.px >= 80 && deep.grid.px <= 1500 && deep.grid.spacing <= 1e-4 && deep.grid.spacing >= 1e-8, JSON.stringify(deep.grid));
+check("a finished run says so, in words: grey means terminated, the real size, and how far it is zoomed in", !deep.hidden && /Finished/.test(deep.end) && /terminated/.test(deep.end) && /units across/.test(deep.end) && /zoomed in [\d,]+ times/.test(deep.end), deep.end);
+await click("#reset");
+await until("lcm.state === 'ready'", 4000);
+await sleep(300);
+check("a new run takes the finished note away", await js("document.getElementById('turn_caption').hidden"));
+
 // The turn view: a caption says whose turn it is and why; the camera stands still while the robot walks.
 await click("#reset");
 await js(TWO_ROBOTS);

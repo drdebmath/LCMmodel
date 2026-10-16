@@ -72,7 +72,8 @@ export class Renderer {
     this.onFollowChange = null;
     // CSS px covered by floating panels; the world is fitted into what's left.
     this.insets = { left: 0, right: 0, top: 0, bottom: 0 };
-    this.options = { showLights: false, visibility: null, links: false, allowedRegion: false, walk: null };
+    this.options = { showLights: false, visibility: null, links: false, allowedRegion: false, walk: null, grid: true };
+    this.gridState = null; // what the last grid drawn looked like (for the page and its checks)
     this.frame = null;
     this.selected = -1;
     this.hovered = -1;
@@ -94,6 +95,7 @@ export class Renderer {
       accent: css.getPropertyValue("--accent").trim() || "#2f5bea",
       text: css.getPropertyValue("--text").trim() || "#111",
       outline: document.documentElement.dataset.resolvedTheme === "dark" ? "rgba(0,0,0,.55)" : "rgba(0,0,0,.7)",
+      grid: document.documentElement.dataset.resolvedTheme === "dark" ? "170,180,210" : "70,80,120",
     };
     this.sprites.clear();
     this.requestDraw();
@@ -261,6 +263,80 @@ export class Renderer {
     this.requestDraw();
   }
 
+  /**
+   * A grid behind everything, so zooming (or following a swarm in) can be seen: with no grid, a view
+   * zoomed in 30 million times looks the same as one that is not. One layer of lines per power of ten,
+   * each faded in as its lines drift apart (10 px to 50 px), so a zoom shows lines sliding apart and
+   * finer ones appearing. The layer whose lines are about 80 px apart or more is labelled with their
+   * coordinates, along the top and left edges of the free area.
+   */
+  drawGrid(ctx, s, ox, oy) {
+    const W = this.width, H = this.height, { left, right, top } = this.insets;
+    const xMin = this.anchor.x - ox / s, xMax = this.anchor.x + (W - ox) / s;
+    const yMax = this.anchor.y + oy / s, yMin = this.anchor.y - (H - oy) / s;  // y points up
+    const span = Math.max(xMax - xMin, yMax - yMin);
+    if (!(span > 0) || !isFinite(span)) { this.gridState = null; return; }
+    const eMin = Math.ceil(Math.log10(10 / s)), eMax = Math.floor(Math.log10(span * 2));
+    const rgb = this.theme.grid;
+    const sx = (x) => ox + (x - this.anchor.x) * s, sy = (y) => oy - (y - this.anchor.y) * s;
+    let labelE = null;
+    for (let e = eMin; e <= eMax; e++) {
+      if (s * 10 ** e >= 80) { labelE = e; break; }
+    }
+    if (labelE === null) labelE = eMax;
+    ctx.save();
+    ctx.lineWidth = 1;
+    for (let e = eMax; e >= eMin; e--) {
+      const step = 10 ** e, px = step * s;
+      const fade = Math.min(1, Math.max(0, (px - 10) / 40));
+      if (fade <= 0) continue;
+      const k0 = Math.ceil(xMin / step), k1 = Math.floor(xMax / step);
+      const j0 = Math.ceil(yMin / step), j1 = Math.floor(yMax / step);
+      if (k1 - k0 > 600 || j1 - j0 > 600) continue;
+      ctx.strokeStyle = `rgba(${rgb},${(0.16 * fade).toFixed(3)})`;
+      ctx.beginPath();
+      for (let k = k0; k <= k1; k++) { const x = Math.round(sx(k * step)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+      for (let j = j0; j <= j1; j++) { const y = Math.round(sy(j * step)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
+      ctx.stroke();
+    }
+    // The axes through (0, 0), when in view, a little stronger.
+    ctx.strokeStyle = `rgba(${rgb},0.34)`;
+    ctx.beginPath();
+    if (xMin <= 0 && xMax >= 0) { const x = Math.round(sx(0)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    if (yMin <= 0 && yMax >= 0) { const y = Math.round(sy(0)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    ctx.stroke();
+    // Labels for one layer.
+    const step = 10 ** labelE, px = step * s;
+    const text = (v) => {
+      if (v === 0) return "0";
+      if (labelE >= 6) return v.toExponential(2);
+      return v.toFixed(Math.min(12, Math.max(0, -labelE)));
+    };
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = `rgba(${rgb},0.85)`;
+    ctx.lineJoin = "round"; ctx.lineWidth = 3; ctx.strokeStyle = this.theme.bg;
+    const label = (str, x, y) => { ctx.strokeText(str, x, y); ctx.fillText(str, x, y); };
+    const k0 = Math.ceil(xMin / step), k1 = Math.floor(xMax / step);
+    const j0 = Math.ceil(yMin / step), j1 = Math.floor(yMax / step);
+    if (k1 - k0 <= 600) {
+      for (let k = k0; k <= k1; k++) {
+        const x = sx(k * step), str = text(k * step), w = ctx.measureText(str).width;
+        if (x - w / 2 < left + 4 || x + w / 2 > W - right - 4) continue;
+        label(str, x - w / 2, top + 16);
+      }
+    }
+    if (j1 - j0 <= 600) {
+      for (let j = j0; j <= j1; j++) {
+        const y = sy(j * step);
+        if (y < top + 30 || y > H - 20) continue;
+        label(text(j * step), left + 6, y - 3);
+      }
+    }
+    ctx.restore();
+    this.gridState = { decade: labelE, spacing: step, px, layers: Math.max(0, eMax - eMin + 1) };
+  }
+
   /** Robot radius in CSS px: smaller for big swarms so they stay distinguishable. */
   robotRadius(n) {
     const base = n <= 200 ? 5 : n <= 2000 ? 3 : 1.6;
@@ -321,6 +397,9 @@ export class Renderer {
     const oy = this.height / 2 + this.pan.y;
     const WX = (x) => ox + (x - this.anchor.x) * s;
     const WY = (y) => oy - (y - this.anchor.y) * s;
+
+    if (this.options.grid) this.drawGrid(ctx, s, ox, oy);
+    else this.gridState = null;
 
     // Start area (a drawing guide, not a wall: robots can move past it).
     const o = this.outline;

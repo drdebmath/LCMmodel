@@ -289,10 +289,27 @@ const RULES = {
   GoToCenter: "It heads for the centre of the smallest circle around the robots it sees, but never so far that it could lose sight of a neighbour.",
 };
 const fmtNumber = (v) => (v === 0 ? "0" : v >= 1e-3 ? String(+v.toPrecision(3)) : v.toExponential(2));
+let endNote = false;
+function showEndNote(on) {
+  endNote = on;
+  const el = $("turn_caption");
+  el.hidden = !on;
+  if (!on) return;
+  const points = trace.points, size = points.length ? points[points.length - 1] : 0;
+  const zoomed = renderer.zoom > 20 ? ` This view is zoomed in ${Math.round(renderer.zoom).toLocaleString()} times; the grid and the scale bar show the real size.` : "";
+  const html = `<div class="cap-head">Finished: every robot has terminated</div><div class="cap-body">Grey robots have terminated. The swarm is ${fmtSize(size)} units across (from its centre to its farthest robot).${zoomed}</div>`;
+  if (el.innerHTML !== html) el.innerHTML = html;
+}
 function updateCaption(f) {
   const el = $("turn_caption"), w = f.walk;
-  el.hidden = !w;
-  if (!w) return;
+  if (!w) {
+    // A run that is over, in a view that is zoomed in on the swarm or played a turn at a time: say so, because
+    // grey robots a long way apart on screen can look like a failure when they are a hair apart in fact.
+    showEndNote(f.ended && (renderer.follow || typeof playbackSpeed() === "object"));
+    return;
+  }
+  el.hidden = false;
+  endNote = false;
   const who = `<strong>Turn ${(f.turns ?? 0).toLocaleString()}</strong> · Robot ${w.robot}`;
   const rule = RULES[$("algorithm").value] ?? "";
   el.innerHTML = w.phase === "decide"
@@ -303,8 +320,8 @@ function updateCaption(f) {
 client.on("frame", (f) => {
   frame = f;
   renderer.options.walk = f.walk ?? null;
-  updateCaption(f);
   if (f.trace) trace.points = f.trace;
+  updateCaption(f);
   if (fitPending) { fitPending = false; fitToStart(f); }
   renderer.setFrame(f);
   if (firstFrame) { firstFrame = false; $("loading").hidden = true; resolveReady(); }
@@ -337,6 +354,7 @@ let legendAt = 0;
 renderer.onDraw = () => {
   draws++;
   updateScale();
+  if (endNote) showEndNote(true);  // the view is still settling after the run ends: keep its zoom up to date
   const now = performance.now();
   if (state !== "running" || now - legendAt > 250) { legendAt = now; updateLegend(); }
 };
@@ -475,6 +493,12 @@ function updateInsets() {
 $("zoom_in").addEventListener("click", () => renderer.zoomAt(1.25));
 $("zoom_out").addEventListener("click", () => renderer.zoomAt(0.8));
 $("fit").addEventListener("click", () => renderer.resetView());
+$("grid").addEventListener("click", toggleGrid);
+function toggleGrid() {
+  renderer.options.grid = !renderer.options.grid;
+  $("grid").setAttribute("aria-pressed", String(renderer.options.grid));
+  renderer.requestDraw();
+}
 $("follow").addEventListener("click", toggleFollow);
 function toggleFollow() { renderer.setFollow(!renderer.follow); }
 renderer.onFollowChange = (on) => $("follow").setAttribute("aria-pressed", String(on));
@@ -626,6 +650,7 @@ window.addEventListener("keydown", (e) => {
     r: newRun, R: newRun,
     f: () => renderer.resetView(), F: toggleFullscreen,
     z: toggleFollow, Z: toggleFollow,
+    g: toggleGrid, G: toggleGrid,
     "+": () => renderer.zoomAt(1.25), "=": () => renderer.zoomAt(1.25), "-": () => renderer.zoomAt(0.8),
     l: toggleLights, L: toggleLights,
     v: toggleLinks, V: toggleLinks,
