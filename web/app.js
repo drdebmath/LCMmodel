@@ -59,6 +59,10 @@ function newRun({ quiet = false } = {}) {
   fitPending = true;
   inspector.leave(); // the robot under the pointer belonged to the old run
   renderer.options.visibility = c.visibility_radius;
+  // "Who sees whom" means something only when robots see just a part of the swarm.
+  const limitedSight = c.visibility_radius != null;
+  $("links").hidden = !limitedSight;
+  if (!limitedSight && renderer.options.links) setLinks(false);
   renderer.options.allowedRegion = c.algorithm === "GoToCenter";
   inspector.select(-1);
   $("hud_last").hidden = true;
@@ -522,6 +526,8 @@ function updateInsets() {
 /* ------------------------------------------------------------ view tools */
 $("zoom_in").addEventListener("click", () => renderer.zoomAt(1.25));
 $("zoom_out").addEventListener("click", () => renderer.zoomAt(0.8));
+$("hud_zoom_in").addEventListener("click", () => renderer.zoomAt(1.25));
+$("hud_zoom_out").addEventListener("click", () => renderer.zoomAt(0.8));
 $("fit").addEventListener("click", () => renderer.resetView());
 $("grid").addEventListener("click", toggleGrid);
 function toggleOverview() {
@@ -556,16 +562,11 @@ function onFullscreenChange() {
 }
 document.addEventListener("fullscreenchange", onFullscreenChange);
 document.addEventListener("webkitfullscreenchange", onFullscreenChange);
-$("lights").addEventListener("click", toggleLights);
 $("links").addEventListener("click", toggleLinks);
 function toggleLinks() {
+  if ($("links").hidden) return;  // unlimited sight: everyone sees everyone, so there is nothing to show
   renderer.options.links = !renderer.options.links;
   $("links").setAttribute("aria-pressed", String(renderer.options.links));
-  renderer.requestDraw();
-}
-function toggleLights() {
-  renderer.options.showLights = !renderer.options.showLights;
-  $("lights").setAttribute("aria-pressed", String(renderer.options.showLights));
   renderer.requestDraw();
 }
 
@@ -729,7 +730,6 @@ window.addEventListener("keydown", (e) => {
     o: toggleOverview, O: toggleOverview,
     m: toggleMeasure, M: toggleMeasure,
     "+": () => renderer.zoomAt(1.25), "=": () => renderer.zoomAt(1.25), "-": () => renderer.zoomAt(0.8),
-    l: toggleLights, L: toggleLights,
     v: toggleLinks, V: toggleLinks,
     s: toggleSettings, S: toggleSettings,
     h: toggleClean, H: toggleClean,

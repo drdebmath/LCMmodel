@@ -99,13 +99,11 @@ await key("r", "KeyR", 82);
 check("R resets with the new settings", await until("lcm.state === 'ready' && lcm.renderer.frame.robots === 80 && document.getElementById('dirty').hidden", 3000));
 await js("lcm.settings.set('num_of_faults', 12); lcm.settings.set('fault_type', 'mixed'); lcm.settings.set('unlimited_visibility', false); lcm.settings.set('visibility_radius', 160)");
 await until("lcm.renderer.frame && lcm.renderer.options.visibility === 160", 3000);
-await click("#lights");
 await click("#play");
 await sleep(1500);
-await shot("3-faults-visibility-lights");
+await shot("3-faults-visibility");
 const legend2 = await js("document.getElementById('legend').textContent");
 check("fault colours appear in the legend", /Byzantine/.test(legend2) && /Crashed/.test(legend2), legend2.trim());
-await click("#lights");
 
 // Start settings: open world by default, the World toggle, pattern / arrangement / distribution, custom positions.
 // Earlier checks changed robots, faults and visibility: start from the defaults.
@@ -447,6 +445,34 @@ for (let k = 0; k < 5; k++) {
 await click("#play");
 check("within one 3-second turn the robot glides steadily along its walk", glide.every((g, i) => !i || g.x > glide[i - 1].x) && glide[4].x - glide[0].x > 40
   && glide.every((g) => g.turns === glide[0].turns && g.robotEvents === glide[0].robotEvents), JSON.stringify(glide.map((g) => +g.x.toFixed(1))));
+
+// The view tools: tidy. No lights button; zoom + and − sit in the status panel's Zoom row; "who sees whom" only
+// when the robots see just part of the swarm; the rest in two columns, in pairs.
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.unlimited_visibility === true && lcm.renderer.frame.flags.length === 500", 3000);
+await sleep(300);
+await key("L", "KeyL", 76);
+check("there is no lights button, and L does nothing", await js("!document.getElementById('lights') && lcm.renderer.options.showLights === false"));
+const toolsNow = await js(`(() => { const t = document.getElementById('tools'); const shown = [...t.querySelectorAll('button')].filter((b) => getComputedStyle(b).display !== 'none').map((b) => b.id);
+  return { shown, columns: getComputedStyle(t).gridTemplateColumns.split(' ').length, linksHidden: document.getElementById('links').hidden }; })()`);
+check("the view tools are in pairs, two columns, without + and − (those are in the status panel): follow, fit, grid, measure, export, full screen, theme, help",
+  toolsNow.columns === 2 && JSON.stringify(toolsNow.shown) === JSON.stringify(["follow", "fit", "grid", "measure", "export", "fullscreen", "theme", "help"]), JSON.stringify(toolsNow));
+check("with unlimited sight the who-sees-whom button is hidden, and V does nothing", toolsNow.linksHidden && (await (async () => { await key("V", "KeyV", 86); return js("lcm.renderer.options.links === false"); })()));
+const zoomBefore = await js("(() => { lcm.renderer.resetView(); return lcm.renderer.zoom; })()");
+await click("#hud_zoom_in");
+const zoomIn = await js("lcm.renderer.zoom");
+await click("#hud_zoom_out");
+const zoomOut = await js("lcm.renderer.zoom");
+check("the + and − in the status panel's Zoom row zoom the view", Math.abs(zoomIn / zoomBefore - 1.25) < 1e-9 && Math.abs(zoomOut / zoomIn - 0.8) < 1e-9, `${zoomBefore} -> ${zoomIn} -> ${zoomOut}`);
+check("the zoom buttons in the tools panel are not shown on a screen with room for the status panel", await js("getComputedStyle(document.getElementById('zoom_in')).display === 'none' && getComputedStyle(document.getElementById('hud_zoom_in')).display !== 'none'"));
+await js("lcm.settings.set('unlimited_visibility', false); lcm.settings.set('visibility_radius', 150)");
+await click("#reset");
+await until("lcm.state === 'ready' && lcm.renderer.options.visibility === 150", 4000);
+await sleep(200);
+check("with a limited sight radius the who-sees-whom button appears, and V toggles it", !(await js("document.getElementById('links').hidden")) && (await (async () => { await key("V", "KeyV", 86); const on = await js("lcm.renderer.options.links === true"); await key("V", "KeyV", 86); return on; })()));
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.unlimited_visibility === true", 3000);
+await sleep(300);
 
 // The grid: behind everything, labelled, and still readable however far the view is zoomed in.
 check("a grid is on by default, with a button that shows it", await js("lcm.renderer.options.grid === true && document.getElementById('grid').getAttribute('aria-pressed') === 'true'"));

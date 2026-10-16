@@ -51,6 +51,9 @@ for (const [name, w, h, dpr, touch] of SIZES) {
   await shot(`sim-${name}`);
   const stray = await js(`(() => { const t = document.getElementById('tools').getBoundingClientRect(); const bs = [...document.querySelectorAll('#tools .btn')].filter((b) => getComputedStyle(b).display !== 'none'); return bs.filter((b) => { const r = b.getBoundingClientRect(); return r.left < t.left - 0.5 || r.right > t.right + 0.5 || r.top < t.top - 0.5 || r.bottom > t.bottom + 0.5 || r.right > innerWidth || r.bottom > innerHeight; }).map((b) => b.id || b.title); })()`);
   check(`simulator, ${name}: every view-tool button fits inside its panel and on screen`, stray.length === 0, stray.join(", "));
+  // Zoom + and − are in the status panel's Zoom row, or, where that row is hidden (phones), in the tools: exactly one place.
+  const zoomAt = await js(`(() => { const v = (id) => { const e = document.getElementById(id); return getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0; }; return { tools: v('zoom_in') && v('zoom_out'), hud: v('hud_zoom_in') && v('hud_zoom_out') }; })()`);
+  check(`simulator, ${name}: zoom + and − are always reachable, in one place (${zoomAt.hud ? "status panel" : "tools"})`, zoomAt.tools !== zoomAt.hud, JSON.stringify(zoomAt));
   // Go-To-Center adds an examples menu to the toolbar, which can wrap it onto another row.
   await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'GoToCenter'; s.dispatchEvent(new Event('change')); })()`);
   await sleep(500);
