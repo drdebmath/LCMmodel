@@ -243,11 +243,14 @@ a.btn { text-decoration: none; }
   #hud { gap: 4px; padding: 10px 14px; }
 }
 
-/* Not a tall screen: the view tools (eleven of them) take two columns, and the status panel (the tallest panel,
+/* Wherever the view tools are a column (twelve of them), they take two columns, and the status panel (the tallest panel,
  * at the other end of the right edge) gives up its plot, then everything but the essentials, so the two never meet. */
-@media (min-width: 761px) and (min-height: 521px) and (max-height: 860px) {
+@media (min-width: 761px) and (min-height: 521px) {
   #tools { display: grid; grid-template-columns: repeat(2, auto); gap: 2px; }
 }
+/* Phones: twelve tools in one row are too many; full screen is the one a phone can do without. */
+@media (max-width: 760px) { #fullscreen { display: none; } }
+#canvas.measuring { cursor: crosshair; }
 @media (min-width: 761px) and (max-height: 680px) {
   #hud .hud-plot { display: none; }
 }

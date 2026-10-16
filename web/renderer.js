@@ -14,6 +14,15 @@
  * animation frame however many frames, zooms or hovers arrive.
  */
 
+const SUPERSCRIPT = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+/** A distance in the simulation's units, to three significant digits: 37.5, 0.0179, 1.79×10⁻⁵. */
+export function fmtDistance(v) {
+  if (v === 0 || !isFinite(v)) return v === 0 ? "0" : "—";
+  if (v >= 1e-3 && v < 1e7) return String(+v.toPrecision(3));
+  const [m, e] = v.toExponential(2).split("e");
+  return `${m}×10${[...String(Number(e))].map((c) => SUPERSCRIPT[c]).join("")}`;
+}
+
 // Same colours and precedence as the Pyodide page (main.js colorForRobot).
 export const COLORS = [
   { key: "active", label: "Active", fill: "#007aff" },
@@ -72,7 +81,7 @@ export class Renderer {
     this.onFollowChange = null;
     // CSS px covered by floating panels; the world is fitted into what's left.
     this.insets = { left: 0, right: 0, top: 0, bottom: 0 };
-    this.options = { showLights: false, visibility: null, links: false, allowedRegion: false, walk: null, grid: true };
+    this.options = { showLights: false, visibility: null, links: false, allowedRegion: false, walk: null, grid: true, measure: null };
     this.gridState = null; // what the last grid drawn looked like (for the page and its checks)
     this.frame = null;
     this.selected = -1;
@@ -251,6 +260,31 @@ export class Renderer {
     this.pan.x = mx - this.width / 2 - (wx - this.anchor.x) * s;
     this.pan.y = my - this.height / 2 + (wy - this.anchor.y) * s;
     this.requestDraw();
+  }
+
+  /**
+   * A measuring point in world coordinates: a robot (`{ robot }`, wherever it is now: the point is attached to
+   * it) or a fixed spot (`{ x, y }`). The frame's offsets are added to its f64 origin, so a robot's place is
+   * exact to the f32 offset even at a billion times zoom.
+   */
+  measurePoint(pt) {
+    if (!pt) return null;
+    if (pt.robot !== undefined) {
+      const f = this.frame;
+      if (!f || pt.robot >= f.flags.length) return null;
+      return { x: (f.originX ?? 0) + f.xy[2 * pt.robot], y: (f.originY ?? 0) + f.xy[2 * pt.robot + 1], robot: pt.robot };
+    }
+    return { x: pt.x, y: pt.y };
+  }
+
+  /** The measurement as it stands now: both points (the second is the pointer until it is placed), and the distance. */
+  measureInfo() {
+    const m = this.options.measure;
+    if (!m || !m.a) return null;
+    const a = this.measurePoint(m.a), b = this.measurePoint(m.b ?? m.hover);
+    if (!a || !b) return null;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    return { a, b, dx, dy, d: Math.hypot(dx, dy), done: Boolean(m.b) };
   }
 
   /** The part of the world the view shows (the area the panels leave free), in world coordinates. */
@@ -599,6 +633,51 @@ export class Renderer {
           ctx.lineWidth = 4; ctx.strokeStyle = this.theme.bg; ctx.strokeText(label, lx, ly);
           ctx.fillStyle = j === i ? accent : this.theme.text; ctx.fillText(label, lx, ly);
         }
+      }
+      ctx.restore();
+    }
+
+    // The measuring tool: a ruler from one point to another, with the distance written on it.
+    const measure = this.options.measure;
+    if (measure) {
+      const hover = measure.hover && measure.hover.robot !== undefined ? this.measurePoint(measure.hover) : null;
+      const info = this.measureInfo();
+      ctx.save();
+      const color = "#c026d3";
+      const ring = (p) => { ctx.beginPath(); ctx.arc(WX(p.x), WY(p.y), Math.max(r, 2) + 5, 0, 2 * Math.PI); ctx.stroke(); };
+      if (hover && !measure.b) { ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6; ring(hover); ctx.globalAlpha = 1; }
+      if (info) {
+        const ax = WX(info.a.x), ay = WY(info.a.y), bx = WX(info.b.x), by = WY(info.b.y);
+        ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2; ctx.lineCap = "round";
+        if (!info.done) ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.setLineDash([]);
+        const len = Math.hypot(bx - ax, by - ay) || 1, nx = -(by - ay) / len, ny = (bx - ax) / len;
+        for (const [px, py] of [[ax, ay], [bx, by]]) {  // ruler ends
+          ctx.beginPath(); ctx.moveTo(px - nx * 7, py - ny * 7); ctx.lineTo(px + nx * 7, py + ny * 7); ctx.stroke();
+        }
+        if (info.a.robot !== undefined) ring(info.a);
+        else { ctx.beginPath(); ctx.arc(ax, ay, 3.5, 0, 2 * Math.PI); ctx.fill(); }
+        if (info.done && info.b.robot !== undefined) ring(info.b);
+        else if (info.done) { ctx.beginPath(); ctx.arc(bx, by, 3.5, 0, 2 * Math.PI); ctx.fill(); }
+        // The label, beside the middle of the line.
+        const name = (p, fallback) => (p.robot !== undefined ? `R${p.robot}` : fallback);
+        const title = `${name(info.a, "A")} → ${info.done ? name(info.b, "B") : "…"}  ${fmtDistance(info.d)}`;
+        const detail = `dx ${fmtDistance(Math.abs(info.dx))}   dy ${fmtDistance(Math.abs(info.dy))}`;
+        ctx.font = "600 13px system-ui, sans-serif";
+        const w1 = ctx.measureText(title).width;
+        ctx.font = "11px system-ui, sans-serif";
+        const w2 = ctx.measureText(detail).width, bw = Math.max(w1, w2) + 16, bh = 40;
+        const { left, top } = this.insets;
+        let lx = (ax + bx) / 2 + nx * (bh / 2 + 12) - bw / 2, ly = (ay + by) / 2 + ny * (bh / 2 + 12) - bh / 2;
+        lx = Math.min(Math.max(lx, left + 6), this.width - bw - 6); ly = Math.min(Math.max(ly, top + 6), this.height - bh - 6);
+        ctx.fillStyle = this.theme.bg; ctx.globalAlpha = 0.94;
+        ctx.beginPath(); (ctx.roundRect ? ctx.roundRect(lx, ly, bw, bh, 8) : ctx.rect(lx, ly, bw, bh)); ctx.fill();
+        ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.fillStyle = color; ctx.font = "600 13px system-ui, sans-serif"; ctx.textBaseline = "alphabetic";
+        ctx.fillText(title, lx + 8, ly + 17);
+        ctx.fillStyle = this.theme.text; ctx.globalAlpha = 0.75; ctx.font = "11px system-ui, sans-serif";
+        ctx.fillText(detail, lx + 8, ly + 33);
       }
       ctx.restore();
     }

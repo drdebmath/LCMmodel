@@ -513,6 +513,55 @@ await key("O", "KeyO", 79);
 check("the O key hides the map, and shows it again", hiddenMap && (await js("!document.getElementById('overview').hidden")));
 await click("#fit");
 
+// The measuring tool: click a point or a robot, then a second one. A robot end stays attached to it (the
+// number follows it); empty space is a fixed point in the world.
+const robotAt = (i, dx = 0, dy = 0) => js(`(() => { const r = lcm.renderer, f = r.frame, c = r.canvas.getBoundingClientRect(); const [sx, sy] = r.toScreen(f.x(${i}), f.y(${i})); return [c.left + sx + ${dx}, c.top + sy + ${dy}]; })()`);
+const mouse = async ([x, y]) => { await clickAt(x, y); await sleep(60); };
+await click("#reset");
+await js(TWO_ROBOTS);
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+await js("lcm.renderer.resetView(); lcm.renderer.draw()");
+await key("M", "KeyM", 77);
+check("M turns the measuring tool on: the button shows it, the pointer is a crosshair, a hint says what to do", await js("lcm.measure.on && document.getElementById('measure').getAttribute('aria-pressed') === 'true' && document.getElementById('canvas').classList.contains('measuring') && /Measure: click/.test(document.getElementById('toast').textContent)"));
+await mouse(await robotAt(0, 4, -3));
+await mouse(await robotAt(1, -3, 4));
+const robots = await js("(() => { const i = lcm.renderer.measureInfo(); return { d: i.d, a: i.a.robot, b: i.b.robot, done: i.done, selected: lcm.renderer.selected }; })()");
+check("clicking near two robots measures between them (600 apart at the start), and does not select a robot", robots.a === 0 && robots.b === 1 && robots.done && Math.abs(robots.d - 600) < 1e-6 && robots.selected === -1, JSON.stringify(robots));
+await setPlayback("Infinity");
+await click("#play");
+await until("lcm.state === 'ended'", 30000);
+await sleep(300);
+const live = await js("(() => { const i = lcm.renderer.measureInfo(), f = lcm.renderer.frame; return { d: i.d, apart: Math.abs(f.x(1) - f.x(0)), a: i.a.robot, b: i.b.robot }; })()");
+check("the ends stay on their robots: after the run the number is their new gap (about 0.00002), to 1e-9", live.a === 0 && live.b === 1 && live.d < 1e-4 && live.d > 0 && Math.abs(live.d - live.apart) < 1e-9 * Math.max(1, live.d), JSON.stringify(live));
+await click("#reset");
+await js(TWO_ROBOTS);
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+await js("lcm.renderer.resetView(); lcm.renderer.draw()");
+await key("Escape", "Escape", 27);  // clears the measurement from the last run
+const emptyA = await js("(() => { const c = lcm.renderer.canvas.getBoundingClientRect(); return [c.left + 400, c.top + 520]; })()");
+const emptyB = await js("(() => { const c = lcm.renderer.canvas.getBoundingClientRect(); return [c.left + 700, c.top + 620]; })()");
+await mouse(emptyA);
+await mouse(emptyB);
+const fixedBefore = await js("(() => { const i = lcm.renderer.measureInfo(); return { d: i.d, ar: i.a.robot, br: i.b.robot, ax: i.a.x, ay: i.a.y, scale: lcm.renderer.scale }; })()");
+const pxDistance = Math.hypot(emptyB[0] - emptyA[0], emptyB[1] - emptyA[1]);
+await js("lcm.renderer.zoomAt(5); lcm.renderer.panBy(-80, 40); lcm.renderer.draw()");
+const fixedAfter = await js("(() => { const i = lcm.renderer.measureInfo(); return { d: i.d, ax: i.a.x, ay: i.a.y }; })()");
+check("empty space gives fixed points whose distance is the true one, and it stays put when the view zooms and pans",
+  fixedBefore.ar === undefined && fixedBefore.br === undefined && Math.abs(fixedBefore.d - pxDistance / fixedBefore.scale) < 1e-9 * fixedBefore.d && fixedAfter.d === fixedBefore.d && fixedAfter.ax === fixedBefore.ax && fixedAfter.ay === fixedBefore.ay,
+  JSON.stringify({ fixedBefore, expected: pxDistance / fixedBefore.scale, fixedAfter }));
+await js("lcm.renderer.resetView(); lcm.renderer.draw()");
+await mouse(await robotAt(0));
+const third = await js("(() => { const m = lcm.measure; return { a: m.a?.robot, b: m.b }; })()");
+check("a third click starts a new measurement", third.a === 0 && third.b === null, JSON.stringify(third));
+await key("Escape", "Escape", 27);
+const cleared = await js("lcm.measure.a === null && lcm.measure.on");
+await key("Escape", "Escape", 27);
+check("Esc clears the measurement, and a second Esc leaves the tool", cleared && (await js("!lcm.measure.on && document.getElementById('measure').getAttribute('aria-pressed') === 'false' && lcm.renderer.options.measure === null")));
+await key("M", "KeyM", 77);
+await key("M", "KeyM", 77);
+check("and M turns it on and off", await js("!lcm.measure.on"));
+await setPlayback(playback);
+
 // The turn view: a caption says whose turn it is and why; the camera stands still while the robot walks.
 await click("#reset");
 await js(TWO_ROBOTS);

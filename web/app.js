@@ -630,6 +630,10 @@ canvas.addEventListener("pointerdown", (e) => {
 });
 canvas.addEventListener("pointermove", (e) => {
   const rect = canvas.getBoundingClientRect();
+  if (measure.on && !drag) {  // the ruler follows the pointer until its second point is placed
+    measureHover(e.clientX - rect.left, e.clientY - rect.top);
+    return;
+  }
   if (drag) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (drag.moved || Math.hypot(dx, dy) > 3) {
@@ -646,13 +650,48 @@ canvas.addEventListener("pointermove", (e) => {
 canvas.addEventListener("pointerup", (e) => {
   const rect = canvas.getBoundingClientRect();
   if (drag && !drag.moved) {
-    const i = renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
-    inspector.select(i);
+    if (measure.on) measureClick(e.clientX - rect.left, e.clientY - rect.top);
+    else inspector.select(renderer.pick(e.clientX - rect.left, e.clientY - rect.top));
   }
   drag = null;
   canvas.classList.remove("panning");
 });
-canvas.addEventListener("pointerleave", () => inspector.leave());
+canvas.addEventListener("pointerleave", () => { inspector.leave(); if (measure.on && measure.hover) { measure.hover = null; renderer.requestDraw(); } });
+
+/* ------------------------------------------------------------ measuring */
+// Click a point (or a robot), then a second one: the distance is written on a ruler between them. A robot is
+// picked when the click is near it and the end stays attached to it (the number follows it as it moves); empty
+// space is a fixed point in the world. A third click starts over. Esc clears it, and again leaves the tool.
+const measure = { on: false, a: null, b: null, hover: null };
+function measurePointAt(sx, sy) {
+  const i = renderer.pick(sx, sy, 14);
+  if (i >= 0) return { robot: i };
+  const [x, y] = renderer.toWorld(sx, sy);
+  return { x, y };
+}
+function measureHover(sx, sy) {
+  measure.hover = measurePointAt(sx, sy);
+  renderer.requestDraw();
+}
+function measureClick(sx, sy) {
+  const p = measurePointAt(sx, sy);
+  if (!measure.a || measure.b) { measure.a = p; measure.b = null; } else measure.b = p;
+  measure.hover = p;
+  renderer.requestDraw();
+}
+function setMeasure(on) {
+  measure.on = on;
+  measure.a = measure.b = measure.hover = null;
+  $("measure").setAttribute("aria-pressed", String(on));
+  canvas.classList.toggle("measuring", on);
+  renderer.options.measure = on ? measure : null;
+  inspector.leave();
+  if (on) toast("Measure: click a point or a robot, then a second one. Esc clears.");
+  renderer.requestDraw();
+}
+function toggleMeasure() { setMeasure(!measure.on); }
+$("measure").addEventListener("click", toggleMeasure);
+window.lcm.measure = measure;
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
@@ -672,6 +711,7 @@ window.addEventListener("keydown", (e) => {
     if (!$("shortcuts").hidden) openShortcuts(false);
     else if (!$("export_menu").hidden) $("export_menu").hidden = true;
     else if (!$("examples_menu").hidden) { openExamples(false); $("examples").focus(); }
+    else if (measure.on) { if (measure.a) { measure.a = measure.b = measure.hover = null; renderer.requestDraw(); } else setMeasure(false); }
     else inspector.select(-1);
     return;
   }
@@ -687,6 +727,7 @@ window.addEventListener("keydown", (e) => {
     z: toggleFollow, Z: toggleFollow,
     g: toggleGrid, G: toggleGrid,
     o: toggleOverview, O: toggleOverview,
+    m: toggleMeasure, M: toggleMeasure,
     "+": () => renderer.zoomAt(1.25), "=": () => renderer.zoomAt(1.25), "-": () => renderer.zoomAt(0.8),
     l: toggleLights, L: toggleLights,
     v: toggleLinks, V: toggleLinks,
