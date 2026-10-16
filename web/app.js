@@ -6,7 +6,7 @@
  * previews the new swarm; after the run has started it marks the settings
  * "Reset to apply" instead of throwing the run away. */
 import { renderIcons, icon } from "./icons.js";
-import { COLORS, LOD, Renderer } from "./renderer.js";
+import { COLORS, LOD, Renderer, fmtDistance, ulpOf } from "./renderer.js";
 import { SimClient } from "./client.js";
 import { Inspector } from "./inspector.js";
 import { Overview } from "./overview.js";
@@ -298,15 +298,27 @@ const RULES = {
   GoToCenter: "It heads for the centre of the smallest circle around the robots it sees, but never so far that it could lose sight of a neighbour.",
 };
 const fmtNumber = (v) => (v === 0 ? "0" : v >= 1e-3 ? String(+v.toPrecision(3)) : v.toExponential(2));
-let endNote = false;
-function showEndNote(on) {
-  endNote = on;
+let endNote = null;   // "ended", "stalled" or null: which note is up
+let stepOfNumbers = 0; // the gap between neighbouring numbers where the swarm is, set from the frame
+function showEndNote(kind) {
+  endNote = kind;
   const el = $("turn_caption");
-  el.hidden = !on;
-  if (!on) return;
+  el.hidden = !kind;
+  if (!kind) return;
   const points = trace.points, size = points.length ? points[points.length - 1] : 0;
-  const zoomed = renderer.zoom > 20 ? ` This view is zoomed in ${Math.round(renderer.zoom).toLocaleString()} times; the grid and the scale bar show the real size.` : "";
-  const html = `<div class="cap-head">Finished: every robot has terminated</div><div class="cap-body">Grey robots have terminated. The swarm is ${fmtSize(size)} units across (from its centre to its farthest robot).${zoomed}</div>`;
+  const zoomed = renderer.zoom > 20 ? ` This view is zoomed in ${fmtZoomWords(renderer.zoom)} times; the grid and the scale bar show the real size.` : "";
+  let html;
+  if (kind === "ended") {
+    html = `<div class="cap-head">Finished: every robot has terminated</div><div class="cap-body">Grey robots have terminated. The swarm is ${fmtSize(size)} units across (from its centre to its farthest robot).${zoomed}</div>`;
+  } else {
+    // Stalled: a whole round in which no robot could move or finish. Often the numbers have run out: a robot's
+    // destination rounds to the spot where it already stands.
+    const p = settings.values.threshold_precision, eps = 10 ** -p;
+    const numbers = stepOfNumbers > 0 && eps < 2 * stepOfNumbers
+      ? ` Here, the computer's numbers cannot tell two positions apart if they are closer than ${fmtDistance(stepOfNumbers)}, but the precision setting (${p}) asks for ε = ${fmtDistance(eps)}, which is finer. So a robot's destination rounds to where it already stands, and it does not move. Try a precision of ${Math.max(2, Math.floor(-Math.log10(stepOfNumbers * 20)))} or less.`
+      : "";
+    html = `<div class="cap-head">Stalled: nothing can move any more</div><div class="cap-body">A whole round passed in which no robot could move or finish. The swarm is ${fmtSize(size)} units across.${numbers}${zoomed}</div>`;
+  }
   if (el.innerHTML !== html) el.innerHTML = html;
 }
 function updateCaption(f) {
@@ -314,11 +326,12 @@ function updateCaption(f) {
   if (!w) {
     // A run that is over, in a view that is zoomed in on the swarm or played a turn at a time: say so, because
     // grey robots a long way apart on screen can look like a failure when they are a hair apart in fact.
-    showEndNote(f.ended && (renderer.follow || typeof playbackSpeed() === "object"));
+    stepOfNumbers = ulpOf(Math.max(Math.abs(f.originX ?? 0), Math.abs(f.originY ?? 0)));
+    showEndNote(f.stop === "stalled" ? "stalled" : f.ended && (renderer.follow || typeof playbackSpeed() === "object") ? "ended" : null);
     return;
   }
   el.hidden = false;
-  endNote = false;
+  endNote = null;
   const who = `<strong>Turn ${(f.turns ?? 0).toLocaleString()}</strong> · Robot ${w.robot}`;
   const rule = RULES[$("algorithm").value] ?? "";
   el.innerHTML = w.phase === "decide"
@@ -365,7 +378,7 @@ renderer.onDraw = () => {
   updateScale();
   updateZoomRows();
   overview.draw();
-  if (endNote) showEndNote(true);  // the view is still settling after the run ends: keep its zoom up to date
+  if (endNote) showEndNote(endNote);  // the view is still settling after the run ends: keep its zoom up to date
   const now = performance.now();
   if (state !== "running" || now - legendAt > 250) { legendAt = now; updateLegend(); }
 };
@@ -394,13 +407,24 @@ function updateScale() {
 
 /** "1.3×", "230×", "4.5k×", "30.1M×": how far the view is zoomed in, kept short for the panel. */
 function fmtZoom(z) {
+  if (z >= 1e15) {  // beyond a trillion: 4.1×10¹⁶×
+    const [m, e] = z.toExponential(1).split("e");
+    return `${m}×10${[...String(Number(e))].map((c) => SUPERSCRIPT[c]).join("")}×`;
+  }
   if (z < 10) return `${z.toFixed(2)}×`;
   if (z < 1e3) return `${z.toFixed(z < 100 ? 1 : 0)}×`;
   const units = [[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "k"]];  // thousand, million, billion, trillion
   for (const [size, suffix] of units) if (z >= size) return `${(z / size).toFixed(1)}${suffix}×`;
   return `${z}×`;
 }
-/** The zoom gauge (logarithmic, 1× to a trillion ×) and the distance between the labelled grid lines. */
+/** The same in words for a sentence: "173.2 billion", "4.1×10¹⁶". */
+function fmtZoomWords(z) {
+  if (z >= 1e15) return fmtZoom(z).replace(/×$/, "");
+  const units = [[1e12, "trillion"], [1e9, "billion"], [1e6, "million"]];
+  for (const [size, word] of units) if (z >= size) return `${(z / size).toFixed(1)} ${word}`;
+  return Math.round(z).toLocaleString();
+}
+/** The zoom gauge (logarithmic, 1× to 10¹⁸ ×) and the distance between the labelled grid lines. */
 let zoomShown = "";
 function updateZoomRows() {
   const z = renderer.zoom, text = fmtZoom(z), grid = renderer.gridState;
@@ -408,8 +432,8 @@ function updateZoomRows() {
   if (key === zoomShown) return;
   zoomShown = key;
   $("hud_zoom").textContent = text;
-  $("hud_zoom_fill").style.width = `${Math.max(0, Math.min(1, Math.log10(Math.max(z, 1)) / 12)) * 100}%`;
-  $("hud_grid").textContent = grid && renderer.options.grid ? fmtLength(grid.spacing) : "off";
+  $("hud_zoom_fill").style.width = `${Math.max(0, Math.min(1, Math.log10(Math.max(z, 1)) / 18)) * 100}%`;
+  $("hud_grid").textContent = !renderer.options.grid ? "off" : !grid ? "—" : grid.valid ? fmtLength(grid.spacing) : "numbers run out";
 }
 
 function updateHud(force = false) {

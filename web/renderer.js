@@ -15,6 +15,12 @@
  */
 
 const SUPERSCRIPT = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+/** The gap between neighbouring doubles near `m` (a size): what positions that big cannot be told apart below. */
+export function ulpOf(m) {
+  m = Math.abs(m);
+  return m > 1e-300 ? 2 ** (Math.floor(Math.log2(m)) - 52) : 5e-324;
+}
+
 /** A distance in the simulation's units, to three significant digits: 37.5, 0.0179, 1.79×10⁻⁵. */
 export function fmtDistance(v) {
   if (v === 0 || !isFinite(v)) return v === 0 ? "0" : "—";
@@ -42,6 +48,11 @@ export const LIGHTS = [null, "#3b82f6", "#ef4444", "#22c55e"];
 // Level of detail: draw these only up to this many robots.
 export const LOD = { outlines: 2000, targets: 2000, visibility: 1000, circles: 1000, links: 400 };
 
+// How far in the view may go. The real limit is the numbers, not this: positions are doubles, which cannot tell
+// places closer than about 2e-16 times their size apart, so a swarm near (100, 0) can only be told apart down to
+// about 1.4e-14, while one near (0, 0) can be told apart far smaller. Follow stops where the swarm is one such
+// step across (see stepFollow); this only keeps the zoom number finite.
+const MAX_ZOOM = 1e36;
 // Circles bigger than this many CSS px cannot be seen (a swarm followed in close next to a visibility
 // radius, say): skip them instead of asking the canvas for a huge arc.
 const HUGE = 1e6;
@@ -181,13 +192,15 @@ export class Renderer {
       ? { x: this.anchor.x + (sw.x - this.anchor.x) * k, y: this.anchor.y + (sw.y - this.anchor.y) * k }
       : { x: sw.x, y: sw.y };
     let gap = 0;
-    // A swarm gathered to a point (radius 0) has nothing to zoom to: hold the zoom. Below 1e-9 the
-    // positions themselves (doubles near 100) have run out of digits.
-    if (sw.extent > 1e-9) {
+    // A swarm gathered to a point (radius 0) has nothing to zoom to: hold the zoom. Zooming goes down to a
+    // swarm that is one step of the numbers across (half a step is the radius of two neighbouring numbers):
+    // below that the positions cannot say anything more, however far in the view goes.
+    const stepOfNumbers = ulpOf(Math.max(Math.abs(sw.x), Math.abs(sw.y)));
+    if (sw.extent > Math.max(1e-30, 0.45 * stepOfNumbers)) {
       const w = Math.max(100, this.width - left - right), h = Math.max(100, this.height - top - bottom);
       const target = (0.92 * Math.min(w, h)) / (2 * sw.extent) / (this.scale / this.zoom);
       const next = Math.exp(Math.log(this.zoom) + (Math.log(target) - Math.log(this.zoom)) * k);
-      this.zoom = Math.min(1e13, Math.max(0.05, next));
+      this.zoom = Math.min(MAX_ZOOM, Math.max(0.05, next));
       gap = Math.abs(Math.log(target / this.zoom));
     }
     const cx = (left - right) / 2, cy = (top - bottom) / 2;
@@ -255,7 +268,7 @@ export class Renderer {
   zoomAt(factor, mx = this.width / 2, my = this.height / 2) {
     this.setFollow(false); // zooming by hand takes over from following
     const [wx, wy] = this.toWorld(mx, my);
-    this.zoom = Math.min(1e13, Math.max(0.05, this.zoom * factor));
+    this.zoom = Math.min(MAX_ZOOM, Math.max(0.05, this.zoom * factor));
     const s = this.scale;
     this.pan.x = mx - this.width / 2 - (wx - this.anchor.x) * s;
     this.pan.y = my - this.height / 2 + (wy - this.anchor.y) * s;
@@ -320,6 +333,9 @@ export class Renderer {
     const yMax = this.anchor.y + oy / s, yMin = this.anchor.y - (H - oy) / s;  // y points up
     const span = Math.max(xMax - xMin, yMax - yMin);
     if (!(span > 0) || !isFinite(span)) { this.gridState = null; return; }
+    // Lines closer than 16 steps of the numbers cannot be told apart (or labelled truthfully): leave them out.
+    const mag = Math.max(Math.abs(xMin), Math.abs(xMax), Math.abs(yMin), Math.abs(yMax));
+    const finest = 16 * ulpOf(mag);
     const eMin = Math.ceil(Math.log10(10 / s)), eMax = Math.floor(Math.log10(span * 2));
     const rgb = this.theme.grid;
     const sx = (x) => ox + (x - this.anchor.x) * s, sy = (y) => oy - (y - this.anchor.y) * s;
@@ -329,7 +345,7 @@ export class Renderer {
     for (let e = eMax; e >= eMin; e--) {
       const step = 10 ** e, px = step * s;
       const fade = Math.min(1, Math.max(0, (px - 10) / 40));
-      if (fade <= 0) continue;
+      if (fade <= 0 || step < finest) continue;
       const k0 = Math.ceil(xMin / step), k1 = Math.floor(xMax / step);
       const j0 = Math.ceil(yMin / step), j1 = Math.floor(yMax / step);
       if (k1 - k0 > 600 || j1 - j0 > 600) continue;
@@ -345,7 +361,7 @@ export class Renderer {
     const step = (mant <= 1 ? 1 : mant <= 2 ? 2 : mant <= 5 ? 5 : 10) * pow, px = step * s;
     const kx0 = Math.ceil(xMin / step), kx1 = Math.floor(xMax / step);
     const ky0 = Math.ceil(yMin / step), ky1 = Math.floor(yMax / step);
-    const labelled = kx1 - kx0 <= 600 && ky1 - ky0 <= 600;
+    const labelled = kx1 - kx0 <= 600 && ky1 - ky0 <= 600 && step >= finest;
     if (labelled) {
       ctx.strokeStyle = `rgba(${rgb},0.26)`;
       ctx.beginPath();
@@ -362,8 +378,8 @@ export class Renderer {
     const decade = Math.floor(Math.log10(step) + 1e-9);
     const text = (v) => {
       if (v === 0) return "0";
-      if (decade >= 6) return v.toExponential(2);
-      return v.toFixed(Math.min(12, Math.max(0, -decade)));
+      if (decade >= 6 || decade < -15) return v.toExponential(2);
+      return v.toFixed(Math.max(0, -decade));
     };
     ctx.font = "11px system-ui, sans-serif";
     ctx.textBaseline = "alphabetic";
@@ -383,7 +399,7 @@ export class Renderer {
       }
     }
     ctx.restore();
-    this.gridState = { decade, spacing: step, px, layers: Math.max(0, eMax - eMin + 1) };
+    this.gridState = { decade, spacing: step, px, layers: Math.max(0, eMax - eMin + 1), valid: step >= finest };
   }
 
   /** Robot radius in CSS px: smaller for big swarms so they stay distinguishable. */

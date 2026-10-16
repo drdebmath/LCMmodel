@@ -493,7 +493,7 @@ await until("lcm.state === 'ended'", 30000);
 await sleep(2500);
 const deep = await js("({ grid: lcm.renderer.gridState, zoom: lcm.renderer.zoom, end: document.getElementById('turn_caption').innerText, hidden: document.getElementById('turn_caption').hidden })");
 check("zoomed in about 30 million times, the grid still has labelled lines 80 px apart or more, at a spacing near the robots' gap", deep.zoom > 1e6 && deep.grid && deep.grid.px >= 80 && deep.grid.px <= 1500 && deep.grid.spacing <= 1e-4 && deep.grid.spacing >= 1e-8, JSON.stringify(deep.grid));
-check("a finished run says so, in words: grey means terminated, the real size, and how far it is zoomed in", !deep.hidden && /Finished/.test(deep.end) && /terminated/.test(deep.end) && /units across/.test(deep.end) && /zoomed in [\d,]+ times/.test(deep.end), deep.end);
+check("a finished run says so, in words: grey means terminated, the real size, and how far it is zoomed in", !deep.hidden && /Finished/.test(deep.end) && /terminated/.test(deep.end) && /units across/.test(deep.end) && /zoomed in [\d.,]+( thousand| million| billion| trillion)? times/.test(deep.end), deep.end);
 await click("#reset");
 await until("lcm.state === 'ready'", 4000);
 await sleep(300);
@@ -509,7 +509,7 @@ for (const f of [1, 2.5, 10, 1e3, 1e6, 1e9]) {
 }
 check("the scale bar is as long as its label says, at every zoom from 1× to a billion ×", zoomRows.every((z) => Math.abs(z.bar - z.len * z.scale) <= 1.5), JSON.stringify(zoomRows.map((z) => [z.f, z.len, +z.bar.toFixed(1), +(z.len * z.scale).toFixed(1)])));
 check("the labelled grid lines are 1, 2 or 5 times a power of ten, 85 to 230 px apart, at every zoom", zoomRows.every((z) => z.px >= 85 && z.px <= 230 && [1, 2, 5].some((m) => Math.abs(z.mant - m) < 1e-6)), JSON.stringify(zoomRows.map((z) => [z.f, +z.px.toFixed(0), +z.mant.toFixed(3)])));
-check("the zoom gauge reads the real zoom (number and bar), and the grid-lines row names their spacing", zoomRows.every((z) => Math.abs(z.fill - (100 * Math.log10(z.f)) / 12) < 0.6 && /×$/.test(z.gauge) && !/G/.test(z.gauge) && z.gridRow !== "—" && z.gridRow !== "off"), JSON.stringify(zoomRows.map((z) => [z.f, z.gauge, +z.fill.toFixed(1), z.gridRow])));
+check("the zoom gauge reads the real zoom (number and bar), and the grid-lines row names their spacing", zoomRows.every((z) => Math.abs(z.fill - (100 * Math.log10(z.f)) / 18) < 0.6 && /×$/.test(z.gauge) && !/G/.test(z.gauge) && z.gridRow !== "—" && z.gridRow !== "off"), JSON.stringify(zoomRows.map((z) => [z.f, z.gauge, +z.fill.toFixed(1), z.gridRow])));
 await click("#fit");
 
 // The overview map: the starting area, with a rectangle for the part in view; zoomed far in, a marked dot.
@@ -587,6 +587,30 @@ await key("M", "KeyM", 77);
 await key("M", "KeyM", 77);
 check("and M turns it on and off", await js("!lcm.measure.on"));
 await setPlayback(playback);
+
+// The numbers run out: precision 15 asks for an ε finer than the computer can tell apart near 100 (1.4e-14). The run stalls
+// (a robot's destination rounds to where it stands), the zoom goes all the way down to two neighbouring numbers, the
+// grid says it cannot place lines that fine, and a note says why.
+await click("#reset");
+await js(TWO_ROBOTS);
+await js("lcm.settings.set('threshold_precision', 15)");
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+await js("lcm.renderer.resetView(); if (!lcm.renderer.follow) document.getElementById('follow').click()");
+await setPlayback("Infinity");
+await click("#play");
+await until("document.getElementById('hud_status').textContent.includes('Stalled')", 30000);
+await sleep(3000);
+const numbersRunOut = await js(`({ status: document.getElementById('hud_status').textContent, zoom: lcm.renderer.zoom, gauge: document.getElementById('hud_zoom').textContent, gridRow: document.getElementById('hud_grid').textContent,
+  note: document.getElementById('turn_caption').innerText, noteShown: !document.getElementById('turn_caption').hidden, apart: Math.abs(lcm.renderer.frame.x(1) - lcm.renderer.frame.x(0)), terminated: lcm.renderer.frame.terminated,
+  step: 2 ** (Math.floor(Math.log2(Math.max(Math.abs(lcm.renderer.frame.x(0)), Math.abs(lcm.renderer.frame.x(1))))) - 52) })`);
+check("at precision 15 the run stalls, with nobody terminated: the robots end one or two steps of the numbers apart", /Stalled/.test(numbersRunOut.status) && numbersRunOut.terminated === 0 && (numbersRunOut.apart === numbersRunOut.step || numbersRunOut.apart === 2 * numbersRunOut.step), JSON.stringify({ status: numbersRunOut.status, apart: numbersRunOut.apart, step: numbersRunOut.step }));
+check("Follow keeps zooming to that scale (over 10¹⁵ times), and the readouts cope", numbersRunOut.zoom > 1e15 && /×10[⁰¹²³⁴⁵⁶⁷⁸⁹]+×$/.test(numbersRunOut.gauge) && numbersRunOut.gridRow === "numbers run out", JSON.stringify({ zoom: numbersRunOut.zoom, gauge: numbersRunOut.gauge, gridRow: numbersRunOut.gridRow }));
+check("a note says why: the numbers cannot tell positions apart that finely, so a destination rounds to where the robot stands, and what to try",
+  numbersRunOut.noteShown && /Stalled/.test(numbersRunOut.note) && /cannot tell two positions apart/.test(numbersRunOut.note) && /precision setting \(15\)/.test(numbersRunOut.note) && /rounds to where it already stands/.test(numbersRunOut.note) && /Try a precision of 12 or less/.test(numbersRunOut.note), numbersRunOut.note);
+await js("lcm.settings.reset()");
+await click("#reset");
+await until("lcm.state === 'ready' && lcm.settings.values.threshold_precision === 5", 3000);
+await sleep(300);
 
 // The turn view: a caption says whose turn it is and why; the camera stands still while the robot walks.
 await click("#reset");
