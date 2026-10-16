@@ -279,13 +279,9 @@ export class Renderer {
     const eMin = Math.ceil(Math.log10(10 / s)), eMax = Math.floor(Math.log10(span * 2));
     const rgb = this.theme.grid;
     const sx = (x) => ox + (x - this.anchor.x) * s, sy = (y) => oy - (y - this.anchor.y) * s;
-    let labelE = null;
-    for (let e = eMin; e <= eMax; e++) {
-      if (s * 10 ** e >= 80) { labelE = e; break; }
-    }
-    if (labelE === null) labelE = eMax;
     ctx.save();
     ctx.lineWidth = 1;
+    // Faint layers: one per power of ten, each fading in as its lines drift apart.
     for (let e = eMax; e >= eMin; e--) {
       const step = 10 ** e, px = step * s;
       const fade = Math.min(1, Math.max(0, (px - 10) / 40));
@@ -293,48 +289,57 @@ export class Renderer {
       const k0 = Math.ceil(xMin / step), k1 = Math.floor(xMax / step);
       const j0 = Math.ceil(yMin / step), j1 = Math.floor(yMax / step);
       if (k1 - k0 > 600 || j1 - j0 > 600) continue;
-      ctx.strokeStyle = `rgba(${rgb},${(0.16 * fade).toFixed(3)})`;
+      ctx.strokeStyle = `rgba(${rgb},${(0.12 * fade).toFixed(3)})`;
       ctx.beginPath();
       for (let k = k0; k <= k1; k++) { const x = Math.round(sx(k * step)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
       for (let j = j0; j <= j1; j++) { const y = Math.round(sy(j * step)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
       ctx.stroke();
     }
-    // The axes through (0, 0), when in view, a little stronger.
-    ctx.strokeStyle = `rgba(${rgb},0.34)`;
+    // The labelled lines: 1, 2 or 5 times a power of ten, whichever puts them 90 to 225 px apart. They
+    // are stronger, and their spacing steps 1, 2, 5, 10, ... as you zoom, so it can be read off.
+    const want = 90 / s, pow = 10 ** Math.floor(Math.log10(want)), mant = want / pow;
+    const step = (mant <= 1 ? 1 : mant <= 2 ? 2 : mant <= 5 ? 5 : 10) * pow, px = step * s;
+    const kx0 = Math.ceil(xMin / step), kx1 = Math.floor(xMax / step);
+    const ky0 = Math.ceil(yMin / step), ky1 = Math.floor(yMax / step);
+    const labelled = kx1 - kx0 <= 600 && ky1 - ky0 <= 600;
+    if (labelled) {
+      ctx.strokeStyle = `rgba(${rgb},0.26)`;
+      ctx.beginPath();
+      for (let k = kx0; k <= kx1; k++) { const x = Math.round(sx(k * step)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+      for (let j = ky0; j <= ky1; j++) { const y = Math.round(sy(j * step)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
+      ctx.stroke();
+    }
+    // The axes through (0, 0), when in view, a little stronger still.
+    ctx.strokeStyle = `rgba(${rgb},0.4)`;
     ctx.beginPath();
     if (xMin <= 0 && xMax >= 0) { const x = Math.round(sx(0)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
     if (yMin <= 0 && yMax >= 0) { const y = Math.round(sy(0)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
     ctx.stroke();
-    // Labels for one layer.
-    const step = 10 ** labelE, px = step * s;
+    const decade = Math.floor(Math.log10(step) + 1e-9);
     const text = (v) => {
       if (v === 0) return "0";
-      if (labelE >= 6) return v.toExponential(2);
-      return v.toFixed(Math.min(12, Math.max(0, -labelE)));
+      if (decade >= 6) return v.toExponential(2);
+      return v.toFixed(Math.min(12, Math.max(0, -decade)));
     };
     ctx.font = "11px system-ui, sans-serif";
     ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = `rgba(${rgb},0.85)`;
+    ctx.fillStyle = `rgba(${rgb},0.9)`;
     ctx.lineJoin = "round"; ctx.lineWidth = 3; ctx.strokeStyle = this.theme.bg;
     const label = (str, x, y) => { ctx.strokeText(str, x, y); ctx.fillText(str, x, y); };
-    const k0 = Math.ceil(xMin / step), k1 = Math.floor(xMax / step);
-    const j0 = Math.ceil(yMin / step), j1 = Math.floor(yMax / step);
-    if (k1 - k0 <= 600) {
-      for (let k = k0; k <= k1; k++) {
+    if (labelled) {
+      for (let k = kx0; k <= kx1; k++) {
         const x = sx(k * step), str = text(k * step), w = ctx.measureText(str).width;
         if (x - w / 2 < left + 4 || x + w / 2 > W - right - 4) continue;
         label(str, x - w / 2, top + 16);
       }
-    }
-    if (j1 - j0 <= 600) {
-      for (let j = j0; j <= j1; j++) {
+      for (let j = ky0; j <= ky1; j++) {
         const y = sy(j * step);
         if (y < top + 30 || y > H - 20) continue;
         label(text(j * step), left + 6, y - 3);
       }
     }
     ctx.restore();
-    this.gridState = { decade: labelE, spacing: step, px, layers: Math.max(0, eMax - eMin + 1) };
+    this.gridState = { decade, spacing: step, px, layers: Math.max(0, eMax - eMin + 1) };
   }
 
   /** Robot radius in CSS px: smaller for big swarms so they stay distinguishable. */

@@ -18,6 +18,8 @@ const SIZES = [
   ["phone-sideways", 812, 375, 2, true],
   ["tablet", 768, 1024, 2, true],
   ["laptop", 1280, 720, 1, false],
+  ["laptop-short", 1100, 560, 1, false],
+  ["laptop-tall", 1366, 820, 1, false],
   ["desktop", 1920, 1080, 1, false],
 ];
 const PANELS = ["toolbar", "settings", "hud", "legend", "tools", "inspector", "turn_caption"];

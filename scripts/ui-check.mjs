@@ -473,6 +473,19 @@ await until("lcm.state === 'ready'", 4000);
 await sleep(300);
 check("a new run takes the finished note away", await js("document.getElementById('turn_caption').hidden"));
 
+// The numbers are true at every zoom: the scale bar is as long as its label says, the labelled grid lines are
+// 1, 2 or 5 times a power of ten and 85 to 230 px apart, and the zoom gauge reads the real zoom.
+const zoomRows = [];
+for (const f of [1, 2.5, 10, 1e3, 1e6, 1e9]) {
+  await js(`(() => { const r = lcm.renderer; r.resetView(); r.zoomAt(${f}); r.draw(); })()`);
+  zoomRows.push({ f, ...(await js(`(() => { const r = lcm.renderer, g = r.gridState; return { bar: parseFloat(document.getElementById('hud_scale_bar').style.width), len: Number(document.getElementById('hud_scale').dataset.value), scale: r.scale,
+    px: g.px, mant: g.spacing / 10 ** Math.floor(Math.log10(g.spacing) + 1e-9), gauge: document.getElementById('hud_zoom').textContent, fill: parseFloat(document.getElementById('hud_zoom_fill').style.width), gridRow: document.getElementById('hud_grid').textContent }; })()`)) });
+}
+check("the scale bar is as long as its label says, at every zoom from 1× to a billion ×", zoomRows.every((z) => Math.abs(z.bar - z.len * z.scale) <= 1.5), JSON.stringify(zoomRows.map((z) => [z.f, z.len, +z.bar.toFixed(1), +(z.len * z.scale).toFixed(1)])));
+check("the labelled grid lines are 1, 2 or 5 times a power of ten, 85 to 230 px apart, at every zoom", zoomRows.every((z) => z.px >= 85 && z.px <= 230 && [1, 2, 5].some((m) => Math.abs(z.mant - m) < 1e-6)), JSON.stringify(zoomRows.map((z) => [z.f, +z.px.toFixed(0), +z.mant.toFixed(3)])));
+check("the zoom gauge reads the real zoom (number and bar), and the grid-lines row names their spacing", zoomRows.every((z) => Math.abs(z.fill - (100 * Math.log10(z.f)) / 9) < 0.6 && /×$/.test(z.gauge) && z.gridRow !== "—" && z.gridRow !== "off"), JSON.stringify(zoomRows.map((z) => [z.f, z.gauge, +z.fill.toFixed(1), z.gridRow])));
+await click("#fit");
+
 // The turn view: a caption says whose turn it is and why; the camera stands still while the robot walks.
 await click("#reset");
 await js(TWO_ROBOTS);

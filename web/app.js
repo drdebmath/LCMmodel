@@ -354,6 +354,7 @@ let legendAt = 0;
 renderer.onDraw = () => {
   draws++;
   updateScale();
+  updateZoomRows();
   if (endNote) showEndNote(true);  // the view is still settling after the run ends: keep its zoom up to date
   const now = performance.now();
   if (state !== "running" || now - legendAt > 250) { legendAt = now; updateLegend(); }
@@ -378,6 +379,27 @@ function updateScale() {
   scaleShown = key;
   $("hud_scale_bar").style.width = `${px}px`;
   $("hud_scale").textContent = label;
+  $("hud_scale").dataset.value = String(len);
+}
+
+/** "1.3×", "230×", "4.5k×", "30.1M×": how far the view is zoomed in, kept short for the panel. */
+function fmtZoom(z) {
+  if (z < 10) return `${z.toFixed(2)}×`;
+  if (z < 1e3) return `${z.toFixed(z < 100 ? 1 : 0)}×`;
+  const units = [[1e12, "T"], [1e9, "G"], [1e6, "M"], [1e3, "k"]];
+  for (const [size, suffix] of units) if (z >= size) return `${(z / size).toFixed(1)}${suffix}×`;
+  return `${z}×`;
+}
+/** The zoom gauge (logarithmic, 1× to a billion ×) and the distance between the labelled grid lines. */
+let zoomShown = "";
+function updateZoomRows() {
+  const z = renderer.zoom, text = fmtZoom(z), grid = renderer.gridState;
+  const key = `${text}|${grid?.spacing ?? ""}`;
+  if (key === zoomShown) return;
+  zoomShown = key;
+  $("hud_zoom").textContent = text;
+  $("hud_zoom_fill").style.width = `${Math.max(0, Math.min(1, Math.log10(Math.max(z, 1)) / 9)) * 100}%`;
+  $("hud_grid").textContent = grid && renderer.options.grid ? fmtLength(grid.spacing) : "off";
 }
 
 function updateHud(force = false) {
