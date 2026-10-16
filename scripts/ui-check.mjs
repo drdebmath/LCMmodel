@@ -389,6 +389,92 @@ await js("lcm.settings.reset()");
 await until("lcm.state === 'ready' && lcm.settings.values.pattern === 'cloud' && lcm.renderer.frame.flags.length === 500", 3000);
 await setPlayback(playback);
 
+// Turn-paced playback (sequential scheduler): every walk takes the same time on screen, however
+// short it is in simulated time. Display only: the run must end exactly as it does at any speed.
+const paceRun = async (speed, { pauseForMs = 0 } = {}) => {
+  await click("#reset");
+  await js(TWO_ROBOTS);
+  await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+  await setPlayback(speed);
+  await click("#play");
+  const t0 = Date.now(), stamps = [];
+  let turns = 0, paused = null;
+  while (Date.now() - t0 < 90000) {
+    const r = await js("({ s: lcm.state, turns: lcm.renderer.frame.turns, x0: lcm.renderer.frame.x(0) })");
+    if (r.turns !== turns) { stamps.push(Date.now() - t0); turns = r.turns; }
+    if (pauseForMs && !paused && r.turns >= 3 && r.s === "running") {
+      await sleep(150);                      // part-way along a walk
+      await click("#play");                  // pause
+      await sleep(100);
+      const a = await js("lcm.renderer.frame.x(0) + ',' + lcm.renderer.frame.x(1) + ',' + lcm.renderer.frame.time");
+      await sleep(pauseForMs);
+      const b = await js("lcm.renderer.frame.x(0) + ',' + lcm.renderer.frame.x(1) + ',' + lcm.renderer.frame.time");
+      paused = { still: a === b, state: await js("lcm.state") };
+      await click("#play");                  // resume
+    }
+    if (r.s === "ended") break;
+    await sleep(20);
+  }
+  const end = await js(`(() => { const f = lcm.renderer.frame; return { ended: lcm.state === 'ended', time: f.time, events: f.events, turns: f.turns, pos: [f.x(0), f.y(0), f.x(1), f.y(1)] }; })()`);
+  const gaps = stamps.slice(1).map((v, k) => v - stamps[k]).sort((a, b) => a - b);
+  return { ...end, took: Date.now() - t0, median: gaps[Math.floor(gaps.length / 2)] ?? 0, paused };
+};
+const sameEnd = (a, b) => a.ended && b.ended && a.time === b.time && a.events === b.events && JSON.stringify(a.pos) === JSON.stringify(b.pos);
+const atMax = await paceRun("Infinity");
+check("the per-turn speeds are offered under the sequential scheduler ", await js(`(() => { const o = [...document.querySelectorAll('#playback option')].map((x) => x.value);
+  return ['turn:0.25', 'turn:1', 'turn:3'].every((v) => o.includes(v)); })()`));
+const at100 = await paceRun("100");
+const perTurn = await paceRun("turn:0.25");
+check("the same run ends the same at Max speed, 100× and 0.25 s per turn (time, events, positions)",
+  sameEnd(atMax, at100) && sameEnd(atMax, perTurn), `${atMax.time} / ${at100.time} / ${perTurn.time}; ${atMax.events} / ${at100.events} / ${perTurn.events}`);
+check("0.25 s per turn: each turn takes about a quarter of a second on screen", perTurn.median > 170 && perTurn.median < 450, `median ${perTurn.median} ms between turns, ${perTurn.turns} turns in ${(perTurn.took / 1000).toFixed(1)} s`);
+check("the status panel shows the turn count (with the epochs) and it matches the run", await js("!document.getElementById('hud_epochs_row').hidden && Number(document.getElementById('hud_turns').textContent.replace(/,/g, '')) === lcm.renderer.frame.turns"));
+const paused = await paceRun("turn:0.25", { pauseForMs: 600 });
+check("pausing in the middle of a walk freezes it, and the run still ends the same after resuming", paused.paused?.still && paused.paused.state === "paused" && sameEnd(atMax, paused), JSON.stringify(paused.paused));
+
+// Inside one turn the robot glides although the simulation has no event there: slow it right down and look.
+await click("#reset");
+await js(TWO_ROBOTS);
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+await setPlayback("turn:3");
+await click("#play");
+await until("lcm.renderer.frame.turns >= 1", 4000);
+const glide = [];
+for (let k = 0; k < 5; k++) {
+  await sleep(350);
+  glide.push(await js("({ x: lcm.renderer.frame.x(0), turns: lcm.renderer.frame.turns, robotEvents: lcm.renderer.frame.events - lcm.renderer.frame.ticks, time: lcm.renderer.frame.time })"));
+}
+await click("#play");
+check("within one 3-second turn the robot glides steadily along its walk", glide.every((g, i) => !i || g.x > glide[i - 1].x) && glide[4].x - glide[0].x > 40
+  && glide.every((g) => g.turns === glide[0].turns && g.robotEvents === glide[0].robotEvents), JSON.stringify(glide.map((g) => +g.x.toFixed(1))));
+
+// Late, tiny turns take as long on screen as early ones: play to turn ~19 (the gap has halved that many
+// times), then switch to 1 s per turn in mid-run and watch one walk.
+await click("#reset");
+await js(TWO_ROBOTS);
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+await setPlayback("turn:0.25");
+await click("#play");
+await until("lcm.renderer.frame.turns >= 19", 20000);
+await setPlayback("turn:1");
+const tiny = [];
+for (let k = 0; k < 5; k++) { await sleep(150); tiny.push(await js("({ g: Math.abs(lcm.renderer.frame.x(1) - lcm.renderer.frame.x(0)), turns: lcm.renderer.frame.turns, ended: lcm.state === 'ended' })")); }
+await click("#play");
+const sameTurn = tiny.filter((t, i) => i && t.turns === tiny[i - 1].turns && t.g !== tiny[i - 1].g).length;
+check("a late turn, with the robots less than 0.01 apart, still takes its time on screen and glides", tiny[0].g < 0.01 && !tiny[0].ended && sameTurn >= 2, JSON.stringify(tiny));
+
+// Leaving the sequential scheduler takes the per-turn speeds away and falls back to 20×.
+await click("#reset");  // a paused run only notes a changed setting; Reset starts the new one, as a user would
+await setPlayback("turn:1");
+await js("lcm.settings.apply({ scheduler: 'async' })");
+await until("lcm.state === 'ready' && lcm.renderer.frame.turns == null && document.getElementById('hud_epochs_row').hidden && !document.querySelector('#playback option[value^=\"turn:\"]')", 4000);
+const afterAsync = await js("({ value: document.getElementById('playback').value, turnOptions: document.querySelectorAll('#playback option[value^=\"turn:\"]').length, rowHidden: document.getElementById('hud_epochs_row').hidden })");
+check("with the asynchronous scheduler the per-turn speeds go away and playback falls back to 20×", afterAsync.value === "20" && afterAsync.turnOptions === 0 && afterAsync.rowHidden, JSON.stringify(afterAsync));
+await click("#reset");
+await js("lcm.settings.reset()");
+await until("lcm.state === 'ready' && lcm.settings.values.pattern === 'cloud' && lcm.renderer.frame.flags.length === 500", 3000);
+await setPlayback(playback);
+
 // Play straight after a settings change plays the new settings.
 await click("#reset");
 await until("lcm.state === 'ready'");

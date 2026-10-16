@@ -62,7 +62,8 @@ function newRun({ quiet = false } = {}) {
   dirty = false;
   $("dirty").hidden = true;
   client.stop();
-  client.speed(Number($("playback").value));
+  updatePlaybackOptions();
+  client.speed(playbackSpeed());
   client.start(c);
   setState("ready");
   return true;
@@ -93,8 +94,34 @@ function fitToStart(f) {
   if (!same && !renderer.follow) renderer.resetView(); // a new start shape: show all of it; same shape: keep the user's view
 }
 
+/* The playback menu: speeds (simulated time per second), and under the sequential scheduler also
+ * "seconds per turn", which gives every walk the same time on screen however short it is. */
+const TURN_OPTIONS = [["turn:0.25", "0.25 s/turn"], ["turn:1", "1 s/turn"], ["turn:3", "3 s/turn"]];
+function playbackSpeed() {
+  const v = $("playback").value;
+  return v.startsWith("turn:") ? { turn: Number(v.slice(5)) } : Number(v);
+}
+function updatePlaybackOptions() {
+  const select = $("playback");
+  const has = select.querySelector('option[value^="turn:"]') !== null;
+  if (settings.values.scheduler === "sequential") {
+    if (has) return;
+    const group = document.createElement("optgroup");
+    group.label = "Per turn";
+    group.innerHTML = TURN_OPTIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    select.append(group);
+    select.classList.add("has-turns");
+  } else if (has) {
+    select.classList.remove("has-turns");
+    const wasTurn = select.value.startsWith("turn:");
+    select.querySelector("optgroup")?.remove();
+    if (wasTurn) { select.value = "20"; client.speed(20); }
+  }
+}
+
 function onSettingChange() {
   if (state === "loading") return;
+  updatePlaybackOptions();
   if (state === "ready") {
     clearTimeout(restartTimer);
     restartTimer = setTimeout(() => newRun({ quiet: true }), 120); // debounce slider drags and typing
@@ -339,7 +366,10 @@ function updateHud(force = false) {
   $("hud_bar").style.width = `${(100 * frame.terminated) / Math.max(1, frame.robots)}%`;
   drawTrace();
   $("hud_epochs_row").hidden = frame.epochs == null;
-  if (frame.epochs != null) $("hud_epochs").textContent = frame.epochs.toLocaleString();
+  if (frame.epochs != null) {
+    $("hud_epochs").textContent = frame.epochs.toLocaleString();
+    $("hud_turns").textContent = (frame.turns ?? 0).toLocaleString();
+  }
   $("hud_events").textContent = (frame.events - frame.ticks).toLocaleString();
   $("hud_ticks").textContent = frame.ticks.toLocaleString();
   $("hud_rate").textContent = state === "running" ? Math.round(rate).toLocaleString() : "—";
@@ -376,7 +406,7 @@ $("step_event").addEventListener("click", () => step("event"));
 $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
 $("algorithm").addEventListener("change", () => { updateExamples(); onSettingChange(); });
-$("playback").addEventListener("change", (e) => client.speed(Number(e.target.value)));
+$("playback").addEventListener("change", () => client.speed(playbackSpeed()));
 $("defaults").addEventListener("click", () => settings.reset());
 $("toggle_settings").addEventListener("click", toggleSettings);
 $("close_settings").addEventListener("click", toggleSettings);

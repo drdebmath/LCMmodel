@@ -55,6 +55,15 @@ for (const [name, w, h, dpr, touch] of SIZES) {
   const g = await layout();
   check(`simulator with Go-To-Center and its examples menu, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !g.sideways && !g.overlaps.length && !g.offscreen.length, JSON.stringify(g));
   await shot(`sim-${name}-gtc`);
+  // The sequential scheduler adds the longer "seconds per turn" entries to the playback menu, which sizes it.
+  await js("lcm.settings.apply({ scheduler: 'sequential' })");
+  await sleep(400);
+  const q = await layout();
+  const pb = await js("(() => { const r = document.getElementById('playback').getBoundingClientRect(); return { w: Math.round(r.width) }; })()");
+  check(`simulator with the sequential scheduler's per-turn speeds, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !q.sideways && !q.overlaps.length && !q.offscreen.length, JSON.stringify({ ...q, playback: pb }));
+  await shot(`sim-${name}-sequential`);
+  await js("lcm.settings.apply({ scheduler: 'async' })");
+  await sleep(300);
   // The opened menu must stay on screen and not run past either edge.
   await js("document.getElementById('examples').click()");
   await sleep(200);

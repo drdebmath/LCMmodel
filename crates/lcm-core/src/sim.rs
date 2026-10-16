@@ -351,6 +351,30 @@ impl Simulation {
         self.robots.position_at(i, t, self.model.eps)
     }
 
+    /// The time of the next event, if there is one. Read-only, like `arrival_time`.
+    #[must_use]
+    pub fn next_event_time(&self) -> Option<f64> {
+        self.queue.peek().map(|e| e.time)
+    }
+
+    /// When robot `i` arrives, if it is on a move right now: the time its move started plus its
+    /// length over its speed, the same sum `begin_move` schedules the arrival event with. A reader
+    /// of the simulation (the page paces a turn by it); nothing in the run depends on it.
+    #[must_use]
+    pub fn arrival_time(&self, i: usize) -> Option<f64> {
+        let r = &self.robots;
+        let (RobotState::Move, Some(start), Some(goal)) = (r.state[i], r.start_time[i], r.goal(i))
+        else {
+            return None;
+        };
+        let duration = if r.speed[i] > 1e-9 {
+            dist(r.start_pos[i], goal) / r.speed[i]
+        } else {
+            0.0
+        };
+        Some(start + duration.max(0.0))
+    }
+
     /// The reason the run cannot go on, if it cannot: ended, stalled, out of turns, or at a
     /// configured limit. The same checks, in the same order, as `advance` makes before each event.
     fn limit_reached(&self) -> Option<StopReason> {

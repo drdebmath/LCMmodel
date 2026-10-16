@@ -10,6 +10,12 @@
  * and idles until more is due; `Infinity` runs flat out. If the machine can't
  * keep up, the clock is re-anchored instead of letting a backlog build.
  *
+ * Turn pacing (sequential scheduler): with a speed of {turn: seconds} every walk takes that long
+ * on screen however short it is in simulated time, so the late, tiny moves can be watched one at a
+ * time. Turns in which nobody moves are skipped at full speed. A walk has no events inside it, so
+ * the worker asks the core to draw the robots at a time part-way along it (set_view_time); the run's
+ * own clock only ever moves by handling events, so the result is the same at any pace.
+ *
  * Frame buffers are recycled: the page sends each frame's arrays back with
  * its next request and the worker refills them, so steady playback allocates
  * nothing per frame.
@@ -20,7 +26,8 @@
  *                                    `run` is echoed on every frame so the page can
  *                                    drop frames that belong to an earlier run
  *   {type: "play"} / {type: "pause"}
- *   {type: "speed", value}           simulated time units per second, or Infinity
+ *   {type: "speed", value}           simulated time units per second, or Infinity, or
+ *                                    {turn: seconds}: each walk takes that long (sequential only)
  *   {type: "frame", buffers?}        reply with the current frame (refilling `buffers`)
  *   {type: "step", unit, amount}     paused stepping: unit "event" (amount events)
  *                                    or "time" (amount time units); reply with a frame
@@ -53,6 +60,9 @@ let playing = false;
 let stop = "running";
 let speed = Infinity;           // simulated time units per wall second
 let anchor = { wall: 0, sim: 0 };
+let perTurn = null;             // seconds each walk takes, in turn-paced playback; null otherwise
+let pace = null;                // the walk being played: { from, arrival, progress 0..1 }
+let lastPace = 0;               // wall time of the previous paced slice
 let batch = 64;      // events per advance() call, tuned so one call takes ~1 ms
 let busyMs = 0;      // compute time since the last frame was sent
 let sinceMs = 0;     // wall time the last frame was sent
@@ -96,10 +106,61 @@ function tracePoint(force = false) {
   }
 }
 
-function reanchor() { anchor = { wall: performance.now(), sim: sim ? sim.time() : 0 }; }
+function reanchor() { anchor = { wall: performance.now(), sim: sim ? sim.time() : 0 }; lastPace = performance.now(); }
+
+function setSpeed(value) {
+  if (value && typeof value === "object") {
+    perTurn = value.turn > 0 ? value.turn : null;
+    if (perTurn !== null) speed = Infinity;
+  } else {
+    if (perTurn !== null) { pace = null; sim?.set_view_time(NaN); }  // leave a walk where the run's clock is
+    perTurn = null;
+    speed = value;
+  }
+  reanchor();
+}
+
+const FAST_EVENTS = 4096;  // events handled per call while skipping to the next walk, or to a time within one
+
+/** Turn-paced playback: skip to the next walk at full speed, then play it over `perTurn` seconds. */
+function pacedSlice(gen) {
+  const start = performance.now();
+  // Time spent playing since the last slice: a pause, or a hidden tab, adds nothing, and a walk
+  // keeps its progress through a pause.
+  let dt = Math.min(0.1, Math.max(0, (start - lastPace) / 1000));
+  lastPace = start;
+  let waiting = false;
+  while (performance.now() - start < SLICE_MS) {
+    // Between walks: run flat out (until = Infinity). During one: up to the time its progress has reached.
+    let until = Infinity;
+    if (pace) {
+      pace.progress = Math.min(1, pace.progress + dt / perTurn);
+      dt = 0;  // this slice's time counts once
+      // The last step is exactly the arrival time, not "from + 1 × (arrival - from)", which can
+      // round to a hair less and never handle the arrival.
+      until = pace.progress >= 1 ? pace.arrival : pace.from + pace.progress * (pace.arrival - pace.from);
+    }
+    const code = sim.advance_to_move(FAST_EVENTS, until);
+    tracePoint();
+    if (code === 7) {
+      // A robot started a walk: the first of the run, the next turn's (which can begin at the very
+      // instant the last one ends, with no gap), or the one that follows a skipped turn.
+      const arrival = sim.arrival_time(sim.moved_robot());
+      pace = arrival > sim.time() ? { from: sim.time(), arrival, progress: 0 } : null;
+    } else if (code === 1) {  // reached `until`, and no walk began there
+      if (pace.progress >= 1) pace = null;
+      else { sim.set_view_time(until); waiting = true; break; }
+    } else if (code !== 0) { stop = STOP[code]; playing = false; break; }
+  }
+  busyMs += performance.now() - start;
+  if (!playing) { pace = null; sim.set_view_time(NaN); tracePoint(true); postFrame(); }
+  else if (waiting) setTimeout(slice, IDLE_MS, gen);
+  else yieldThenSlice();
+}
 
 function slice(gen) {
   if (!sim || !playing || gen !== generation) return;
+  if (perTurn !== null) return pacedSlice(gen);
   const start = performance.now();
   const due = speed === Infinity ? Infinity : anchor.sim + ((start - anchor.wall) / 1000) * speed;
   let caughtUp = false;
@@ -140,7 +201,7 @@ function postFrame(extra = {}) {
   self.postMessage({
     type: "frame",
     run,
-    time: sim.time(),
+    time: sim.frame_time(),  // the run's time, or the time part-way along a walk being paced
     originX: sim.frame_origin_x(),
     originY: sim.frame_origin_y(),
     events: sim.event_count(),
@@ -148,6 +209,7 @@ function postFrame(extra = {}) {
     robots: n,
     terminated: sim.terminated_count(),
     epochs: sim.sequential?.() ? sim.epochs_completed() : null,
+    turns: sim.sequential?.() ? sim.turn_count() : null,
     trace: Float64Array.from(trace),
     ended: sim.ended(),
     stop,
@@ -165,6 +227,7 @@ const OUTCOME = { 0: "ignored", 2: "moved", 3: "frozen / waiting", 4: "terminate
 
 function step(unit, amount) {
   playing = false;
+  pace = null;
   let lastEvent = null;
   if (unit === "event") {
     for (let i = 0; i < amount && !sim.ended(); i++) {
@@ -193,6 +256,7 @@ self.onmessage = async ({ data }) => {
         run = data.run ?? run + 1;
         playing = false;
         stop = "running";
+        pace = null;
         batch = 64;
         trace = []; traceGap = 0; traceNext = 0; traceCostMs = 0; traceStartMs = performance.now();
         tracePoint(true);
@@ -204,8 +268,7 @@ self.onmessage = async ({ data }) => {
         if (sim && stop === "running" && !playing) { playing = true; generation++; reanchor(); yieldThenSlice(); }
         break;
       case "speed":
-        speed = data.value;
-        reanchor();
+        setSpeed(data.value);
         break;
       case "pause":
         playing = false;
