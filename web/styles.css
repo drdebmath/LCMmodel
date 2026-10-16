@@ -277,7 +277,7 @@ a.btn { text-decoration: none; }
 #hud .zoombtn { width: 20px; height: 20px; min-width: 20px; padding: 0; border: 1px solid var(--border-strong); border-radius: 6px; }
 #hud_zoom { min-width: 48px; text-align: right; }
 #hud_zoom_meter { position: relative; display: inline-block; width: 40px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-2);
-  background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(11.111% - 1px), var(--border-strong) calc(11.111% - 1px), var(--border-strong) 11.111%); }
+  background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(8.333% - 1px), var(--border-strong) calc(8.333% - 1px), var(--border-strong) 8.333%); }
 #hud_zoom_fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--accent); opacity: 0.85; border-radius: 4px; }
 #hud_scale_bar { display: inline-block; height: 7px; border: 1.5px solid var(--text-2); border-top: none; box-sizing: border-box; }
 

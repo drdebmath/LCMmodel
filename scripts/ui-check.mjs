@@ -509,7 +509,7 @@ for (const f of [1, 2.5, 10, 1e3, 1e6, 1e9]) {
 }
 check("the scale bar is as long as its label says, at every zoom from 1× to a billion ×", zoomRows.every((z) => Math.abs(z.bar - z.len * z.scale) <= 1.5), JSON.stringify(zoomRows.map((z) => [z.f, z.len, +z.bar.toFixed(1), +(z.len * z.scale).toFixed(1)])));
 check("the labelled grid lines are 1, 2 or 5 times a power of ten, 85 to 230 px apart, at every zoom", zoomRows.every((z) => z.px >= 85 && z.px <= 230 && [1, 2, 5].some((m) => Math.abs(z.mant - m) < 1e-6)), JSON.stringify(zoomRows.map((z) => [z.f, +z.px.toFixed(0), +z.mant.toFixed(3)])));
-check("the zoom gauge reads the real zoom (number and bar), and the grid-lines row names their spacing", zoomRows.every((z) => Math.abs(z.fill - (100 * Math.log10(z.f)) / 9) < 0.6 && /×$/.test(z.gauge) && z.gridRow !== "—" && z.gridRow !== "off"), JSON.stringify(zoomRows.map((z) => [z.f, z.gauge, +z.fill.toFixed(1), z.gridRow])));
+check("the zoom gauge reads the real zoom (number and bar), and the grid-lines row names their spacing", zoomRows.every((z) => Math.abs(z.fill - (100 * Math.log10(z.f)) / 12) < 0.6 && /×$/.test(z.gauge) && !/G/.test(z.gauge) && z.gridRow !== "—" && z.gridRow !== "off"), JSON.stringify(zoomRows.map((z) => [z.f, z.gauge, +z.fill.toFixed(1), z.gridRow])));
 await click("#fit");
 
 // The overview map: the starting area, with a rectangle for the part in view; zoomed far in, a marked dot.
