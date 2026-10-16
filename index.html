@@ -101,6 +101,8 @@
     <button id="help" class="btn" title="Help: keyboard shortcuts (?)" aria-label="Help: keyboard shortcuts"><span data-icon="help"></span></button>
   </div>
 
+  <div id="overview" class="panel" aria-label="Overview map: the whole starting area, with a rectangle for the part you are looking at"><canvas id="overview_canvas"></canvas></div>
+
   <div id="turn_caption" class="panel" role="status" aria-live="polite" hidden></div>
 
   <div id="export_menu" class="panel menu" role="menu" hidden>
@@ -127,6 +129,7 @@
         <span class="combo"><kbd>Shift + →</kbd></span><span>Step one unit of simulated time</span>
         <span class="combo"><kbd>R</kbd></span><span>Reset with the current settings</span>
         <span class="combo"><kbd>F</kbd></span><span>Fit the world in view</span>
+        <span class="combo"><kbd>O</kbd></span><span>Show or hide the overview map (click it to move the view)</span>
         <span class="combo"><kbd>G</kbd></span><span>Show or hide the grid (it shows the scale as you zoom)</span>
         <span class="combo"><kbd>Z</kbd></span><span>Follow the swarm: zoom in as it shrinks</span>
         <span class="combo"><kbd>Shift + F</kbd></span><span>Full screen on / off</span>

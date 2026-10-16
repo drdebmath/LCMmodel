@@ -486,6 +486,33 @@ check("the labelled grid lines are 1, 2 or 5 times a power of ten, 85 to 230 px 
 check("the zoom gauge reads the real zoom (number and bar), and the grid-lines row names their spacing", zoomRows.every((z) => Math.abs(z.fill - (100 * Math.log10(z.f)) / 9) < 0.6 && /×$/.test(z.gauge) && z.gridRow !== "—" && z.gridRow !== "off"), JSON.stringify(zoomRows.map((z) => [z.f, z.gauge, +z.fill.toFixed(1), z.gridRow])));
 await click("#fit");
 
+// The overview map: the starting area, with a rectangle for the part in view; zoomed far in, a marked dot.
+await click("#reset");
+await js(TWO_ROBOTS);
+await until("lcm.state === 'ready' && lcm.renderer.frame && lcm.renderer.frame.robots === 2", 4000);
+await js("lcm.renderer.resetView(); lcm.renderer.draw()");
+const map0 = await js(`(() => { const o = lcm.overview, c = document.getElementById('overview_canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let ink = 0; for (let i = 0; i < d.length; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2]) ink++;
+  const r = document.getElementById('overview').getBoundingClientRect(); return { shown: o.visible, ink, last: o.last, w: Math.round(r.width), h: Math.round(r.height), onScreen: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight }; })()`);
+check("an overview map is drawn in the corner, on screen, with the starting area, the robots and the view", map0.shown && map0.ink > 150 && map0.onScreen && map0.last && !map0.last.tiny, JSON.stringify({ ...map0, last: undefined }));
+const sizes = [];
+for (const f of [1, 4, 40, 1e3, 1e6]) {
+  await js(`(() => { const r = lcm.renderer; r.resetView(); r.zoomAt(${f}); r.draw(); })()`);
+  sizes.push({ f, ...(await js("({ w: lcm.overview.last.rectW, tiny: lcm.overview.last.tiny })")) });
+}
+check("the view rectangle shrinks as the view zooms in, and becomes a marked dot far in", sizes.every((s, i) => !i || s.w < sizes[i - 1].w) && !sizes[0].tiny && sizes[3].tiny && sizes[4].tiny, JSON.stringify(sizes.map((s) => [s.f, +s.w.toFixed(1), s.tiny])));
+await js("lcm.renderer.resetView(); lcm.renderer.zoomAt(8); lcm.renderer.draw()");
+const mapTarget = [60, -40];
+await js(`(() => { const o = lcm.overview, m = o.map, c = document.getElementById('overview_canvas').getBoundingClientRect(); const px = m.offX + (${mapTarget[0]} - m.x0) * m.k, py = o.canvas.height / o.dpr - m.offY - (${mapTarget[1]} - (m.y1 - (o.canvas.height / o.dpr - 2 * m.offY) / m.k)) * m.k;
+  const e = new PointerEvent('pointerdown', { clientX: c.left + px * (c.width / 176), clientY: c.top + py * (c.height / 132), bubbles: true }); o.canvas.dispatchEvent(e); })()`);
+await sleep(100);
+const moved = await js("(() => { const v = lcm.renderer.viewRect(), k = lcm.overview.map.k; return { cx: (v.x0 + v.x1) / 2, cy: (v.y0 + v.y1) / 2, tol: 2.5 / k, follow: lcm.renderer.follow }; })()");
+check("clicking the map moves the view to that spot (and stops following)", Math.abs(moved.cx - mapTarget[0]) < moved.tol && Math.abs(moved.cy - mapTarget[1]) < moved.tol && !moved.follow, JSON.stringify({ ...moved, mapTarget }));
+await key("O", "KeyO", 79);
+const hiddenMap = await js("document.getElementById('overview').hidden");
+await key("O", "KeyO", 79);
+check("the O key hides the map, and shows it again", hiddenMap && (await js("!document.getElementById('overview').hidden")));
+await click("#fit");
+
 // The turn view: a caption says whose turn it is and why; the camera stands still while the robot walks.
 await click("#reset");
 await js(TWO_ROBOTS);

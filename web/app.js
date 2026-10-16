@@ -9,6 +9,7 @@ import { renderIcons, icon } from "./icons.js";
 import { COLORS, LOD, Renderer } from "./renderer.js";
 import { SimClient } from "./client.js";
 import { Inspector } from "./inspector.js";
+import { Overview } from "./overview.js";
 import { buildSettings, readConfig } from "./settings.js";
 import { parseCoordinates, startOutline } from "./start.js";
 
@@ -16,6 +17,8 @@ const $ = (id) => document.getElementById(id);
 renderIcons();
 
 const renderer = new Renderer($("canvas"));
+// The overview map; clicking it moves the view (which stops following the swarm).
+const overview = new Overview($("overview"), $("overview_canvas"), renderer, { onCenter: (x, y) => renderer.centerOn(x, y) });
 const client = new SimClient(new URL("./worker.js", import.meta.url));
 let algorithms = [];
 let state = "loading";
@@ -91,6 +94,7 @@ function fitToStart(f) {
   const same = Math.abs(old.w - region.w) < old.w * 0.02 && Math.abs(old.h - region.h) < old.h * 0.02
     && Math.abs(old.cx - region.cx) < old.w * 0.02 && Math.abs(old.cy - region.cy) < old.h * 0.02;
   renderer.setView(region.w, region.h, region.cx, region.cy);
+  overview.setStart(f);
   if (!same && !renderer.follow) renderer.resetView(); // a new start shape: show all of it; same shape: keep the user's view
 }
 
@@ -262,6 +266,7 @@ client.on("ready", (list) => {
 // and sends the points with each frame (time, size, time, size, ...).
 const trace = { points: new Float64Array(0) };
 window.lcm.trace = trace;
+window.lcm.overview = overview;
 function drawTrace() {
   const canvas = $("hud_plot"), ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -355,6 +360,7 @@ renderer.onDraw = () => {
   draws++;
   updateScale();
   updateZoomRows();
+  overview.draw();
   if (endNote) showEndNote(true);  // the view is still settling after the run ends: keep its zoom up to date
   const now = performance.now();
   if (state !== "running" || now - legendAt > 250) { legendAt = now; updateLegend(); }
@@ -497,6 +503,8 @@ function updateInsets() {
   const hud = visible("hud");
   root.setProperty("--hud-bottom", `${Math.round(hud ? hud.bottom : 0)}px`);
   const settingsRect = visible("settings"), tools = visible("tools"), legend = visible("legend");
+  // The overview map sits just left of the view tools, in the bottom right corner.
+  if (tools && tools.height > tools.width) $("overview").style.right = `${Math.round(innerWidth - tools.left + 8)}px`;
   if (innerWidth <= 760) {
     // Phones: the settings sheet floats over the view instead of narrowing it.
     const bottomEdge = Math.min(tools ? tools.top : innerHeight, legend ? legend.top : innerHeight);
@@ -516,6 +524,11 @@ $("zoom_in").addEventListener("click", () => renderer.zoomAt(1.25));
 $("zoom_out").addEventListener("click", () => renderer.zoomAt(0.8));
 $("fit").addEventListener("click", () => renderer.resetView());
 $("grid").addEventListener("click", toggleGrid);
+function toggleOverview() {
+  $("overview").hidden = !$("overview").hidden;
+  updateInsets();
+  renderer.requestDraw();
+}
 function toggleGrid() {
   renderer.options.grid = !renderer.options.grid;
   $("grid").setAttribute("aria-pressed", String(renderer.options.grid));
@@ -673,6 +686,7 @@ window.addEventListener("keydown", (e) => {
     f: () => renderer.resetView(), F: toggleFullscreen,
     z: toggleFollow, Z: toggleFollow,
     g: toggleGrid, G: toggleGrid,
+    o: toggleOverview, O: toggleOverview,
     "+": () => renderer.zoomAt(1.25), "=": () => renderer.zoomAt(1.25), "-": () => renderer.zoomAt(0.8),
     l: toggleLights, L: toggleLights,
     v: toggleLinks, V: toggleLinks,

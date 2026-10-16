@@ -255,6 +255,11 @@ a.btn { text-decoration: none; }
   #hud .hud-extra { display: none !important; }
 }
 
+/* The overview map: bottom right, just left of the view tools (app.js sets its right edge). Only where there is room. */
+#overview { bottom: 12px; right: 76px; padding: 0; overflow: hidden; z-index: 4; cursor: crosshair; line-height: 0; }
+#overview canvas { display: block; }
+@media (max-width: 1219px), (max-height: 520px) { #overview { display: none; } }
+
 /* The caption while a turn is played one at a time: above the legend, left-aligned with it. */
 #turn_caption { left: 12px; bottom: 56px; width: min(500px, calc(100vw - 100px)); padding: 10px 14px; display: grid; gap: 3px; z-index: 5; }
 #settings:not([hidden]) ~ #turn_caption { left: 324px; width: min(500px, calc(100vw - 440px)); }

@@ -253,6 +253,16 @@ export class Renderer {
     this.requestDraw();
   }
 
+  /** The part of the world the view shows (the area the panels leave free), in world coordinates. */
+  viewRect() {
+    const s = this.scale, ox = this.width / 2 + this.pan.x, oy = this.height / 2 + this.pan.y;
+    const { left, right, top, bottom } = this.insets;
+    return {
+      x0: this.anchor.x + (left - ox) / s, x1: this.anchor.x + (this.width - right - ox) / s,
+      y1: this.anchor.y - (top - oy) / s, y0: this.anchor.y - (this.height - bottom - oy) / s,
+    };
+  }
+
   panBy(dx, dy) { this.setFollow(false); this.pan.x += dx; this.pan.y += dy; this.requestDraw(); }
 
   centerOn(x, y) {
