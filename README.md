@@ -4,7 +4,7 @@ A simulator for Look-Compute-Move robots in the Asynchronous System
 
 ## Rust + WebAssembly version (branch `rust-core`)
 
-The simulator core has been ported to Rust and runs in the browser as WebAssembly, in a background worker, with **no Python or Pyodide**. The math is unchanged. The Rust core runs its own simulations from the settings (it does not need Python or any recorded data); to prove it matches, its tests run the same settings and seeds as recorded Python runs and compare the two event by event. So far the core and three algorithms (Gathering, Smallest Enclosing Circle, and Uniform Circle Formation) are ported; the other algorithms follow.
+The simulator core has been ported to Rust and runs in the browser as WebAssembly, in a background worker, with **no Python or Pyodide**. The math is unchanged. The Rust core runs its own simulations from the settings (it does not need Python or any recorded data); to prove it matches, its tests run the same settings and seeds as recorded Python runs and compare the two event by event. So far the core and four algorithms (Gathering, Smallest Enclosing Circle, Uniform Circle Formation, and Pattern Formation) are ported; the other algorithms follow.
 
 **Try it** (no install, runs entirely in your browser, CPU only):
 

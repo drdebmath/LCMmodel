@@ -9,14 +9,16 @@
 //! work with by returning [`ConfigError::Unsupported`].
 //!
 //! Gathering and SEC are ported; they drive the core's parity tests. Uniform
-//! Circle Formation is ported too.
+//! Circle Formation and Pattern Formation are ported too.
 
 mod circle_formation;
 mod gathering;
+mod pattern_formation;
 mod sec;
 
 pub use circle_formation::CircleFormation;
 pub use gathering::Gathering;
+pub use pattern_formation::PatternFormation;
 pub use sec::Sec;
 
 use lcm_core::{Algorithm, ConfigError, Plan, SimConfig, Simulation};
@@ -47,6 +49,11 @@ pub const REGISTRY: &[Entry] = &[
         key: "CircleFormation",
         name: "Uniform Circle Formation",
         build: one::<CircleFormation>,
+    },
+    Entry {
+        key: "PatternFormation",
+        name: "Pattern Formation (star)",
+        build: one::<PatternFormation>,
     },
 ];
 

@@ -99,6 +99,11 @@ CASES = {
     "circle_formation_6":          config(algorithm="CircleFormation", num_of_robots=6, random_seed=3),
     "circle_formation_fault_crash": config(algorithm="CircleFormation", num_of_robots=10,
                                            num_of_faults=3, fault_type="crash", random_seed=20),
+    # Pattern Formation (star) cases.
+    "pattern_formation_star_8":     config(algorithm="PatternFormation", random_seed=1),
+    "pattern_formation_star_12":    config(algorithm="PatternFormation", num_of_robots=12, random_seed=5),
+    "pattern_formation_fault_crash": config(algorithm="PatternFormation", num_of_robots=10,
+                                            num_of_faults=3, fault_type="crash", random_seed=20),
 }
 
 
