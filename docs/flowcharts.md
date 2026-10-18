@@ -15,6 +15,7 @@ explains itself, steps marked `</>` open their code, and a guided tour walks thr
 3. [Gathering (center of gravity)](#3-gathering-center-of-gravity) — Each robot goes to the average of what it sees
 4. [In the browser](#4-in-the-browser) — Page, worker and Rust core working together
 5. [The sequential scheduler](#5-the-sequential-scheduler) — One robot at a time, turn by turn
+6. [Pattern Formation (star)](#6-pattern-formation-star) — Robots agree on a star and each walks to its point
 
 ---
 
@@ -1388,5 +1389,281 @@ fn limited_target(&mut self, i: usize, destination: Point) -> Point {
     } else {
         interpolate(from, destination, covered / length)
     }
+}
+```
+
+---
+
+## 6. Pattern Formation (star)
+
+Every robot builds the same 5-pointed star from the snapshot — centred on the swarm's average position, sized by its spread — spreads n target marks along it, works out which mark is its own, and walks there. Repeated by all robots, the swarm settles into a star. This is Robot._pattern_formation and Robot._pattern_terminal in robot.py (Suzuki & Yamashita 1999).
+
+```mermaid
+flowchart TD
+    classDef k_entry fill:#e8eefd,stroke:#2f5bea,color:#111,stroke-width:1.5px
+    classDef k_step fill:#ffffff,stroke:#9aa1ad,color:#111
+    classDef k_decision fill:#fff4dc,stroke:#d18b00,color:#111
+    classDef k_end fill:#e3f6e8,stroke:#1f9d55,color:#111,stroke-width:1.5px
+    classDef k_out fill:#f1f2f5,stroke:#9aa1ad,color:#333
+    subgraph lane0["The crowd"]
+        comp(["Compute my target<br/><small>PatternFormation::compute()</small>"])
+        live["List the robots in view<br/><small>crashed ones dropped · n robots</small>"]
+        few{"Fewer than two robots?"}
+        stay1(["Stay put, done<br/><small>nothing to form</small>"])
+    end
+    subgraph lane1["Agree on a frame"]
+        center["Find the centre<br/><small>average of all positions</small>"]
+        size["Find the size R<br/><small>spread from the centre (RMS)</small>"]
+        flat{"All piled on one spot?<br/><small>R ≈ 0</small>"}
+        stay2(["Stay put, done<br/><small>no size to work with</small>"])
+    end
+    subgraph lane2["Draw the star"]
+        tmpl["Place n marks on a 5-point star<br/><small>star_unit_points() · scaled to centre, R</small>"]
+    end
+    subgraph lane3["Match and move"]
+        sort["Sort robots and marks by angle<br/><small>two rings round the centre</small>"]
+        rot["Pick the best line-up<br/><small>least total travel · tries all n</small>"]
+        mine["Read off my mark<br/><small>my place in the ring</small>"]
+        done{"Everyone within 3% of R of their mark?"}
+        term(["Terminate<br/><small>star formed</small>"])
+        move[/"Walk to my mark<br/><small>target = my mark</small>"/]
+    end
+    class comp k_entry
+    class live k_step
+    class few k_decision
+    class stay1 k_end
+    class center k_step
+    class size k_step
+    class flat k_decision
+    class stay2 k_end
+    class tmpl k_step
+    class sort k_step
+    class rot k_step
+    class mine k_step
+    class done k_decision
+    class term k_end
+    class move k_out
+    comp --> live
+    live --> few
+    few -- "yes" --> stay1
+    few -- "no" --> center
+    center --> size
+    size --> flat
+    flat -- "yes" --> stay2
+    flat -- "no" --> tmpl
+    tmpl --> sort
+    sort --> rot
+    rot --> mine
+    mine --> done
+    done -- "yes" --> term
+    done -- "no" --> move
+```
+
+- Every robot computes the same centre, size and marks from the same snapshot, so they agree on the star without communicating or any leader.
+- The size is the root-mean-square distance from the centre, not the farthest robot, so the frame does not jump around the way an SEC-based one can.
+- Which robot takes which mark is decided by sorting both robots and marks by angle and then picking the rotation with the least total travel; that keeps the matching stable so the swarm settles instead of oscillating.
+- It finishes when every robot is within 3% of the size R of its mark. Exact placement is never required, because the star drifts a little as robots move.
+- Only a 5-pointed star is built; the same machinery would form another pattern given a different template.
+- Each activation costs about n² work: it tries all n rotations, each summing n distances.
+
+| Step | What happens |
+| --- | --- |
+| Compute my target | Called from the COMPUTE phase of chart 2 with the robot's snapshot. Robots are oblivious, so it starts from scratch every time. |
+| List the robots in view | Take everyone that has not crashed, and call how many there are n. These are the robots the star must be shared out among. |
+| Fewer than two robots? | With no one else to form a shape with, there is nothing to do. |
+| Stay put, done | The robot keeps its place and marks itself finished. |
+| Find the centre | Average everyone's positions. Because every robot sees the same dots and averages them the same way, they all agree on this centre without talking. |
+| Find the size R | Measure how spread out the robots are around that centre (a root-mean-square distance). This single number, R, says how big the star should be. |
+| All piled on one spot? | If the spread is essentially zero there is no room for a star. |
+| Stay put, done | Nothing meaningful to form; the robot stays where it is and finishes. |
+| Place n marks on a 5-point star | Draw a 5-pointed-star outline around the centre at size R and spread n evenly spaced target marks along its edges — one mark per robot. |
+| Sort robots and marks by angle | List the robots in the order a clock hand sweeps past them around the centre, and list the marks the same way. Now both are rings in angle order. |
+| Pick the best line-up | The two rings can be lined up n ways (rotations). Try them all and keep the one with the smallest total travel. This is what stops the matching from flip-flopping between turns and oscillating forever. |
+| Read off my mark | Find my own spot in the robot ring, apply the winning line-up, and that says which mark is mine. |
+| Everyone within 3% of R of their mark? | Look at the worst-placed robot. If every robot is within about 3% of R of its mark, the star is already formed. |
+| Terminate | The robot stops for good; the formation is complete. |
+| Walk to my mark | The mark becomes the robot's target; chart 2 takes over (freeze check, then the move). Next time it wakes, it does all of this again. |
+
+`compute` — [`crates/lcm-algorithms/src/pattern_formation.rs:28`](../crates/lcm-algorithms/src/pattern_formation.rs#L28)
+
+```rust
+#[allow(clippy::cast_precision_loss)]
+fn compute(&self, look: &Look<'_>, _: &mut Rng, scratch: &mut Scratch) -> Decision {
+    let eps = look.model.eps;
+    let me_pos = look.position;
+    let me_id = look.me as usize;
+
+    // Non-crashed (id, position), preserving view order (Python's snapshot filter).
+    scratch.points.clear();
+    scratch.indices.clear();
+    for ((id, p), s) in look
+        .view
+        .id
+        .iter()
+        .zip(&look.view.pos)
+        .zip(&look.view.state)
+    {
+        if *s != RobotState::Crash {
+            scratch.points.push(*p);
+            scratch.indices.push(*id as usize);
+        }
+    }
+    let n = scratch.points.len();
+    let stay = Decision {
+        target: me_pos,
+        terminate: true,
+        overlay: OverlayUpdate::Keep,
+    };
+    if n <= 1 {
+        return stay;
+    }
+
+    // Common frame: centroid + RMS radius.
+    let inv_n = 1.0 / n as f64;
+    let (mut ox, mut oy) = (0.0, 0.0);
+    for p in &scratch.points {
+        ox += p.x;
+        oy += p.y;
+    }
+    ox *= inv_n;
+    oy *= inv_n;
+    let mut sum_sq = 0.0;
+    for p in &scratch.points {
+        let (dx, dy) = (p.x - ox, p.y - oy);
+        sum_sq += dx * dx + dy * dy;
+    }
+    let r = libm::sqrt(sum_sq * inv_n);
+    if r < eps {
+        return stay; // swarm collapsed to a point
+    }
+
+    // The index of this robot in the filtered list.
+    let Some(my_idx) = scratch.indices.iter().position(|&id| id == me_id) else {
+        return stay;
+    };
+
+    // Target points: the normalised star template placed in the frame.
+    let unit = star_unit_points(n);
+    let targets: Vec<Point> = unit
+        .iter()
+        .map(|u| Point::new(ox + r * u.x, oy + r * u.y))
+        .collect();
+
+    // Angle (and radius) about the centroid, used as the sort key.
+    let angle_radius = |p: &Point| (libm::atan2(p.y - oy, p.x - ox), libm::hypot(p.x - ox, p.y - oy));
+
+    // Robots sorted by (angle, radius, id) — id makes it a total, stable order.
+    let mut robot_order: Vec<usize> = (0..n).collect();
+    robot_order.sort_by(|&a, &b| {
+        let (aa, ar) = angle_radius(&scratch.points[a]);
+        let (ba, br) = angle_radius(&scratch.points[b]);
+        aa.partial_cmp(&ba)
+            .unwrap()
+            .then(ar.partial_cmp(&br).unwrap())
+            .then(scratch.indices[a].cmp(&scratch.indices[b]))
+    });
+    // Targets sorted by (angle, radius); stable sort breaks exact ties by index.
+    let mut target_order: Vec<usize> = (0..n).collect();
+    target_order.sort_by(|&a, &b| {
+        let (aa, ar) = angle_radius(&targets[a]);
+        let (ba, br) = angle_radius(&targets[b]);
+        aa.partial_cmp(&ba).unwrap().then(ar.partial_cmp(&br).unwrap())
+    });
+    let rp: Vec<Point> = robot_order.iter().map(|&k| scratch.points[k]).collect();
+    let tp: Vec<Point> = target_order.iter().map(|&k| targets[k]).collect();
+
+    // The cyclic rotation that best aligns the two angle-sorted rings, by total
+    // squared displacement. Tie-break to the smallest offset (strict 1e-9 margin).
+    let mut best_s = 0usize;
+    let mut best_cost: Option<f64> = None;
+    for s in 0..n {
+        let mut cost = 0.0;
+        for i in 0..n {
+            let t = tp[(i + s) % n];
+            let (dx, dy) = (rp[i].x - t.x, rp[i].y - t.y);
+            cost += dx * dx + dy * dy;
+        }
+        if best_cost.is_none_or(|b| cost < b - 1e-9) {
+            best_cost = Some(cost);
+            best_s = s;
+        }
+    }
+
+    let my_rank = robot_order.iter().position(|&k| k == my_idx).unwrap();
+    let my_target = tp[(my_rank + best_s) % n];
+    let mut err = 0.0_f64;
+    for i in 0..n {
+        err = err.max(dist(rp[i], tp[(i + best_s) % n]));
+    }
+    // `_pattern_terminal`: everyone within 3% of the frame scale (or eps).
+    let terminate = err < (r * 0.03).max(eps);
+
+    Decision {
+        target: my_target,
+        terminate,
+        overlay: OverlayUpdate::Keep,
+    }
+}
+```
+
+`star_unit_points` — [`crates/lcm-algorithms/src/pattern_formation.rs:147`](../crates/lcm-algorithms/src/pattern_formation.rs#L147)
+
+```rust
+/// `_pattern_unit_points`: `n` points spread by arc length along a 5-pointed-star
+/// outline, re-centred on their own centroid and normalised to unit RMS radius.
+#[allow(clippy::cast_precision_loss)]
+fn star_unit_points(n: usize) -> Vec<Point> {
+    const SPIKES: usize = 5;
+    const INNER: f64 = 0.382;
+    let m = 2 * SPIKES; // 10 vertices, alternating outer/inner
+
+    let mut verts = Vec::with_capacity(m);
+    for i in 0..m {
+        let ang = PI / 2.0 + i as f64 * PI / SPIKES as f64;
+        let rad = if i % 2 == 0 { 1.0 } else { INNER };
+        verts.push(Point::new(rad * libm::cos(ang), rad * libm::sin(ang)));
+    }
+
+    let mut segs = Vec::with_capacity(m);
+    let mut total = 0.0;
+    for i in 0..m {
+        let (a, b) = (verts[i], verts[(i + 1) % m]);
+        let len = libm::hypot(b.x - a.x, b.y - a.y);
+        segs.push(len);
+        total += len;
+    }
+
+    let mut pts = Vec::with_capacity(n);
+    for k in 0..n {
+        let d = (k as f64 / n as f64) * total;
+        let mut acc = 0.0;
+        for i in 0..m {
+            let len = segs[i];
+            if acc + len >= d || i == m - 1 {
+                let t = if len > 1e-12 { (d - acc) / len } else { 0.0 };
+                let (a, b) = (verts[i], verts[(i + 1) % m]);
+                pts.push(Point::new(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)));
+                break;
+            }
+            acc += len;
+        }
+    }
+
+    // Re-centre on the template's own centroid.
+    let inv_n = 1.0 / n as f64;
+    let cx = pts.iter().map(|p| p.x).sum::<f64>() * inv_n;
+    let cy = pts.iter().map(|p| p.y).sum::<f64>() * inv_n;
+    for p in &mut pts {
+        p.x -= cx;
+        p.y -= cy;
+    }
+    // Normalise to unit RMS radius (Python's `sqrt(...) or 1.0`).
+    let rms = libm::sqrt(pts.iter().map(|p| p.x * p.x + p.y * p.y).sum::<f64>() * inv_n);
+    let rms = if rms == 0.0 { 1.0 } else { rms };
+    for p in &mut pts {
+        p.x /= rms;
+        p.y /= rms;
+    }
+    pts
 }
 ```
