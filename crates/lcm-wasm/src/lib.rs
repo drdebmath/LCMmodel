@@ -5,6 +5,7 @@
 //! Typed arrays returned by the frame getters are fresh copies, so the worker
 //! can transfer their buffers to the page without copying again.
 
+use lcm_algorithms::sq_trace::Tracer;
 use lcm_core::{Budget, EventKind, Frame, SimConfig, Simulation, StopReason};
 use wasm_bindgen::prelude::*;
 
@@ -35,13 +36,24 @@ impl From<StopReason> for Stop {
     }
 }
 
-/// The algorithms the core knows, as JSON `[{"key": …, "name": …}, …]`.
+/// The algorithms the core knows, as JSON `[{"key": …, "name": …,
+/// "sequential_only": …, "multiplicities": …}, …]`: `sequential_only` when
+/// the algorithm refuses the async scheduler, `multiplicities` when it works
+/// with points that hold several robots (the page rings them).
 #[wasm_bindgen]
 #[must_use]
 pub fn algorithms() -> String {
     let list: Vec<_> = lcm_algorithms::REGISTRY
         .iter()
-        .map(|e| serde_json::json!({ "key": e.key, "name": e.name }))
+        .map(|e| {
+            let (sequential_only, multiplicities) = lcm_algorithms::requirements(e.key);
+            serde_json::json!({
+                "key": e.key,
+                "name": e.name,
+                "sequential_only": sequential_only,
+                "multiplicities": multiplicities,
+            })
+        })
         .collect();
     serde_json::Value::Array(list).to_string()
 }
@@ -299,6 +311,85 @@ impl WasmSimulation {
     #[must_use]
     pub fn multiplicity(&self) -> js_sys::Uint16Array {
         js_sys::Uint16Array::from(self.frame.multiplicity.as_slice())
+    }
+}
+
+// ── SqGathering, turn by turn ───────────────────────────────────────────────
+// The run is an ordinary core simulation on the sequential scheduler; these
+// add the per-turn trace (observation, κ, rule) the step-by-step page shows.
+
+/// Runs a SqGathering `SimConfig` to the end: `{"report": …, "trace": [turn,
+/// …]}` (`trace` empty unless `with_trace`). Same output as
+/// `lcm seq --format json --trace FILE`.
+///
+/// # Errors
+/// Malformed JSON, or a configuration the core or SqGathering refuses.
+#[wasm_bindgen]
+pub fn sq_gathering_trace(config_json: &str, with_trace: bool) -> Result<String, JsError> {
+    let config: SimConfig = serde_json::from_str(config_json)?;
+    let mut tracer = Tracer::new(&config)?;
+    let mut trace = Vec::new();
+    let report = tracer.run_with(|r| {
+        if with_trace {
+            trace.push(r.clone());
+        }
+    });
+    Ok(serde_json::json!({ "report": report, "trace": trace }).to_string())
+}
+
+/// A SqGathering run played one turn at a time (the step-by-step page).
+#[wasm_bindgen]
+pub struct WasmSqTrace {
+    tracer: Tracer,
+}
+
+#[wasm_bindgen]
+impl WasmSqTrace {
+    /// # Errors
+    /// Malformed JSON, or a configuration the core or SqGathering refuses.
+    #[wasm_bindgen(constructor)]
+    pub fn new(config_json: &str) -> Result<WasmSqTrace, JsError> {
+        let config: SimConfig = serde_json::from_str(config_json)?;
+        Ok(Self {
+            tracer: Tracer::new(&config)?,
+        })
+    }
+
+    /// Plays the next turn and returns it as JSON, or `null` once the run
+    /// has stopped.
+    pub fn step(&mut self) -> String {
+        self.tracer.next_round().map_or_else(
+            || "null".to_owned(),
+            |r| serde_json::to_string(&r).unwrap_or_default(),
+        )
+    }
+
+    /// `"running"`, `"gathered"`, `"incomplete"` or `"stalled"`.
+    #[must_use]
+    pub fn status(&self) -> String {
+        serde_json::to_value(self.tracer.status())
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_default()
+    }
+
+    /// The start positions `[x0, y0, x1, y1, …]` (stacked starts applied).
+    #[must_use]
+    pub fn start_positions(&self) -> js_sys::Float64Array {
+        let flat: Vec<f64> = self
+            .tracer
+            .simulation()
+            .robots()
+            .start_pos
+            .iter()
+            .flat_map(|p| [p.x, p.y])
+            .collect();
+        js_sys::Float64Array::from(flat.as_slice())
+    }
+
+    #[must_use]
+    pub fn report(&self) -> String {
+        serde_json::to_string(&self.tracer.report()).unwrap_or_default()
     }
 }
 

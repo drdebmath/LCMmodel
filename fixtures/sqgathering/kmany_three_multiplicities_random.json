@@ -1,0 +1,14 @@
+{
+  "algorithm": "SqGathering",
+  "scheduler": "sequential",
+  "turn_gap": "none",
+  "num_of_robots": 40,
+  "random_seed": 2026,
+  "multiplicities": 3,
+  "multiplicity_size": 4,
+  "activation_order": "random",
+  "rigid_movement": false,
+  "delta": 1.5,
+  "stop_policy": "random",
+  "max_turns": 100000
+}
