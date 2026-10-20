@@ -80,9 +80,20 @@ const clickAt = async (x, y) => {
   }
 };
 const click = (sel) => js(`document.querySelector(${JSON.stringify(sel)}).click(), true`);
+// While a page is being replaced (a link followed, a redirect, a reload), the browser answers a question
+// about it with an error such as "Inspected target navigated or closed": the page asked about is gone.
+// For `until` that only means "not yet", so it keeps asking; any other error is a real one and is thrown.
+const NAVIGATING = /navigated or closed|Execution context was destroyed|Cannot find context with specified id|Cannot find default execution context/i;
 const until = async (expr, ms = 5000) => {
   const t0 = Date.now();
-  while (Date.now() - t0 < ms) { if (await js(expr)) return true; await sleep(50); }
+  while (Date.now() - t0 < ms) {
+    try {
+      if (await js(expr)) return true;
+    } catch (e) {
+      if (!NAVIGATING.test(String(e?.message ?? e))) throw e;
+    }
+    await sleep(50);
+  }
   return false;
 };
 
