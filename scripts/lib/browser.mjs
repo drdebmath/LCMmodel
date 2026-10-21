@@ -8,8 +8,9 @@ import { createServer } from "node:http";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("../..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
   ".wasm": "application/wasm", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml" };
 
@@ -26,11 +27,14 @@ mkdirSync(OUT, { recursive: true });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = (process.env.LCM_BASE ?? `http://127.0.0.1:${server.address().port}`).replace(/\/$/, "");
 
-const chromeBin = ["google-chrome", "chromium", "chromium-browser"].find((b) => {
+// CHROME=/path/to/chrome overrides the PATH lookup (needed on Windows).
+const chromeBin = process.env.CHROME ?? ["google-chrome", "chromium", "chromium-browser"].find((b) => {
   try { execSync(`command -v ${b}`, { stdio: "ignore" }); return true; } catch { return false; }
 });
 const profile = mkdtempSync(join(tmpdir(), "lcm-chrome-"));
-const chrome = spawn(chromeBin, ["--headless=new", "--disable-gpu", "--no-first-run", "--hide-scrollbars",
+// On CI machines (GitHub Actions sets CI) Chrome's sandbox may be unavailable.
+const ciFlags = process.env.CI ? ["--no-sandbox"] : [];
+const chrome = spawn(chromeBin, ["--headless=new", "--disable-gpu", "--no-first-run", "--hide-scrollbars", ...ciFlags,
   `--user-data-dir=${profile}`, "--remote-debugging-port=0", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
 const port = await new Promise((resolve, reject) => {
   let buf = "";
@@ -76,9 +80,20 @@ const clickAt = async (x, y) => {
   }
 };
 const click = (sel) => js(`document.querySelector(${JSON.stringify(sel)}).click(), true`);
+// While a page is being replaced (a link followed, a redirect, a reload), the browser answers a question
+// about it with an error such as "Inspected target navigated or closed": the page asked about is gone.
+// For `until` that only means "not yet", so it keeps asking; any other error is a real one and is thrown.
+const NAVIGATING = /navigated or closed|Execution context was destroyed|Cannot find context with specified id|Cannot find default execution context/i;
 const until = async (expr, ms = 5000) => {
   const t0 = Date.now();
-  while (Date.now() - t0 < ms) { if (await js(expr)) return true; await sleep(50); }
+  while (Date.now() - t0 < ms) {
+    try {
+      if (await js(expr)) return true;
+    } catch (e) {
+      if (!NAVIGATING.test(String(e?.message ?? e))) throw e;
+    }
+    await sleep(50);
+  }
   return false;
 };
 

@@ -9,11 +9,12 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { initSync, WasmSimulation } from "../web/pkg/lcm_wasm.js";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 initSync({ module: readFileSync(join(root, "web/pkg/lcm_wasm_bg.wasm")) });
-const native = join(root, "target/release/lcm");
+const native = join(process.env.CARGO_TARGET_DIR ?? join(root, "target"), "release", process.platform === "win32" ? "lcm.exe" : "lcm");
 const scratch = mkdtempSync(join(tmpdir(), "lcm-parity-"));
 
 let failures = 0;
@@ -51,6 +52,8 @@ const SEQUENTIAL = {
   seq_starts_stacked: seq({ num_of_robots: 24, multiplicities: 2, multiplicity_size: 3, random_seed: 8 }),
   seq_gotocenter_limited_sight: seq({ algorithm: "GoToCenter", num_of_robots: 12, visibility_radius: 120, width_bound: 160, height_bound: 160, random_seed: 11 }),
   seq_gotocenter_nonrigid: seq({ algorithm: "GoToCenter", num_of_robots: 12, visibility_radius: 120, width_bound: 160, height_bound: 160, rigid_movement: false, delta: 4, stop_policy: "random", random_seed: 12 }),
+  seq_sqgathering_stacked: seq({ algorithm: "SqGathering", num_of_robots: 60, multiplicities: 3, multiplicity_size: 4, activation_order: "random", random_seed: 10 }),
+  seq_sqgathering_nonrigid: seq({ algorithm: "SqGathering", num_of_robots: 40, rigid_movement: false, delta: 2, stop_policy: "random", random_seed: 11 }),
   async_nonrigid_delta: { algorithm: "SEC", num_of_robots: 30, rigid_movement: false, delta: 5, max_events: 2_000_000, random_seed: 9 },
 };
 for (const [name, config] of Object.entries(SEQUENTIAL)) {

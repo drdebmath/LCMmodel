@@ -4,6 +4,10 @@
 //!                            name ends in `.csv`. `--ticks` adds the clock ticks to the trace.
 //! `lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]`
 //!                          — throughput of the core on this machine.
+//! `lcm seq [config.json] [flags]` — SqGathering on the sequential scheduler,
+//!                          turn by turn (see `seq.rs`).
+
+mod seq;
 
 use lcm_core::{
     Budget, EventKind, RobotState, SimConfig, Simulation, StepInfo, StepOutcome, StopReason,
@@ -16,7 +20,8 @@ fn main() {
     let result = match args.first().map(String::as_str) {
         Some("run") => run(&args[1..]),
         Some("bench") => bench(&args[1..]),
-        _ => Err("usage: lcm run <config.json> [--trace <file>] [--ticks] | lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]".to_owned()),
+        Some("seq") => seq::run(&args[1..]).map(|code| if code != 0 { std::process::exit(code) }),
+        _ => Err("usage: lcm run <config.json> [--trace <file>] [--ticks] | lcm seq [config.json] [flags] | lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]".to_owned()),
     };
     if let Err(message) = result {
         eprintln!("{message}");
