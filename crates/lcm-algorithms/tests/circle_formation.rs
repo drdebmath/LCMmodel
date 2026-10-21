@@ -69,11 +69,7 @@ fn assert_uniform_circle(sim: &Simulation, gap_tol: f64) {
     let inv_n = 1.0 / n as f64;
     let ox = pts.iter().map(|p| p.x).sum::<f64>() * inv_n;
     let oy = pts.iter().map(|p| p.y).sum::<f64>() * inv_n;
-    let rad = pts
-        .iter()
-        .map(|p| (p.x - ox).hypot(p.y - oy))
-        .sum::<f64>()
-        * inv_n;
+    let rad = pts.iter().map(|p| (p.x - ox).hypot(p.y - oy)).sum::<f64>() * inv_n;
     assert!(rad > 1e-6, "degenerate radius {rad}");
 
     // Everyone on the circle (within 2% of the radius, matching _circle_terminal).
@@ -164,7 +160,10 @@ fn a_regular_polygon_start_terminates_immediately() {
             config = sequential(config);
         }
         let sim = run_to_end(&config);
-        assert!(sim.ended(), "regular polygon must terminate ({scheduler:?})");
+        assert!(
+            sim.ended(),
+            "regular polygon must terminate ({scheduler:?})"
+        );
         assert!(
             sim.robots().terminated.iter().all(|&t| t),
             "all robots must terminate ({scheduler:?})"

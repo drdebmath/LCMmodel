@@ -1924,7 +1924,7 @@ fn compute(&self, look: &Look<'_>, rng: &mut Rng, scratch: &mut Scratch) -> Deci
 }
 ```
 
-`welzl_recur` — [`crates/lcm-algorithms/src/sec.rs:119`](../crates/lcm-algorithms/src/sec.rs#L119)
+`welzl_recur` — [`crates/lcm-algorithms/src/sec.rs:122`](../crates/lcm-algorithms/src/sec.rs#L122)
 
 ```rust
 pub(crate) fn welzl_recur(
