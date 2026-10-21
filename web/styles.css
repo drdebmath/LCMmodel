@@ -319,6 +319,9 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
 /* Tablet and small laptops: icon-only toolbar, stats under it on the right. */
 @media (max-width: 1219px) {
   #toolbar .label { display: none; }
+  /* Never wider than the screen: if fonts run wide, the algorithm menu gives up the room. */
+  #toolbar { max-width: calc(100vw - 24px); }
+  #algorithm { flex: 0 1 auto; min-width: 120px; }
   #hud { top: calc(var(--top-h, 56px) + 8px); width: 220px; }
   #inspector { top: calc(var(--top-h, 56px) + 8px); right: 244px; }
 }
