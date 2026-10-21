@@ -31,6 +31,7 @@ WASM = "crates/lcm-wasm/src/lib.rs"
 WORKER = "web/worker.js"
 CLIENT = "web/client.js"
 RENDERER = "web/renderer.js"
+SQ = "crates/lcm-algorithms/src/sq_gathering.rs"
 
 # ---------------------------------------------------------------- charts ----
 # Nodes sit on a hand-placed grid (col, row) so a drawing stays stable when a
@@ -421,6 +422,93 @@ CHARTS = [
             edge("t_lim", "t_arr", "no"),
             edge("t_stop", "t_arr", None, "elbow"),
             edge("t_arr", "t_end", "next turn", ("around", 2.62)),
+        ],
+    },
+    {
+        "id": "sqgathering",
+        "title": "SqGathering (Algorithm 8)",
+        "short": "Gathering with weak multiplicity detection, one robot per turn",
+        "blurb": (
+            "Algorithm 8 of \"Universal pattern formation by oblivious robots under sequential "
+            "schedulers\" (arXiv:2412.10733, Section 6). The active robot sees each occupied point "
+            "only as single or multiplicity, counts the multiplicities κ, and follows one of three "
+            "rules. It runs only under the sequential scheduler of chart 5: the registry refuses the "
+            "async one."
+        ),
+        "notes": [
+            "Weak multiplicity detection: one bit per point, never a count. Two robots on a point and "
+            "five robots on a point look the same.",
+            "Why the sequential scheduler: without multiplicity detection Gathering is unsolvable "
+            "under any sequential scheduler (Theorem 4); with more than one robot active at once it is "
+            "unsolvable even with detection (Lemma 8). So SqGathering refuses the async scheduler, "
+            "limited visibility and faults.",
+            "In the paper robots never terminate. Here a robot that sees a single occupied point "
+            "terminates: everyone is there, and every robot activated later would stay, so it changes "
+            "nothing and lets the run end.",
+            "Points closer than ε (10^-precision) are one point. Equally close points are told apart "
+            "by their coordinates; any fixed choice is allowed.",
+            "A move cut short after δ can stop on a single robot and make a second multiplicity; the "
+            "κ > 1 rule then separates them again.",
+            "With several large multiplicities, each robot leaving one halves the distance of the "
+            "robot that left before it. After enough of them it is closer than ε, cannot leave, and "
+            "the run ends Stalled (chart 5): a precision limit, not a flaw of the algorithm.",
+        ],
+        "lanes": ("rows", [("From the snapshot", 0, 1), ("Gathered?", 2, 2), ("Algorithm 8", 3, 5)]),
+        "nodes": [
+            node("q_comp", "Compute", 2, 0, "entry", (SQ, "compute"), "SqGathering::compute()",
+                 "Called from the COMPUTE phase of chart 2 with the robot's snapshot, during its turn "
+                 "of the sequential scheduler (chart 5)."),
+            node("q_obs", "See Q′(t)", 2, 1, "step", (SQ, "observe"), "observe() · points within ε merge",
+                 "Robots closer than ε are grouped into points. Each point keeps one bit: single, or "
+                 "multiplicity (two or more robots). The robot also knows which point is its own."),
+            node("q_one", "One occupied point?", 2, 2, "decision", None, "everyone stands here",
+                 "If the robot sees a single point, every robot is on it (visibility is unlimited): the "
+                 "swarm has gathered. Then κ = 1 and b = 1, so Algorithm 8 would keep it there anyway."),
+            node("q_term", "Terminate", 0, 2, "end", None, "gathered",
+                 "The robot stops for good and gets no more turns. Once every robot has had its turn and "
+                 "terminated, the run ends (chart 1). The paper's robots never stop; terminating here "
+                 "changes nothing, because every robot activated later would stay put."),
+            node("q_kappa", "How many multiplicities κ?", 2, 3, "decision", (SQ, "decide"), "decide() · lines 1-3",
+                 "Count the points marked multiplicity, and look at b, the bit of the robot's own point. "
+                 "Lines 1-3 of Algorithm 8."),
+            node("q_k0", "Move to the closest point", 0, 4, "out", (SQ, "closest"), "κ = 0 · lines 14-16",
+                 "No multiplicity yet: go to the nearest occupied point to create one there. Nothing lies "
+                 "between the robot and that point, so on the way it never meets a third robot. The move "
+                 "goes on in chart 2; the adversary may stop it after δ (chart 5)."),
+            node("q_k1", "On the multiplicity?", 2, 4, "decision", None, "κ = 1 · b = 1? · lines 4-5",
+                 "With exactly one multiplicity, it is the gathering point. b tells the robot whether its "
+                 "own point is that multiplicity."),
+            node("q_km", "On a multiplicity?", 4, 4, "decision", None, "κ > 1 · b = 1? · lines 9-10",
+                 "Several multiplicities: robots must break all but one of them up. Only robots standing "
+                 "on one (b = 1) act."),
+            node("q_hold", "Stay on it", 1, 5, "out", None, "κ = 1, b = 1 · lines 3-5",
+                 "The robot is on the gathering point: its target is where it stands. Chart 2 sees a "
+                 "target within ε and freezes it; its turn ends (chart 5)."),
+            node("q_join", "Move to the multiplicity", 2, 5, "out", None, "κ = 1, b = 0 · lines 4-7",
+                 "Head for the gathering point. The adversary may stop it after δ (chart 5); it carries on "
+                 "in a later turn. If it is stopped exactly on a single robot, that spot becomes a second "
+                 "multiplicity, κ > 1, and the robots sort it out (hand trace D)."),
+            node("q_wait", "Wait", 3, 5, "out", None, "κ > 1, b = 0 · lines 3, 9-10",
+                 "A single robot waits while the multiplicities sort themselves out: its target is where it "
+                 "stands, so chart 2 freezes it and its turn ends."),
+            node("q_leave", "Move to the midpoint", 4, 5, "out", (SQ, "destination"),
+                 "κ > 1, b = 1 · lines 9-13",
+                 "Leave the multiplicity for the midpoint between its point q and the closest occupied "
+                 "point q′. Nothing occupied is within half that distance, so the robot lands on a free "
+                 "spot wherever it is stopped. Once only one multiplicity is left, κ = 1."),
+        ],
+        "edges": [
+            edge("q_comp", "q_obs"),
+            edge("q_obs", "q_one"),
+            edge("q_one", "q_term", "yes"),
+            edge("q_one", "q_kappa", "no"),
+            edge("q_kappa", "q_k0", "κ = 0"),
+            edge("q_kappa", "q_k1", "κ = 1"),
+            edge("q_kappa", "q_km", "κ > 1"),
+            edge("q_k1", "q_hold", "yes"),
+            edge("q_k1", "q_join", "no"),
+            edge("q_km", "q_wait", "no"),
+            edge("q_km", "q_leave", "yes"),
         ],
     },
     {

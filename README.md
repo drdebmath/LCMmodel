@@ -4,7 +4,8 @@ A simulator for Look-Compute-Move robots in the Asynchronous System
 
 ## Rust + WebAssembly version (branch `rust-core`)
 
-The simulator core has been ported to Rust and runs in the browser as WebAssembly, in a background worker, with **no Python or Pyodide**. The math is unchanged. The Rust core runs its own simulations from the settings (it does not need Python or any recorded data); to prove it matches, its tests run the same settings and seeds as recorded Python runs and compare the two event by event. So far the core and four algorithms (Gathering, Smallest Enclosing Circle, Uniform Circle Formation and Go-To-Center) are ported; the other algorithms follow.
+The simulator core has been ported to Rust and runs in the browser as WebAssembly, in a background worker, with **no Python or Pyodide**. The math is unchanged. The Rust core runs its own simulations from the settings (it does not need Python or any recorded data); to prove it matches, its tests run the same settings and seeds as recorded Python runs and compare the two event by event. So far the core and five algorithms (Gathering, Smallest Enclosing Circle, Uniform Circle Formation, Go-To-Center and SqGathering) are ported; the other algorithms follow.
+New in the Rust core: **SqGathering** (Algorithm 8 of the sequential-schedulers paper), below.
 
 **Try it** (no install, runs entirely in your browser, CPU only):
 
@@ -20,6 +21,8 @@ The simulator core has been ported to Rust and runs in the browser as WebAssembl
 - **Sequential**: one robot at a time does a whole Look-Compute-Move while all the others stay still, as in the sequential scheduler of [Universal pattern formation by oblivious robots under sequential schedulers](https://arxiv.org/abs/2412.10733) (Section 2.2). Choose the **turn order** (round-robin, or a fresh random order each epoch drawn from the seed) and the **pause between turns** (random with rate λ, or none). An epoch is over once every robot that is still active has had a turn; the page shows the epoch count. A run whose robots can never move again ends as *stalled* instead of looping forever, and a **turn limit** stops a run after that many turns.
 - **Non-rigid movement:** turn *Rigid movement* off and set a minimum move **δ**. A robot that is stopped on the way still covers at least δ (or arrives, if its destination is within δ), and an adversary chooses where it stops: right after δ, at random, or after a fraction of the way. With δ left at 0 a non-rigid robot still arrives, as in the original. In the config an explicit `schedule` can also list the turns, and name the stopping point of each.
 - **Stacked starts:** under Start → More options, *Stacked points* makes the run begin with that many spots where several robots stand on top of each other (multiplicities), for algorithms that must cope with robots sharing a point.
+
+**SqGathering** (Algorithm 8, Section 6 of [arXiv:2412.10733](https://arxiv.org/abs/2412.10733)): gathering with weak multiplicity detection, under the sequential scheduler only (picking it on the page switches the scheduler to Sequential). Flowchart: chart 6 of the flowchart page. Step-by-step view with hand traces: `web/sqgathering.html`. Turn-by-turn trace on the command line: `lcm seq <config.json> --trace -`. Details: [`docs/sqgathering.md`](docs/sqgathering.md).
 
 **What's where:** [`report.md`](report.md) is the full report (method, results, every test). [`docs/core-schema.md`](docs/core-schema.md) is the core's contract. The code is in `crates/` (Rust) and `web/` (browser page; `index.html` at the root opens it, the original page is in `old/`).
 
@@ -38,12 +41,16 @@ cargo install wasm-bindgen-cli --version 0.2.129 --locked
 cargo test --workspace                        # Rust tests, including the Rust core vs recorded Python runs
 cargo build --release -p lcm-cli && ./scripts/build-wasm.sh
 node scripts/check-wasm-parity.mjs            # browser build vs native, bit for bit
+node scripts/check-seq-parity.mjs             # SqGathering traces: browser build vs native
 python3 scripts/compare-speed.py 20 50 100    # the same run in Python and Rust, timed
 node scripts/ui-check.mjs                     # the simulator page in headless Chrome
 node scripts/docs-check.mjs                   # the flowchart page in headless Chrome
 node scripts/responsive-check.mjs             # both pages at phone, tablet and desktop sizes
-python3 -m http.server 8000                   # then open http://localhost:8000/ (original: /old/)
+node scripts/sqgathering-check.mjs            # SqGathering on both pages in headless Chrome
+python3 scripts/serve.py                      # then open http://localhost:8000/ (original: /old/); no browser caching
 ```
+
+The same checks run on GitHub's machines for every push and pull request (`.github/workflows/ci.yml`).
 
 The rest of this README describes the original Python version.
 
