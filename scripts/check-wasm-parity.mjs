@@ -50,6 +50,8 @@ const SEQUENTIAL = {
     schedule: [2, 2, { robot: 0, stop: 0.5 }, 1], schedule_end: "repeat", turn_gap: "none", robot_speeds: 1000 }),
   seq_turn_limit: seq({ num_of_robots: 20, max_turns: 15, random_seed: 7 }),
   seq_starts_stacked: seq({ num_of_robots: 24, multiplicities: 2, multiplicity_size: 3, random_seed: 8 }),
+  seq_gotocenter_limited_sight: seq({ algorithm: "GoToCenter", num_of_robots: 12, visibility_radius: 120, width_bound: 160, height_bound: 160, random_seed: 11 }),
+  seq_gotocenter_nonrigid: seq({ algorithm: "GoToCenter", num_of_robots: 12, visibility_radius: 120, width_bound: 160, height_bound: 160, rigid_movement: false, delta: 4, stop_policy: "random", random_seed: 12 }),
   seq_sqgathering_stacked: seq({ algorithm: "SqGathering", num_of_robots: 60, multiplicities: 3, multiplicity_size: 4, activation_order: "random", random_seed: 10 }),
   seq_sqgathering_nonrigid: seq({ algorithm: "SqGathering", num_of_robots: 40, rigid_movement: false, delta: 2, stop_policy: "random", random_seed: 11 }),
   async_nonrigid_delta: { algorithm: "SEC", num_of_robots: 30, rigid_movement: false, delta: 5, max_events: 2_000_000, random_seed: 9 },
@@ -67,6 +69,38 @@ for (const [name, config] of Object.entries(SEQUENTIAL)) {
   const same = ["events", "time", "terminated", "turns", "epochs", "stopped"].every((k) => wasm[k] === out[k]);
   if (!same) failures++;
   console.log(`${same ? "ok  " : "FAIL"} ${name.padEnd(30)} events=${wasm.events} turns=${wasm.turns} epochs=${wasm.epochs} ${wasm.stopped}${same ? "" : `  native=${JSON.stringify(out)}`}`);
+}
+
+// The trace the native tool writes (`lcm run --trace`) against what the browser build reports,
+// event by event: the same robot, event and outcome, and the same position, target and circle after it.
+const KINDS = { 0: "crash", 1: "look", 2: "arrive" };
+const outcomeName = (kind, code) => (code === 3 && kind === 2 ? "arrived" : { 0: "ignored", 2: "moved", 3: "frozen", 4: "terminated", 5: "crashed", [-1]: "ended" }[code]);
+const TRACED = {
+  trace_gtc_chain_sequential: seq({ algorithm: "GoToCenter", num_of_robots: 3, initial_positions: [[-80, 10], [0, 0], [95, -5]], visibility_radius: 100, turn_gap: "none", robot_speeds: 20, sampling_rate: 1000 }),
+  trace_gtc_swarm_async: { algorithm: "GoToCenter", num_of_robots: 12, visibility_radius: 120, width_bound: 160, height_bound: 160, random_seed: 11, max_events: 2_000_000 },
+  trace_sec_async: { algorithm: "SEC", num_of_robots: 10, random_seed: 5, max_events: 2_000_000 },
+  trace_gathering_sequential: seq({ num_of_robots: 8, turn_gap: "none", robot_speeds: 50, sampling_rate: 1000, random_seed: 6 }),
+};
+for (const [name, config] of Object.entries(TRACED)) {
+  const path = join(scratch, `${name}.json`), tracePath = join(scratch, `${name}.jsonl`);
+  writeFileSync(path, JSON.stringify(config));
+  execFileSync(native, ["run", path, "--trace", tracePath], { encoding: "utf8" });
+  const rows = readFileSync(tracePath, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  const sim = new WasmSimulation(JSON.stringify(config));
+  let n = 0, bad = null;
+  while (!sim.ended() && bad === null) {
+    const [time, robot, kind, outcome] = sim.step_one();
+    if (robot < 0) continue;
+    const row = rows[n++];
+    const info = JSON.parse(sim.robot_info(robot));
+    const wasm = { time, robot, kind: KINDS[kind], outcome: outcomeName(kind, outcome), x: info.x, y: info.y, target: info.target, circle: info.circle };
+    const nat = row && { time: row.time, robot: row.robot, kind: row.kind, outcome: row.outcome, x: row.x, y: row.y, target: row.target, circle: row.circle };
+    if (JSON.stringify(wasm) !== JSON.stringify(nat)) bad = `event ${n}: wasm ${JSON.stringify(wasm)} vs native ${JSON.stringify(nat)}`;
+  }
+  sim.free();
+  const same = bad === null && n === rows.length;
+  if (!same) failures++;
+  console.log(`${same ? "ok  " : "FAIL"} ${name.padEnd(30)} ${n} robot events, trace identical${same ? "" : `  ${bad ?? `wasm ${n} vs native ${rows.length} events`}`}`);
 }
 
 console.log(failures ? `\n${failures} case(s) differ` : "\nwasm == native (bit for bit); the fixtures also match python");

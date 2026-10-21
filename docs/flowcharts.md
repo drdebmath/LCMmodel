@@ -16,6 +16,7 @@ explains itself, steps marked `</>` open their code, and a guided tour walks thr
 4. [In the browser](#4-in-the-browser) — Page, worker and Rust core working together
 5. [The sequential scheduler](#5-the-sequential-scheduler) — One robot at a time, turn by turn
 6. [SqGathering (Algorithm 8)](#6-sqgathering-algorithm-8) — Gathering with weak multiplicity detection, one robot per turn
+7. [Go-To-Center](#7-go-to-center) — Head for the centre without losing sight of anyone
 
 ---
 
@@ -125,27 +126,15 @@ flowchart TD
 | Every live robot terminated? | Crashed and Byzantine robots don't count: the run ends once all the others have terminated. |
 | Ended | advance() returns Ended and the page shows that every robot terminated. |
 
-`advance` — [`crates/lcm-core/src/sim.rs:354`](../crates/lcm-core/src/sim.rs#L354)
+`advance` — [`crates/lcm-core/src/sim.rs:383`](../crates/lcm-core/src/sim.rs#L383)
 
 ```rust
 /// Handles events until the budget, a limit or the end is reached.
 pub fn advance(&mut self, budget: Budget) -> StopReason {
     let mut handled = 0;
     loop {
-        if self.ended {
-            return StopReason::Ended;
-        }
-        if self.stalled {
-            return StopReason::Stalled;
-        }
-        if self.turn_limit {
-            return StopReason::MaxTurns;
-        }
-        if self.max_time.is_some_and(|limit| self.now > limit) {
-            return StopReason::MaxTime;
-        }
-        if self.max_events.is_some_and(|limit| self.events >= limit) {
-            return StopReason::MaxEvents;
+        if let Some(reason) = self.limit_reached() {
+            return reason;
         }
         if handled >= budget.max_events {
             return StopReason::Budget;
@@ -163,7 +152,7 @@ pub fn advance(&mut self, budget: Budget) -> StopReason {
 }
 ```
 
-`step` — [`crates/lcm-core/src/sim.rs:388`](../crates/lcm-core/src/sim.rs#L388)
+`step` — [`crates/lcm-core/src/sim.rs:405`](../crates/lcm-core/src/sim.rs#L405)
 
 ```rust
 /// Handles the next event.
@@ -256,7 +245,7 @@ pub fn step(&mut self) -> StepInfo {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:673`](../crates/lcm-core/src/sim.rs#L673)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:690`](../crates/lcm-core/src/sim.rs#L690)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -284,7 +273,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`look` — [`crates/lcm-core/src/sim.rs:498`](../crates/lcm-core/src/sim.rs#L498)
+`look` — [`crates/lcm-core/src/sim.rs:515`](../crates/lcm-core/src/sim.rs#L515)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -374,7 +363,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:649`](../crates/lcm-core/src/sim.rs#L649)
+`wait` — [`crates/lcm-core/src/sim.rs:666`](../crates/lcm-core/src/sim.rs#L666)
 
 ```rust
 /// `Robot.wait`.
@@ -402,7 +391,7 @@ fn wait(&mut self, i: usize, t: f64) {
 }
 ```
 
-`globally_terminated` — [`crates/lcm-core/src/sim.rs:797`](../crates/lcm-core/src/sim.rs#L797)
+`globally_terminated` — [`crates/lcm-core/src/sim.rs:814`](../crates/lcm-core/src/sim.rs#L814)
 
 ```rust
 /// `Scheduler._check_global_termination`: every robot that is neither
@@ -511,7 +500,7 @@ flowchart TD
 | Schedule WAIT at arrival | A WAIT event goes in the queue for the moment the robot reaches its target; other robots see it moving until then. |
 | Arrive | At the arrival time the robot is placed exactly on its target, its light turns green, and its next LOOK is scheduled. |
 
-`look` — [`crates/lcm-core/src/sim.rs:498`](../crates/lcm-core/src/sim.rs#L498)
+`look` — [`crates/lcm-core/src/sim.rs:515`](../crates/lcm-core/src/sim.rs#L515)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -601,7 +590,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`build_view` — [`crates/lcm-core/src/sim.rs:477`](../crates/lcm-core/src/sim.rs#L477)
+`build_view` — [`crates/lcm-core/src/sim.rs:494`](../crates/lcm-core/src/sim.rs#L494)
 
 ```rust
 /// The snapshot robot `i` takes at `t`, filtered by its visibility.
@@ -654,7 +643,7 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> Decision {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:673`](../crates/lcm-core/src/sim.rs#L673)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:690`](../crates/lcm-core/src/sim.rs#L690)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -682,7 +671,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`begin_move` — [`crates/lcm-core/src/sim.rs:584`](../crates/lcm-core/src/sim.rs#L584)
+`begin_move` — [`crates/lcm-core/src/sim.rs:601`](../crates/lcm-core/src/sim.rs#L601)
 
 ```rust
 /// `Robot.move` and the WAIT scheduling that follows it.
@@ -722,7 +711,7 @@ fn begin_move(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:649`](../crates/lcm-core/src/sim.rs#L649)
+`wait` — [`crates/lcm-core/src/sim.rs:666`](../crates/lcm-core/src/sim.rs#L666)
 
 ```rust
 /// `Robot.wait`.
@@ -785,6 +774,7 @@ flowchart TD
 
 - The average includes crashed robots, but the termination test ignores them: the original's behaviour, kept on purpose (finding #4 in report.md).
 - The sum is a plain left-to-right loop, as in the Python, so results match to the last digits.
+- Only guaranteed to gather with unlimited visibility. With a limited radius the swarm can stop in several separate groups, all marked terminated: a robot that sees nobody terminates (the original's rule, chart 2), and moving to the average can break visibility links. Algorithms built for limited visibility, such as Go-To-Center (Ando et al.), limit the step length to keep them.
 
 | Step | What happens |
 | --- | --- |
@@ -907,7 +897,7 @@ requestFrame() {
 }
 ```
 
-`slice` — [`web/worker.js:72`](../web/worker.js#L72)
+`slice` — [`web/worker.js:101`](../web/worker.js#L101)
 
 ```js
 function slice(gen) {
@@ -917,7 +907,10 @@ function slice(gen) {
   let caughtUp = false;
   while (performance.now() - start < SLICE_MS) {
     const t0 = performance.now();
-    const code = sim.advance(batch, due);
+    // A call never covers more than ~1% of what has run so far, so the swarm-size curve gets
+    // enough points however fast the run goes (the cost is a few hundred extra calls per run).
+    const code = sim.advance(Math.min(batch, Math.max(64, Math.floor(sim.event_count() / 100))), due);
+    tracePoint();
     const took = performance.now() - t0;
     if (code === 1) { caughtUp = true; break; }          // reached the time the clock allows
     if (code !== 0) { stop = STOP[code]; playing = false; break; }
@@ -927,13 +920,13 @@ function slice(gen) {
   busyMs += performance.now() - start;
   // Falling more than a quarter second behind: drop the backlog rather than burst to catch up.
   if (!caughtUp && speed !== Infinity && due - sim.time() > speed * 0.25) reanchor();
-  if (!playing) postFrame();       // tell the page it ended without waiting to be asked
+  if (!playing) { tracePoint(true); postFrame(); }  // tell the page it ended without waiting to be asked
   else if (caughtUp) setTimeout(slice, IDLE_MS, gen);
   else yieldThenSlice();
 }
 ```
 
-`advance` — [`crates/lcm-wasm/src/lib.rs:83`](../crates/lcm-wasm/src/lib.rs#L83)
+`advance` — [`crates/lcm-wasm/src/lib.rs:86`](../crates/lcm-wasm/src/lib.rs#L86)
 
 ```rust
 /// Handles up to `max_events` events, stopping early before the first
@@ -948,7 +941,7 @@ pub fn advance(&mut self, max_events: u32, until_time: f64) -> Stop {
 }
 ```
 
-`postFrame` — [`web/worker.js:102`](../web/worker.js#L102)
+`postFrame` — [`web/worker.js:134`](../web/worker.js#L134)
 
 ```js
 function postFrame(extra = {}) {
@@ -966,6 +959,7 @@ function postFrame(extra = {}) {
     robots: n,
     terminated: sim.terminated_count(),
     epochs: sim.sequential?.() ? sim.epochs_completed() : null,
+    trace: Float64Array.from(trace),
     ended: sim.ended(),
     stop,
     playing,
@@ -978,7 +972,7 @@ function postFrame(extra = {}) {
 }
 ```
 
-`fill_frame` — [`crates/lcm-wasm/src/lib.rs:233`](../crates/lcm-wasm/src/lib.rs#L233)
+`fill_frame` — [`crates/lcm-wasm/src/lib.rs:261`](../crates/lcm-wasm/src/lib.rs#L261)
 
 ```rust
 /// Captures the current state straight into caller-owned arrays, so the
@@ -1062,8 +1056,8 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   const r = this.robotRadius(n);
   const V = this.options.visibility;
 
-  // Visibility circles (behind everything).
-  if (V && n <= LOD.visibility) {
+  // Visibility circles (behind everything); the links replace them when they are shown.
+  if (V && n <= LOD.visibility && !this.options.links) {
     ctx.strokeStyle = "rgba(100,110,200,.22)";
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
@@ -1075,9 +1069,30 @@ draw(ctx = this.ctx, dpr = this.dpr) {
     ctx.stroke();
   }
 
+  // Who sees whom: a line between robots within sight of each other; a link that is
+  // nearly at the limit is drawn in orange, since it is the one most at risk of breaking.
+  if (this.options.links && V && n <= LOD.links) {
+    const limit2 = V * V, warn2 = (0.9 * V) * (0.9 * V);
+    for (const [style, lo, hi] of [["rgba(90,100,170,.38)", 0, warn2], ["rgba(235,120,40,.8)", warn2, limit2]]) {
+      ctx.strokeStyle = style;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        if ((flags[i] & 3) === STATE_CRASH) continue;
+        const xi = xy[2 * i], yi = xy[2 * i + 1];
+        for (let j = i + 1; j < n; j++) {
+          if ((flags[j] & 3) === STATE_CRASH) continue;
+          const dx = xy[2 * j] - xi, dy = xy[2 * j + 1] - yi, d2 = dx * dx + dy * dy;
+          if (d2 > lo && d2 <= hi) { ctx.moveTo(X(xi), Y(yi)); ctx.lineTo(X(xy[2 * j]), Y(xy[2 * j + 1])); }
+        }
+      }
+      ctx.stroke();
+    }
+  }
+
   // Circles the robots computed (SEC and friends).
   if (n <= LOD.circles) {
-    ctx.strokeStyle = "rgba(255,150,0,0.55)";
+    // With a robot selected, everyone else's circle fades so its own stands out.
+    ctx.strokeStyle = this.selected >= 0 ? "rgba(255,150,0,0.16)" : "rgba(255,150,0,0.55)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
@@ -1169,6 +1184,20 @@ draw(ctx = this.ctx, dpr = this.dpr) {
         ctx.globalAlpha = 0.35;
         ctx.beginPath(); ctx.arc(x, y, V * s, 0, 2 * Math.PI); ctx.stroke();
         ctx.globalAlpha = 1;
+      }
+      if (this.options.allowedRegion && V && !((flags[i] & 3) === STATE_CRASH)) {
+        // Go-To-Center: the destination must stay inside the disc of radius V/2 around the
+        // midpoint with every robot it sees; where the discs overlap is the allowed region.
+        const xi = xy[2 * i], yi = xy[2 * i + 1];
+        ctx.strokeStyle = "rgba(40,160,110,.8)"; ctx.fillStyle = "rgba(40,160,110,.06)"; ctx.lineWidth = 1;
+        for (let j = 0; j < n; j++) {
+          if (j === i || (flags[j] & 3) === STATE_CRASH) continue;
+          const dx = xy[2 * j] - xi, dy = xy[2 * j + 1] - yi;
+          if (dx * dx + dy * dy > V * V) continue;
+          ctx.beginPath(); ctx.arc(X(xi + dx / 2), Y(yi + dy / 2), (V / 2) * s, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+          ctx.beginPath(); ctx.arc(X(xy[2 * j]), Y(xy[2 * j + 1]), Math.max(r, 2) + 3, 0, 2 * Math.PI); ctx.stroke();
+        }
+        ctx.strokeStyle = this.theme.accent;
       }
       const cr = circle[3 * i + 2];
       if (cr >= 0) {
@@ -1276,7 +1305,7 @@ flowchart TD
 | Stop it on the way | The adversary picks the stopping point, never before δ along the way: just after δ, anywhere between δ and the destination at random, a set fraction of the way, or the fraction this turn of the schedule names. |
 | Arrive, and the turn ends | The robot stands at its destination, or at the point where it was stopped. It does not schedule its own next Look: control goes back to next_turn(). |
 
-`next_turn` — [`crates/lcm-core/src/sim.rs:697`](../crates/lcm-core/src/sim.rs#L697)
+`next_turn` — [`crates/lcm-core/src/sim.rs:714`](../crates/lcm-core/src/sim.rs#L714)
 
 ```rust
 /// Sequential scheduler: queues the Look of the next robot to take a turn:
@@ -1380,7 +1409,7 @@ fn next_turn(&mut self, previous: f64) {
 }
 ```
 
-`limited_target` — [`crates/lcm-core/src/sim.rs:620`](../crates/lcm-core/src/sim.rs#L620)
+`limited_target` — [`crates/lcm-core/src/sim.rs:637`](../crates/lcm-core/src/sim.rs#L637)
 
 ```rust
 /// Non-rigid movement with a `delta`: where the adversary stops robot `i`
@@ -1614,6 +1643,241 @@ pub fn destination(&self, obs: &Observation) -> Point {
         Action::Midpoint(j) => {
             let r = obs.points[j].at;
             Point::new(0.5 * (q.x + r.x), 0.5 * (q.y + r.y))
+        }
+    }
+}
+```
+
+---
+
+## 7. Go-To-Center
+
+Each robot heads for the centre of the smallest circle around the robots it sees, but never so far that it could lose sight of a neighbour. This is Robot._go_to_center and Robot._gtc_terminal in robot.py, from Ando, Oasa, Suzuki and Yamashita (1999). With limited visibility it keeps a swarm that starts connected together, which simple centre-of-gravity gathering does not.
+
+```mermaid
+flowchart TD
+    classDef k_entry fill:#e8eefd,stroke:#2f5bea,color:#111,stroke-width:1.5px
+    classDef k_step fill:#ffffff,stroke:#9aa1ad,color:#111
+    classDef k_decision fill:#fff4dc,stroke:#d18b00,color:#111
+    classDef k_end fill:#e3f6e8,stroke:#1f9d55,color:#111,stroke-width:1.5px
+    classDef k_out fill:#f1f2f5,stroke:#9aa1ad,color:#333
+    subgraph lane0["Who is there"]
+        g_a(["Compute<br/><small>GoToCenter::compute()</small>"])
+        g_b{"Sees another robot?<br/><small>crashed ones do not count</small>"}
+        g_c(["Stay, and done<br/><small>nobody to go to</small>"])
+    end
+    subgraph lane1["The centre"]
+        g_d["Smallest circle of what it sees<br/><small>randomized, as in the Python</small>"]
+        g_e{"Already at the centre?<br/><small>within ε</small>"}
+        g_f[/"Stay put<br/><small>done if the circle is a point</small>"/]
+    end
+    subgraph lane2["How far"]
+        g_g{"Limited visibility?"}
+        g_h["Go all the way to the centre<br/><small>target = the centre</small>"]
+        g_i["Limit the step for each neighbour<br/><small>inside every V/2 disc</small>"]
+        g_j(["Move there<br/><small>chart 2 takes over</small>"])
+    end
+    class g_a k_entry
+    class g_b k_decision
+    class g_c k_end
+    class g_d k_step
+    class g_e k_decision
+    class g_f k_out
+    class g_g k_decision
+    class g_h k_step
+    class g_i k_step
+    class g_j k_end
+    g_a --> g_b
+    g_b -- "no" --> g_c
+    g_b -- "yes" --> g_d
+    g_d --> g_e
+    g_e -- "yes" --> g_f
+    g_e -- "no" --> g_g
+    g_g -- "no" --> g_h
+    g_g -- "yes" --> g_i
+    g_i --> g_j
+    g_h --> g_j
+```
+
+- The limit: for each visible neighbour j, the destination must stay inside the disc of radius V/2 around the midpoint of the robot and j. Both robots then stay within V of each other whatever else happens. The step is the farthest point of the way to the centre that is inside all of these discs.
+- A robot stopped part-way by non-rigid movement is still on that segment, inside every disc, so no link is lost either. Robots that start within sight of each other stay within sight in all the runs tested, under the sequential and the asynchronous scheduler.
+- The smallest circle is the same randomized routine as SEC's, run for every group of two or more robots, so it draws the same random numbers as the Python and the runs match event by event.
+- A robot is done when the circle around what it sees has a radius below ε. Under the sequential scheduler this can deadlock: the robots that define the circle have stopped, the rest are within ε of its centre so they do not move, and the radius is just above ε, so nobody finishes. About 7 in 100 sequential runs of 8 robots do this at the default precision; the swarm is then within 0.00002 of one point and the core ends the run as Stalled. The original Python, which only ran asynchronously, finished all 139 of the same starts.
+
+| Step | What happens |
+| --- | --- |
+| Compute | Called from the COMPUTE phase of chart 2 with the robot's snapshot. |
+| Sees another robot? | The robots in the snapshot that have not crashed, itself included. Alone, there is nobody to go to. |
+| Stay, and done | The robot stays where it is and is finished. The circle it last showed is left alone. |
+| Smallest circle of what it sees | Shuffles the visible points with the run's random numbers, then Welzl's recursion. The same routine as SEC's, so the random numbers are drawn in the same order as the original. |
+| Already at the centre? | The distance from the robot to the circle's centre is below ε = 10^-precision. |
+| Stay put | The robot does not move. It is finished only if the circle's radius is below ε. |
+| Limited visibility? | With unlimited visibility every robot sees all the others and nothing limits the step. |
+| Go all the way to the centre | The centre of the smallest circle becomes the target. |
+| Limit the step for each neighbour | For each visible neighbour, the farthest point on the way to the centre that is inside the disc of radius V/2 around the midpoint with it. The step is the smallest of these limits. |
+| Move there | The destination is the target; chart 2 (freeze check, then the move) takes over. The robot terminates if the circle's radius is below ε. |
+
+`compute` — [`crates/lcm-algorithms/src/go_to_center.rs:27`](../crates/lcm-algorithms/src/go_to_center.rs#L27)
+
+```rust
+fn compute(&self, look: &Look<'_>, rng: &mut Rng, scratch: &mut Scratch) -> Decision {
+    let eps = look.model.eps;
+    let me = look.position;
+    let view = look.view;
+
+    scratch.points.clear();
+    for (p, s) in view.pos.iter().zip(&view.state) {
+        if *s != RobotState::Crash {
+            scratch.points.push(*p);
+        }
+    }
+    let n = scratch.points.len();
+    if n <= 1 {
+        // Nobody else to go towards; the Python returns `[None]` and leaves
+        // the displayed circle alone, and `_gtc_terminal(None)` is true.
+        return Decision {
+            target: me,
+            terminate: true,
+            overlay: OverlayUpdate::Keep,
+        };
+    }
+
+    // `_sec_welzl_coords`: shuffle a copy, then the randomized recursion.
+    rng.shuffle(&mut scratch.points);
+    scratch.points_b.clear();
+    scratch.floats.clear();
+    let sec = welzl_recur(
+        &mut scratch.points,
+        &mut scratch.points_b,
+        n,
+        rng,
+        look.model.precision,
+        &mut scratch.floats,
+    );
+    if sec.radius < 0.0 {
+        return Decision {
+            target: me,
+            terminate: true,
+            overlay: OverlayUpdate::Set(sec),
+        };
+    }
+    // `_gtc_terminal`: converged once the visible robots have collapsed to a point.
+    let terminate = sec.radius < eps;
+    let overlay = OverlayUpdate::Set(sec);
+
+    let gx = sec.center.x - me.x;
+    let gy = sec.center.y - me.y;
+    let goal_dist = libm::hypot(gx, gy);
+    if goal_dist < eps {
+        // Already at the centre.
+        return Decision {
+            target: me,
+            terminate,
+            overlay,
+        };
+    }
+
+    let ux = gx / goal_dist;
+    let uy = gy / goal_dist;
+    let mut step = goal_dist;
+
+    let visibility = look.model.visibility;
+    if visibility != f64::INFINITY {
+        let big_r = visibility / 2.0;
+        for (p, s) in view.pos.iter().zip(&view.state) {
+            if *s == RobotState::Crash {
+                continue;
+            }
+            let jx = p.x - me.x;
+            let jy = p.y - me.y;
+            let d = libm::hypot(jx, jy);
+            if d <= 1e-12 || d > visibility {
+                continue; // itself, or not actually visible
+            }
+            // theta: the angle between the way to the centre and the way to `j`.
+            let cos_t = ((ux * jx + uy * jy) / d).clamp(-1.0, 1.0);
+            let sin_t = (1.0 - cos_t * cos_t).max(0.0).sqrt();
+            let r0 = d / 2.0;
+            // The farthest point of the ray that stays inside B(midpoint_ij, V/2).
+            let across = r0 * sin_t;
+            let limit_j = r0 * cos_t + (big_r * big_r - across * across).max(0.0).sqrt();
+            step = step.min(limit_j);
+        }
+    }
+
+    step = 0.0_f64.max(goal_dist.min(step));
+    Decision {
+        target: Point::new(me.x + ux * step, me.y + uy * step),
+        terminate,
+        overlay,
+    }
+}
+```
+
+`welzl_recur` — [`crates/lcm-algorithms/src/sec.rs:119`](../crates/lcm-algorithms/src/sec.rs#L119)
+
+```rust
+pub(crate) fn welzl_recur(
+    pts: &mut [Point],
+    r: &mut Vec<Point>,
+    n: usize,
+    rng: &mut Rng,
+    precision: u8,
+    stack_buf: &mut Vec<f64>,
+) -> Circle {
+    let mut n = n;
+    let mut descending = true;
+    let mut c = Circle::new(Point::new(0.0, 0.0), 0.0);
+
+    loop {
+        if descending {
+            if n == 0 || r.len() == 3 {
+                c = min_circle(r, precision);
+                descending = false;
+            } else {
+                let idx = rng.index(n); // mirrors Python's generator.integers(0, n)
+                pts.swap(idx, n - 1);
+                let pt = pts[n - 1];
+                // Push AfterFirst frame: [0.0, n_before, pt.x, pt.y]
+                stack_buf.push(0.0);
+                stack_buf.push(n as f64);
+                stack_buf.push(pt.x);
+                stack_buf.push(pt.y);
+                n -= 1;
+            }
+        } else {
+            let len = stack_buf.len();
+            if len == 0 {
+                return c;
+            }
+            let pt_y = stack_buf[len - 1];
+            let pt_x = stack_buf[len - 2];
+            let n_before_or_zero = stack_buf[len - 3];
+            let discriminant = stack_buf[len - 4];
+            stack_buf.truncate(len - 4);
+
+            let pt = Point::new(pt_x, pt_y);
+
+            if discriminant == 0.0 {
+                // AfterFirst: check if c covers pt.
+                let n_before = n_before_or_zero as usize;
+                if contains_rounded(c, pt, precision) {
+                    // c covers pt — propagate c upward (stay unwinding).
+                } else {
+                    // Needs second call with R ∪ {pt}.
+                    r.push(pt);
+                    // Push AfterSecond frame: [1.0, 0.0, pt.x, pt.y]
+                    stack_buf.push(1.0);
+                    stack_buf.push(0.0);
+                    stack_buf.push(pt.x);
+                    stack_buf.push(pt.y);
+                    n = n_before - 1;
+                    descending = true;
+                }
+            } else {
+                // AfterSecond: pop pt from r and propagate c upward.
+                r.pop();
+            }
         }
     }
 }

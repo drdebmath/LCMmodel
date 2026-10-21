@@ -31,7 +31,7 @@ const C = Object.fromEntries(COLORS.map((c, i) => [c.key, i]));
 export const LIGHTS = [null, "#3b82f6", "#ef4444", "#22c55e"];
 
 // Level of detail: draw these only up to this many robots.
-export const LOD = { outlines: 2000, targets: 2000, visibility: 1000, circles: 1000 };
+export const LOD = { outlines: 2000, targets: 2000, visibility: 1000, circles: 1000, links: 400 };
 
 export const STATE_NAMES = ["Wait", "Look", "Move", "Crash"];
 const STATE_MOVE = 2, STATE_CRASH = 3, FROZEN = 4, TERMINATED = 8;
@@ -60,7 +60,7 @@ export class Renderer {
     this.pan = { x: 0, y: 0 };
     // CSS px covered by floating panels; the world is fitted into what's left.
     this.insets = { left: 0, right: 0, top: 0, bottom: 0 };
-    this.options = { showLights: false, visibility: null, multiplicities: false };
+    this.options = { showLights: false, visibility: null, links: false, allowedRegion: false, multiplicities: false };
     this.frame = null;
     this.selected = -1;
     this.hovered = -1;
@@ -271,8 +271,8 @@ export class Renderer {
     const r = this.robotRadius(n);
     const V = this.options.visibility;
 
-    // Visibility circles (behind everything).
-    if (V && n <= LOD.visibility) {
+    // Visibility circles (behind everything); the links replace them when they are shown.
+    if (V && n <= LOD.visibility && !this.options.links) {
       ctx.strokeStyle = "rgba(100,110,200,.22)";
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
@@ -284,9 +284,30 @@ export class Renderer {
       ctx.stroke();
     }
 
+    // Who sees whom: a line between robots within sight of each other; a link that is
+    // nearly at the limit is drawn in orange, since it is the one most at risk of breaking.
+    if (this.options.links && V && n <= LOD.links) {
+      const limit2 = V * V, warn2 = (0.9 * V) * (0.9 * V);
+      for (const [style, lo, hi] of [["rgba(90,100,170,.38)", 0, warn2], ["rgba(235,120,40,.8)", warn2, limit2]]) {
+        ctx.strokeStyle = style;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          if ((flags[i] & 3) === STATE_CRASH) continue;
+          const xi = xy[2 * i], yi = xy[2 * i + 1];
+          for (let j = i + 1; j < n; j++) {
+            if ((flags[j] & 3) === STATE_CRASH) continue;
+            const dx = xy[2 * j] - xi, dy = xy[2 * j + 1] - yi, d2 = dx * dx + dy * dy;
+            if (d2 > lo && d2 <= hi) { ctx.moveTo(X(xi), Y(yi)); ctx.lineTo(X(xy[2 * j]), Y(xy[2 * j + 1])); }
+          }
+        }
+        ctx.stroke();
+      }
+    }
+
     // Circles the robots computed (SEC and friends).
     if (n <= LOD.circles) {
-      ctx.strokeStyle = "rgba(255,150,0,0.55)";
+      // With a robot selected, everyone else's circle fades so its own stands out.
+      ctx.strokeStyle = this.selected >= 0 ? "rgba(255,150,0,0.16)" : "rgba(255,150,0,0.55)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
@@ -378,6 +399,20 @@ export class Renderer {
           ctx.globalAlpha = 0.35;
           ctx.beginPath(); ctx.arc(x, y, V * s, 0, 2 * Math.PI); ctx.stroke();
           ctx.globalAlpha = 1;
+        }
+        if (this.options.allowedRegion && V && !((flags[i] & 3) === STATE_CRASH)) {
+          // Go-To-Center: the destination must stay inside the disc of radius V/2 around the
+          // midpoint with every robot it sees; where the discs overlap is the allowed region.
+          const xi = xy[2 * i], yi = xy[2 * i + 1];
+          ctx.strokeStyle = "rgba(40,160,110,.8)"; ctx.fillStyle = "rgba(40,160,110,.06)"; ctx.lineWidth = 1;
+          for (let j = 0; j < n; j++) {
+            if (j === i || (flags[j] & 3) === STATE_CRASH) continue;
+            const dx = xy[2 * j] - xi, dy = xy[2 * j + 1] - yi;
+            if (dx * dx + dy * dy > V * V) continue;
+            ctx.beginPath(); ctx.arc(X(xi + dx / 2), Y(yi + dy / 2), (V / 2) * s, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(X(xy[2 * j]), Y(xy[2 * j + 1]), Math.max(r, 2) + 3, 0, 2 * Math.PI); ctx.stroke();
+          }
+          ctx.strokeStyle = this.theme.accent;
         }
         const cr = circle[3 * i + 2];
         if (cr >= 0) {

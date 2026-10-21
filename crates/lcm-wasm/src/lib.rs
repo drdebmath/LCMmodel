@@ -6,7 +6,7 @@
 //! can transfer their buffers to the page without copying again.
 
 use lcm_algorithms::sq_trace::Tracer;
-use lcm_core::{Budget, EventKind, Frame, SimConfig, Simulation, StopReason};
+use lcm_core::{Budget, EventKind, Frame, RobotState, SimConfig, Simulation, StopReason};
 use wasm_bindgen::prelude::*;
 
 /// `advance` result codes, shared with `web/worker.js`.
@@ -62,6 +62,8 @@ pub fn algorithms() -> String {
 pub struct WasmSimulation {
     sim: Simulation,
     frame: Frame,
+    /// Reused by `swarm_size`, so sampling it allocates nothing.
+    positions: Vec<lcm_core::Point>,
 }
 
 #[wasm_bindgen]
@@ -77,6 +79,7 @@ impl WasmSimulation {
         Ok(Self {
             sim,
             frame: Frame::default(),
+            positions: Vec::new(),
         })
     }
 
@@ -108,6 +111,31 @@ impl WasmSimulation {
     #[allow(clippy::cast_precision_loss)]
     pub fn tick_count(&self) -> f64 {
         self.sim.tick_count() as f64
+    }
+
+    /// How far the farthest robot that has not crashed is from the centre of those robots
+    /// right now: a measure of how spread out the swarm is, for the page's convergence plot.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn swarm_size(&mut self) -> f64 {
+        let t = self.sim.time();
+        self.positions.clear();
+        let robots = self.sim.robots();
+        for i in 0..robots.len() {
+            if robots.state[i] != RobotState::Crash {
+                self.positions.push(self.sim.position_at(i, t));
+            }
+        }
+        if self.positions.is_empty() {
+            return 0.0;
+        }
+        let n = self.positions.len() as f64;
+        let cx = self.positions.iter().map(|p| p.x).sum::<f64>() / n;
+        let cy = self.positions.iter().map(|p| p.y).sum::<f64>() / n;
+        self.positions
+            .iter()
+            .map(|p| (p.x - cx).hypot(p.y - cy))
+            .fold(0.0, f64::max)
     }
 
     /// `true` under the sequential scheduler.

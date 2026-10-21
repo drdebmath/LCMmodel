@@ -3,7 +3,7 @@
 //! Each test drives a full Simulation and asserts on the observable outcome:
 //! did it terminate, where did robots end up, how many events did it take.
 //! This covers configurations the parity fixtures don't: Circle+Edge (instant
-//! termination via the concyclic fast path), Line+Edge (collinear fast path),
+//! termination, robots already on the smallest circle), Line+Edge,
 //! n=1/2/3 edge cases, degenerate coincident robots, non-rigid movement, and
 //! crash-fault exclusion.
 
@@ -47,7 +47,7 @@ fn run_steps(config: &SimConfig, limit: u64) -> lcm_core::Simulation {
 
 // ── Circle+Edge: instant termination ─────────────────────────────────────────
 //
-// Robots start exactly on the SEC boundary → concyclic fast path fires at the
+// Robots start exactly on the SEC boundary, all around its centre → at the
 // first LOOK of every robot → each robot terminates on its first LOOK event →
 // simulation ends after at most n * handful-of-events steps.
 
@@ -209,10 +209,10 @@ fn all_robots_at_same_position_terminates() {
     assert!(sim.ended(), "all-coincident robots must terminate");
 }
 
-// ── Line + Edge: collinear fast path ─────────────────────────────────────────
+// ── Line + Edge ───────────────────────────────────────────────────────────
 
 #[test]
-fn line_edge_even_converges_via_collinear_fast_path() {
+fn line_edge_even_converges() {
     let config = SimConfig {
         num_of_robots: 10,
         start: Some(StartSpec {
@@ -371,4 +371,65 @@ fn all_live_robots_on_sec_boundary_at_termination() {
             "live robot {i} at distance {d:.4} from SEC center, radius is {r_sec:.4}"
         );
     }
+}
+
+// ── Robots on a short arc ────────────────────────────────────────────────────
+//
+// Robots that all sit on one circle do not always have that circle as their
+// smallest enclosing circle: if they fit inside a half of it, a smaller circle
+// contains them. A check that only asks "are they all on one circle?" gets this
+// wrong, and so does one that sees at most three distinct spots.
+
+#[test]
+fn robots_on_a_short_arc_are_not_finished_at_the_start() {
+    // Six robots exactly on a 90-degree arc of a radius-150 circle. Their smallest circle
+    // is the one with the two end points as a diameter: radius 150 * sqrt(2) / 2 = 106.07.
+    let positions = vec![
+        [150.0, 0.0],
+        [144.0, 42.0],
+        [120.0, 90.0],
+        [90.0, 120.0],
+        [42.0, 144.0],
+        [0.0, 150.0],
+    ];
+    let config = SimConfig {
+        num_of_robots: 6,
+        initial_positions: Some(positions),
+        ..sec_cfg()
+    };
+    // After every robot has looked once, none is finished: they are not on the smallest circle.
+    let sim = run_steps(&config, 40);
+    assert!(
+        sim.robots().terminated.iter().all(|t| !t),
+        "a robot finished while the others still had to move"
+    );
+    // The run does finish, on the circle of radius 106.07.
+    let sim = run_to_end(&config);
+    let radius = sim.robots().overlay[0].expect("a circle is shown").radius;
+    assert!((radius - 150.0 * 2.0_f64.sqrt() / 2.0).abs() < 0.05, "radius {radius}");
+}
+
+#[test]
+fn robots_standing_on_only_three_spots_use_the_smallest_circle() {
+    // Three spots forming an obtuse triangle: the circle through them is too big. The smallest
+    // circle has the two far spots as a diameter, and the third spot is strictly inside it.
+    let positions = vec![
+        [140.0, -120.0],
+        [130.0, -100.0],
+        [140.0, -120.0],
+        [-140.0, -140.0],
+        [-140.0, -140.0],
+        [140.0, -120.0],
+    ];
+    let config = SimConfig {
+        num_of_robots: 6,
+        initial_positions: Some(positions),
+        ..sec_cfg()
+    };
+    let sim = run_steps(&config, 40);
+    assert!(sim.robots().terminated.iter().all(|t| !t), "finished too early");
+    let sim = run_to_end(&config);
+    let radius = sim.robots().overlay[0].expect("a circle is shown").radius;
+    let expected = ((280.0_f64).powi(2) + (20.0_f64).powi(2)).sqrt() / 2.0;
+    assert!((radius - expected).abs() < 0.05, "radius {radius}, expected {expected}");
 }

@@ -26,6 +26,9 @@ const PATHS = {
   dice: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/><circle cx="15" cy="15" r="1.2" fill="currentColor"/><circle cx="15" cy="9" r="1.2" fill="currentColor"/><circle cx="9" cy="15" r="1.2" fill="currentColor"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
   target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+  links: '<circle cx="5.5" cy="7" r="2.2"/><circle cx="18.5" cy="8" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="m7.7 7.2 8.6.6M6.6 9 10.9 16M17.4 10 13.1 16"/>',
+  list: '<path d="M8.5 6.5H20M8.5 12H20M8.5 17.5H20"/><circle cx="4.5" cy="6.5" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="17.5" r="1" fill="currentColor"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
 };
 

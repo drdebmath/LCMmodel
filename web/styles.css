@@ -184,6 +184,17 @@ a.btn { text-decoration: none; }
 .btn.outline { border-color: var(--border-strong); }
 .btn[aria-pressed="true"] { background: var(--accent-weak); color: var(--accent); }
 .btn svg { flex: none; }
+#toolbar select[hidden] { display: none; }
+/* The Examples menu opens under its toolbar button (positioned by app.js), like the Export menu. */
+#examples_menu { right: auto; bottom: auto; min-width: 280px; max-width: min(360px, calc(100vw - 16px)); }
+.menu-item { height: auto; min-height: 36px; padding: 6px 10px 6px 8px; gap: 8px; text-align: left; }
+.menu-item .tick { flex: none; display: inline-flex; visibility: hidden; color: var(--accent); }
+.menu-item[aria-checked="true"] .tick { visibility: visible; }
+.menu-item[aria-checked="true"] { background: var(--accent-weak); }
+.menu-item .text { display: grid; gap: 1px; }
+.menu-item .title { font-weight: 600; }
+.menu-item .note { color: var(--text-3); font-size: 11.5px; font-weight: 400; white-space: normal; }
+.menu-item:first-child { margin-bottom: 4px; }
 #toolbar select { height: 32px; border-radius: var(--radius-sm); background: var(--surface-solid); }
 
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
@@ -199,6 +210,8 @@ a.btn { text-decoration: none; }
 .hud-status.ended { color: var(--accent); font-weight: 600; }
 .progress { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .progress > div { height: 100%; width: 0; background: var(--accent); transition: width 0.25s; }
+.hud-plot { display: grid; gap: 4px; }
+.hud-plot canvas { width: 100%; height: 55px; display: block; border-radius: 6px; background: var(--surface-2); }
 .hud-perf { color: var(--text-3); font-size: 11.5px; font-variant-numeric: tabular-nums; border-top: 1px solid var(--border); padding-top: 8px; }
 .last-event { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); background: var(--surface-2); border-radius: 6px; padding: 6px 8px; }
 
@@ -284,6 +297,7 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
   #toolbar { top: 8px; left: 8px; right: 8px; flex-wrap: wrap; justify-content: space-between; row-gap: 6px; }
   #toolbar .brand, #toolbar .divider { display: none; }
   #algorithm { flex: 1 1 150px; min-width: 0; }
+  #examples_menu { left: 8px !important; right: 8px; max-width: none; }
   #hud { top: calc(var(--top-h, 96px) + 6px); left: 8px; right: 8px; width: auto; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 12px; }
   #hud .hud-row:first-child { grid-column: 3; grid-row: 1; }
   #hud .hud-time { grid-column: 1; grid-row: 1; }

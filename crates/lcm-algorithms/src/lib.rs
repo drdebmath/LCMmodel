@@ -9,18 +9,20 @@
 //! work with by returning [`ConfigError::Unsupported`].
 //!
 //! Gathering and SEC are ported; they drive the core's parity tests. Uniform
-//! Circle Formation is ported too. SqGathering (Algorithm 8 of the
+//! Circle Formation and Go-To-Center are ported too. SqGathering (Algorithm 8 of the
 //! sequential-schedulers paper) is new: it refuses any scheduler but the
 //! sequential one.
 
 mod circle_formation;
 mod gathering;
+mod go_to_center;
 mod sec;
 pub mod sq_gathering;
 pub mod sq_trace;
 
 pub use circle_formation::CircleFormation;
 pub use gathering::Gathering;
+pub use go_to_center::GoToCenter;
 pub use sec::Sec;
 pub use sq_gathering::SqGathering;
 
@@ -52,6 +54,11 @@ pub const REGISTRY: &[Entry] = &[
         key: "CircleFormation",
         name: "Uniform Circle Formation",
         build: one::<CircleFormation>,
+    },
+    Entry {
+        key: "GoToCenter",
+        name: "Go To Center",
+        build: one::<GoToCenter>,
     },
     Entry {
         key: "SqGathering",

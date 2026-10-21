@@ -56,6 +56,7 @@ function newRun({ quiet = false } = {}) {
   fitPending = true;
   inspector.leave(); // the robot under the pointer belonged to the old run
   renderer.options.visibility = c.visibility_radius;
+  renderer.options.allowedRegion = c.algorithm === "GoToCenter";
   renderer.options.multiplicities = Boolean(algorithms.find((a) => a.key === c.algorithm)?.multiplicities);
   inspector.select(-1);
   $("hud_last").hidden = true;
@@ -133,15 +134,131 @@ function step(unit) {
   setState("paused");
 }
 
+/* ---------------------------------------------------------------- examples */
+// Ready-made setups, per algorithm. `set` is applied to the settings in the order written.
+const CHAIN = "-80, 10\n0, 0\n95, -5";
+const TWO_GROUPS = "-170, -10\n-150, 15\n-135, -20\n-160, 30\n150, -25\n165, 10\n135, 20\n170, -15";
+const GTC_SEQUENTIAL = { scheduler: "sequential", turn_gap: "none", rigid_movement: true, robot_speeds: 25 };
+const EXAMPLES = {
+  GoToCenter: [
+    { label: "Three robots in a chain", note: "Limited sight: each robot sees only its neighbour", links: true,
+      set: { open_world: true, pattern: "custom", custom: CHAIN, unlimited_visibility: false, visibility_radius: 100, ...GTC_SEQUENTIAL } },
+    { label: "A swarm of 40", note: "Limited sight (110), links drawn", links: true,
+      set: { open_world: true, pattern: "cloud", num_of_robots: 40, spread: 70, unlimited_visibility: false, visibility_radius: 110, ...GTC_SEQUENTIAL } },
+    { label: "Two groups", note: "Out of sight of each other", links: true,
+      set: { open_world: true, pattern: "custom", custom: TWO_GROUPS, unlimited_visibility: false, visibility_radius: 100, ...GTC_SEQUENTIAL } },
+  ],
+};
+// Choosing an example overwrites several settings. "None" puts back what they were before the first
+// example was chosen (`before`), so trying examples never loses the setup the user had.
+let activeExample = -1;
+let before = null; // { values, links }
+function setLinks(on) {
+  renderer.options.links = on;
+  $("links").setAttribute("aria-pressed", String(on));
+}
+function renderExamplesMenu() {
+  const list = EXAMPLES[$("algorithm").value] ?? [];
+  const items = [{ label: "None", note: "Your own settings" }, ...list];
+  $("examples_menu").innerHTML = items.map((e, k) => {
+    const on = k - 1 === activeExample;
+    return `<button class="btn menu-item" role="menuitemradio" aria-checked="${on}" data-example="${k - 1}">`
+      + `<span class="tick" data-icon="check" data-size="16"></span>`
+      + `<span class="text"><span class="title">${e.label}</span><span class="note">${e.note}</span></span></button>`;
+  }).join("");
+  renderIcons($("examples_menu"));
+  $("examples").setAttribute("aria-pressed", String(activeExample >= 0));
+}
+function updateExamples() {
+  const list = EXAMPLES[$("algorithm").value];
+  activeExample = -1; // another algorithm: the old choice no longer means anything
+  before = null;
+  openExamples(false);
+  $("examples").hidden = !list;
+  if (list) renderExamplesMenu();
+  updateInsets(); // the toolbar may have wrapped onto another row
+}
+function openExamples(open) {
+  const menu = $("examples_menu"), button = $("examples");
+  menu.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+  if (!open) return;
+  const r = button.getBoundingClientRect();
+  menu.style.top = `${Math.round(r.bottom + 6)}px`;
+  menu.style.left = `${Math.max(8, Math.min(Math.round(r.left), innerWidth - menu.offsetWidth - 8))}px`;
+  (menu.querySelector("[aria-checked=true]") ?? menu.querySelector("[role=menuitemradio]"))?.focus();
+}
+function chooseExample(index) {
+  const list = EXAMPLES[$("algorithm").value] ?? [];
+  if (index < 0) {
+    if (before) { setLinks(before.links); settings.apply(before.values); }
+    before = null;
+  } else if (list[index]) {
+    const example = list[index];
+    before ??= {
+      links: renderer.options.links,
+      values: Object.fromEntries([...new Set(list.flatMap((e) => Object.keys(e.set)))].map((key) => [key, settings.values[key]])),
+    };
+    setLinks(example.links);
+    settings.apply(example.set);
+  } else return;
+  activeExample = index;
+  renderExamplesMenu();
+}
+$("examples").addEventListener("click", (e) => { e.stopPropagation(); openExamples($("examples_menu").hidden); });
+$("examples_menu").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const item = e.target.closest("[data-example]");
+  if (!item) return;
+  chooseExample(Number(item.dataset.example));
+  openExamples(false);
+  $("examples").focus();
+});
+$("examples_menu").addEventListener("keydown", (e) => {
+  const items = [...$("examples_menu").querySelectorAll("[role=menuitemradio]")];
+  const at = items.indexOf(document.activeElement);
+  const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1 }[e.key];
+  if (to === undefined) return;
+  e.preventDefault();
+  items[(to + items.length) % items.length].focus();
+});
+
 client.on("ready", (list) => {
   algorithms = list;
   $("algorithm").innerHTML = list.map((a) => `<option value="${a.key}">${a.name}</option>`).join("");
+  updateExamples();
   $("loading_text").textContent = "Building the swarm…";
   newRun();
 });
 
+/* ------------------------------------------------------- swarm-size trace */
+// The worker samples "how far the farthest robot is from the swarm's centre" as the run advances
+// and sends the points with each frame (time, size, time, size, ...).
+const trace = { points: new Float64Array(0) };
+window.lcm.trace = trace;
+function drawTrace() {
+  const canvas = $("hud_plot"), ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const flat = trace.points, count = flat.length / 2;
+  if (count < 1) { $("hud_spread").textContent = "—"; return; }
+  const times = Array.from({ length: count }, (_, k) => flat[2 * k]);
+  const sizes = Array.from({ length: count }, (_, k) => flat[2 * k + 1]);
+  $("hud_spread").textContent = fmtSize(sizes[count - 1]);
+  if (count < 2) return;
+  const ys = sizes.map((v) => Math.log10(Math.max(v, 1e-7)));
+  const lo = Math.min(...ys), hi = Math.max(...ys, lo + 0.5), t1 = times[count - 1] || 1;
+  const css = getComputedStyle(document.documentElement);
+  ctx.strokeStyle = css.getPropertyValue("--accent").trim() || "#2f5bea";
+  ctx.lineWidth = 2.5; ctx.lineJoin = "round";
+  ctx.beginPath();
+  times.forEach((t, k) => { const x = 6 + ((W - 12) * t) / t1, y = H - 8 - ((H - 16) * (ys[k] - lo)) / (hi - lo); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.stroke();
+}
+const fmtSize = (v) => (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v >= 1e-3 ? v.toFixed(3) : v.toExponential(1));
+
 client.on("frame", (f) => {
   frame = f;
+  if (f.trace) trace.points = f.trace;
   if (fitPending) { fitPending = false; fitToStart(f); }
   renderer.setFrame(f);
   if (firstFrame) { firstFrame = false; $("loading").hidden = true; resolveReady(); }
@@ -199,6 +316,7 @@ function updateHud(force = false) {
   $("hud_time").textContent = frame.time.toFixed(2);
   $("hud_term").textContent = `${frame.terminated.toLocaleString()} / ${frame.robots.toLocaleString()}`;
   $("hud_bar").style.width = `${(100 * frame.terminated) / Math.max(1, frame.robots)}%`;
+  drawTrace();
   $("hud_epochs_row").hidden = frame.epochs == null;
   if (frame.epochs != null) $("hud_epochs").textContent = frame.epochs.toLocaleString();
   $("hud_events").textContent = (frame.events - frame.ticks).toLocaleString();
@@ -237,6 +355,7 @@ $("step_event").addEventListener("click", () => step("event"));
 $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
 $("algorithm").addEventListener("change", () => {
+  updateExamples();
   // An algorithm that only works under the sequential scheduler (SqGathering)
   // switches it on, rather than failing with the async default.
   const a = algorithms.find((x) => x.key === $("algorithm").value);
@@ -310,14 +429,20 @@ function onFullscreenChange() {
 document.addEventListener("fullscreenchange", onFullscreenChange);
 document.addEventListener("webkitfullscreenchange", onFullscreenChange);
 $("lights").addEventListener("click", toggleLights);
+$("links").addEventListener("click", toggleLinks);
+function toggleLinks() {
+  renderer.options.links = !renderer.options.links;
+  $("links").setAttribute("aria-pressed", String(renderer.options.links));
+  renderer.requestDraw();
+}
 function toggleLights() {
   renderer.options.showLights = !renderer.options.showLights;
   $("lights").setAttribute("aria-pressed", String(renderer.options.showLights));
   renderer.requestDraw();
 }
 
-$("export").addEventListener("click", (e) => { e.stopPropagation(); $("export_menu").hidden = !$("export_menu").hidden; });
-document.addEventListener("click", () => { $("export_menu").hidden = true; });
+$("export").addEventListener("click", (e) => { e.stopPropagation(); openExamples(false); $("export_menu").hidden = !$("export_menu").hidden; });
+document.addEventListener("click", () => { $("export_menu").hidden = true; openExamples(false); });
 for (const b of document.querySelectorAll("[data-export]")) {
   b.addEventListener("click", () => (b.dataset.export === "png" ? exportPng() : exportCsv()));
 }
@@ -418,6 +543,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (!$("shortcuts").hidden) openShortcuts(false);
     else if (!$("export_menu").hidden) $("export_menu").hidden = true;
+    else if (!$("examples_menu").hidden) { openExamples(false); $("examples").focus(); }
     else inspector.select(-1);
     return;
   }
@@ -432,6 +558,7 @@ window.addEventListener("keydown", (e) => {
     f: () => renderer.resetView(), F: toggleFullscreen,
     "+": () => renderer.zoomAt(1.25), "=": () => renderer.zoomAt(1.25), "-": () => renderer.zoomAt(0.8),
     l: toggleLights, L: toggleLights,
+    v: toggleLinks, V: toggleLinks,
     s: toggleSettings, S: toggleSettings,
     h: toggleClean, H: toggleClean,
     e: exportPng, E: exportCsv,
