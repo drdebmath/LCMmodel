@@ -12,12 +12,20 @@ pub const FLAG_HAS_TARGET: u8 = 1 << 4;
 #[derive(Clone, Debug, Default)]
 pub struct Frame {
     pub time: f64,
+    /// World point that `xy`, `target` and the circle centres are measured from:
+    /// the centroid of the robots that have not crashed. f32 keeps about seven
+    /// digits, so a swarm tiny compared with its distance from (0, 0) would
+    /// otherwise round to a single point; offsets from its own centre do not.
+    pub origin: [f64; 2],
+    /// Offsets from `origin`.
     pub xy: Vec<f32>,
     pub flags: Vec<u8>,
     pub light: Vec<u8>,
     pub fault: Vec<u8>,
     pub task: Vec<u8>,
+    /// Offsets from `origin`, NaN where a robot has no target.
     pub target: Vec<f32>,
+    /// Centre offset from `origin` and radius, NaN where a robot has no circle.
     pub circle: Vec<f32>,
     /// Robots at the same point (within ε), 1 when alone. Filled only when the
     /// simulation has multiplicity detection on.
@@ -38,10 +46,12 @@ impl Simulation {
         frame.task.resize(n, 0);
         frame.target.resize(2 * n, f32::NAN);
         frame.circle.resize(3 * n, f32::NAN);
+        let [ox, oy] = self.frame_origin(t);
+        frame.origin = [ox, oy];
         for i in 0..n {
             let p = self.position_at(i, t);
-            frame.xy[2 * i] = p.x as f32;
-            frame.xy[2 * i + 1] = p.y as f32;
+            frame.xy[2 * i] = (p.x - ox) as f32;
+            frame.xy[2 * i + 1] = (p.y - oy) as f32;
             let mut flags = r.state[i] as u8;
             if r.frozen[i] {
                 flags |= FLAG_FROZEN;
@@ -51,8 +61,8 @@ impl Simulation {
             }
             if let Some(target) = r.target[i] {
                 flags |= FLAG_HAS_TARGET;
-                frame.target[2 * i] = target.x as f32;
-                frame.target[2 * i + 1] = target.y as f32;
+                frame.target[2 * i] = (target.x - ox) as f32;
+                frame.target[2 * i + 1] = (target.y - oy) as f32;
             } else {
                 frame.target[2 * i] = f32::NAN;
                 frame.target[2 * i + 1] = f32::NAN;
@@ -66,8 +76,8 @@ impl Simulation {
                 Some(TaskColor::Blue) => 2,
             };
             let c = r.overlay[i];
-            frame.circle[3 * i] = c.map_or(f32::NAN, |c| c.center.x as f32);
-            frame.circle[3 * i + 1] = c.map_or(f32::NAN, |c| c.center.y as f32);
+            frame.circle[3 * i] = c.map_or(f32::NAN, |c| (c.center.x - ox) as f32);
+            frame.circle[3 * i + 1] = c.map_or(f32::NAN, |c| (c.center.y - oy) as f32);
             frame.circle[3 * i + 2] = c.map_or(f32::NAN, |c| c.radius as f32);
         }
         if self.multiplicity_detection() {
@@ -75,6 +85,29 @@ impl Simulation {
         } else {
             frame.multiplicity.clear();
         }
+    }
+
+    /// Centroid of the robots that have not crashed (of all, if every one has).
+    fn frame_origin(&self, t: f64) -> [f64; 2] {
+        let r = self.robots();
+        let (mut sum, mut count) = ([0.0, 0.0], 0usize);
+        for pass_all in [false, true] {
+            for i in 0..r.len() {
+                if pass_all || r.state[i] != RobotState::Crash {
+                    let p = self.position_at(i, t);
+                    sum[0] += p.x;
+                    sum[1] += p.y;
+                    count += 1;
+                }
+            }
+            if count > 0 {
+                break;
+            }
+        }
+        if count == 0 {
+            return [0.0, 0.0];
+        }
+        [sum[0] / count as f64, sum[1] / count as f64]
     }
 
     /// `Scheduler._detect_multiplicity`: sort by (x, y); each unvisited robot

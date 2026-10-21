@@ -1,6 +1,6 @@
 /**
  * `advance` result codes, shared with `web/worker.js`.
- * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6}
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}
  */
 export const Stop = Object.freeze({
     Budget: 0, "0": "Budget",
@@ -10,6 +10,10 @@ export const Stop = Object.freeze({
     MaxTime: 4, "4": "MaxTime",
     Stalled: 5, "5": "Stalled",
     MaxTurns: 6, "6": "MaxTurns",
+    /**
+     * Only `advance_to_move` returns it: a robot has just started a move.
+     */
+    Moved: 7, "7": "Moved",
 });
 
 export class WasmSimulation {
@@ -32,6 +36,28 @@ export class WasmSimulation {
      */
     advance(max_events, until_time) {
         const ret = wasm.wasmsimulation_advance(this.__wbg_ptr, max_events, until_time);
+        return ret;
+    }
+    /**
+     * Handles events one by one, as `advance` does, but stops as soon as a robot starts a move
+     * (`Stop::Moved`; `moved_robot` says which), even if that is at `until_time` itself. The page
+     * uses it to skip turns in which nobody moves, and to catch the start of every walk,
+     * including one that begins at the instant the last one ends.
+     * @param {number} max_events
+     * @param {number} until_time
+     * @returns {Stop}
+     */
+    advance_to_move(max_events, until_time) {
+        const ret = wasm.wasmsimulation_advance_to_move(this.__wbg_ptr, max_events, until_time);
+        return ret;
+    }
+    /**
+     * When robot `i` arrives, if it is on a move right now; NaN if it is not.
+     * @param {number} i
+     * @returns {number}
+     */
+    arrival_time(i) {
+        const ret = wasm.wasmsimulation_arrival_time(this.__wbg_ptr, i);
         return ret;
     }
     /**
@@ -133,6 +159,22 @@ export class WasmSimulation {
         return ret;
     }
     /**
+     * World coordinates the frame's positions, targets and circle centres are
+     * measured from (a robot's world position is origin + offset, added in f64).
+     * @returns {number}
+     */
+    frame_origin_x() {
+        const ret = wasm.wasmsimulation_frame_origin_x(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    frame_origin_y() {
+        const ret = wasm.wasmsimulation_frame_origin_y(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @returns {number}
      */
     frame_time() {
@@ -145,6 +187,14 @@ export class WasmSimulation {
      */
     light() {
         const ret = wasm.wasmsimulation_light(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * The robot `advance_to_move` last saw start a move, or -1.
+     * @returns {number}
+     */
+    moved_robot() {
+        const ret = wasm.wasmsimulation_moved_robot(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -205,6 +255,15 @@ export class WasmSimulation {
     sequential() {
         const ret = wasm.wasmsimulation_sequential(this.__wbg_ptr);
         return ret !== 0;
+    }
+    /**
+     * Draw the robots as they are at time `t`, a time between the last event handled and the
+     * next one (a walk has no events inside it, so this is what makes it glide). NaN, or any
+     * time before the run's clock, goes back to drawing the run's own time.
+     * @param {number} t
+     */
+    set_view_time(t) {
+        wasm.wasmsimulation_set_view_time(this.__wbg_ptr, t);
     }
     /**
      * Handles exactly one event and reports it as
@@ -274,7 +333,7 @@ export class WasmSimulation {
         return ret;
     }
     /**
-     * `[x0, y0, x1, y1, …]`
+     * `[x0, y0, x1, y1, …]`, offsets from the frame origin.
      * @returns {Float32Array}
      */
     xy() {

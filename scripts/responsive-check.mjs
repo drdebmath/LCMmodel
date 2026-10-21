@@ -18,9 +18,11 @@ const SIZES = [
   ["phone-sideways", 812, 375, 2, true],
   ["tablet", 768, 1024, 2, true],
   ["laptop", 1280, 720, 1, false],
+  ["laptop-short", 1100, 560, 1, false],
+  ["laptop-tall", 1366, 820, 1, false],
   ["desktop", 1920, 1080, 1, false],
 ];
-const PANELS = ["toolbar", "settings", "hud", "legend", "tools", "inspector"];
+const PANELS = ["toolbar", "settings", "hud", "legend", "tools", "inspector", "turn_caption", "overview"];
 
 async function size(w, h, dpr, touch) {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: dpr, mobile: touch });
@@ -47,12 +49,36 @@ for (const [name, w, h, dpr, touch] of SIZES) {
   const l = await layout();
   check(`simulator, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !l.sideways && !l.overlaps.length && !l.offscreen.length, JSON.stringify(l));
   await shot(`sim-${name}`);
+  const stray = await js(`(() => { const t = document.getElementById('tools').getBoundingClientRect(); const bs = [...document.querySelectorAll('#tools .btn')].filter((b) => getComputedStyle(b).display !== 'none'); return bs.filter((b) => { const r = b.getBoundingClientRect(); return r.left < t.left - 0.5 || r.right > t.right + 0.5 || r.top < t.top - 0.5 || r.bottom > t.bottom + 0.5 || r.right > innerWidth || r.bottom > innerHeight; }).map((b) => b.id || b.title); })()`);
+  check(`simulator, ${name}: every view-tool button fits inside its panel and on screen`, stray.length === 0, stray.join(", "));
+  // Zoom + and − are in the status panel's Zoom row, or, where that row is hidden (phones), in the tools: exactly one place.
+  const zoomAt = await js(`(() => { const v = (id) => { const e = document.getElementById(id); return getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0; }; return { tools: v('zoom_in') && v('zoom_out'), hud: v('hud_zoom_in') && v('hud_zoom_out') }; })()`);
+  check(`simulator, ${name}: zoom + and − are always reachable, in one place (${zoomAt.hud ? "status panel" : "tools"})`, zoomAt.tools !== zoomAt.hud, JSON.stringify(zoomAt));
   // Go-To-Center adds an examples menu to the toolbar, which can wrap it onto another row.
   await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'GoToCenter'; s.dispatchEvent(new Event('change')); })()`);
   await sleep(500);
   const g = await layout();
   check(`simulator with Go-To-Center and its examples menu, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !g.sideways && !g.overlaps.length && !g.offscreen.length, JSON.stringify(g));
   await shot(`sim-${name}-gtc`);
+  // The sequential scheduler adds the longer "seconds per turn" entries to the playback menu, which sizes it.
+  await js("lcm.settings.apply({ scheduler: 'sequential' })");
+  await sleep(400);
+  const q = await layout();
+  const pb = await js("(() => { const r = document.getElementById('playback').getBoundingClientRect(); return { w: Math.round(r.width) }; })()");
+  check(`simulator with the sequential scheduler's per-turn speeds, ${name}: no sideways scrolling, no overlapping or cut-off panels`, !q.sideways && !q.overlaps.length && !q.offscreen.length, JSON.stringify({ ...q, playback: pb }));
+  await shot(`sim-${name}-sequential`);
+  // Played a turn at a time, a caption appears: it must fit among the other panels at this size too.
+  await js("(() => { const s = document.getElementById('playback'); s.value = 'turn:3'; s.dispatchEvent(new Event('change')); })()");
+  await js("document.getElementById('play').click()");
+  await sleep(900);
+  const c = await layout();
+  const cap = await js("(() => { const e = document.getElementById('turn_caption'); return { shown: !e.hidden, text: e.innerText.slice(0, 40) }; })()");
+  check(`played a turn at a time, ${name}: the caption is shown and fits (no overlaps, nothing cut off)`, cap.shown && !c.sideways && !c.overlaps.length && !c.offscreen.length, JSON.stringify({ ...c, cap }));
+  await shot(`sim-${name}-turn-caption`);
+  await js("document.getElementById('play').click()");
+  await js("(() => { const s = document.getElementById('playback'); s.value = '20'; s.dispatchEvent(new Event('change')); })()");
+  await js("lcm.settings.apply({ scheduler: 'async' })");
+  await sleep(300);
   // The opened menu must stay on screen and not run past either edge.
   await js("document.getElementById('examples').click()");
   await sleep(200);
@@ -78,7 +104,7 @@ await shot("sim-phone-settings");
 await js("document.getElementById('close_settings').click()");
 check("phone: the sheet's close button closes it", await js("document.getElementById('settings').hidden"));
 const view = await js(`(() => { const r = lcm.renderer, f = r.frame; let out = 0;
-  for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.xy[2*i], f.xy[2*i+1]); if (x < 0 || y < 0 || x > r.width || y > r.height) out++; } return out; })()`);
+  for (let i = 0; i < f.flags.length; i++) { const [x, y] = r.toScreen(f.x(i), f.y(i)); if (x < 0 || y < 0 || x > r.width || y > r.height) out++; } return out; })()`);
 check("phone: the whole swarm fits the screen", view === 0, `${view} robots off screen`);
 
 // Flowchart page.

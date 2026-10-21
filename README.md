@@ -24,6 +24,14 @@ New in the Rust core: **SqGathering** (Algorithm 8 of the sequential-schedulers 
 
 **SqGathering** (Algorithm 8, Section 6 of [arXiv:2412.10733](https://arxiv.org/abs/2412.10733)): gathering with weak multiplicity detection, under the sequential scheduler only (picking it on the page switches the scheduler to Sequential). Flowchart: chart 6 of the flowchart page. Step-by-step view with hand traces: `web/sqgathering.html`. Turn-by-turn trace on the command line: `lcm seq <config.json> --trace -`. Details: [`docs/sqgathering.md`](docs/sqgathering.md).
 
+**Watching small moves:** robots that gather end up very close together, so the page has tools to follow them (press `?` on the page for all the keys).
+
+- **Follow** (`Z`, or the target button): the view zooms in as the swarm shrinks, down to the limit of the numbers (positions are drawn as offsets from a moving origin, so they stay sharp zoomed in a billion times). If a run stalls because the robots are closer than the numbers can tell apart, the page says so.
+- **A turn at a time:** under the Sequential scheduler, the speed menu has *0.25 s/turn*, *1 s/turn* and *3 s/turn*. Each turn is shown in two beats: the robot looks (a ring, lines to the robots it sees, a ✕ on its destination), then it walks there, with a caption saying what the rule is. The panel counts turns and epochs.
+- **Grid** (`G`): labelled lines that keep a sensible spacing (1, 2, 5, 10, …) at any zoom; the panel shows the spacing and how far in the view is.
+- **Overview map** (`O`, on wide screens): the starting area with a rectangle for what the view shows; click it to move there.
+- **Measure** (`M`): click two points or two robots to read the distance (a ruler stuck to robots follows them as they move; `Esc` clears).
+
 **What's where:** [`report.md`](report.md) is the full report (method, results, every test). [`docs/core-schema.md`](docs/core-schema.md) is the core's contract. The code is in `crates/` (Rust) and `web/` (browser page; `index.html` at the root opens it, the original page is in `old/`).
 
 **From the command line:** `cargo build --release -p lcm-cli`, then `./target/release/lcm run config.json` runs a configuration (the same settings as the page, see [`docs/core-schema.md`](docs/core-schema.md)) and prints a one-line JSON summary. Add `--trace trace.jsonl` (or `trace.csv`) to also write what every robot event did: the robot, the event, its position and target, the circle its algorithm computed, and at each Look which robots it could see. `--ticks` adds the clock ticks. For example, Go-To-Center on a chain of three robots with limited sight, one at a time:

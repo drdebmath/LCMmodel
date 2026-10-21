@@ -6,9 +6,10 @@
  * previews the new swarm; after the run has started it marks the settings
  * "Reset to apply" instead of throwing the run away. */
 import { renderIcons, icon } from "./icons.js";
-import { COLORS, LOD, Renderer } from "./renderer.js";
+import { COLORS, LOD, Renderer, fmtDistance, ulpOf } from "./renderer.js";
 import { SimClient } from "./client.js";
 import { Inspector } from "./inspector.js";
+import { Overview } from "./overview.js";
 import { buildSettings, readConfig } from "./settings.js";
 import { parseCoordinates, startOutline } from "./start.js";
 
@@ -16,6 +17,8 @@ const $ = (id) => document.getElementById(id);
 renderIcons();
 
 const renderer = new Renderer($("canvas"));
+// The overview map; clicking it moves the view (which stops following the swarm).
+const overview = new Overview($("overview"), $("overview_canvas"), renderer, { onCenter: (x, y) => renderer.centerOn(x, y) });
 const client = new SimClient(new URL("./worker.js", import.meta.url));
 let algorithms = [];
 let state = "loading";
@@ -56,6 +59,10 @@ function newRun({ quiet = false } = {}) {
   fitPending = true;
   inspector.leave(); // the robot under the pointer belonged to the old run
   renderer.options.visibility = c.visibility_radius;
+  // "Who sees whom" means something only when robots see just a part of the swarm.
+  const limitedSight = c.visibility_radius != null;
+  $("links").hidden = !limitedSight;
+  if (!limitedSight && renderer.options.links) setLinks(false);
   renderer.options.allowedRegion = c.algorithm === "GoToCenter";
   renderer.options.multiplicities = Boolean(algorithms.find((a) => a.key === c.algorithm)?.multiplicities);
   inspector.select(-1);
@@ -63,7 +70,8 @@ function newRun({ quiet = false } = {}) {
   dirty = false;
   $("dirty").hidden = true;
   client.stop();
-  client.speed(Number($("playback").value));
+  updatePlaybackOptions();
+  client.speed(playbackSpeed());
   client.start(c);
   setState("ready");
   return true;
@@ -74,7 +82,7 @@ function fitToStart(f) {
   const xy = f.xy, n = f.flags.length, v = settings.values;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (let i = 0; i < n; i++) {
-    const x = xy[2 * i], y = xy[2 * i + 1];
+    const x = f.originX + xy[2 * i], y = f.originY + xy[2 * i + 1];
     if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
   }
   if (!v.open_world) {
@@ -91,11 +99,38 @@ function fitToStart(f) {
   const same = Math.abs(old.w - region.w) < old.w * 0.02 && Math.abs(old.h - region.h) < old.h * 0.02
     && Math.abs(old.cx - region.cx) < old.w * 0.02 && Math.abs(old.cy - region.cy) < old.h * 0.02;
   renderer.setView(region.w, region.h, region.cx, region.cy);
-  if (!same) renderer.resetView(); // a new start shape: show all of it; same shape: keep the user's view
+  overview.setStart(f);
+  if (!same && !renderer.follow) renderer.resetView(); // a new start shape: show all of it; same shape: keep the user's view
+}
+
+/* The playback menu: speeds (simulated time per second), and under the sequential scheduler also
+ * "seconds per turn", which gives every walk the same time on screen however short it is. */
+const TURN_OPTIONS = [["turn:0.25", "0.25 s/turn"], ["turn:1", "1 s/turn"], ["turn:3", "3 s/turn"]];
+function playbackSpeed() {
+  const v = $("playback").value;
+  return v.startsWith("turn:") ? { turn: Number(v.slice(5)) } : Number(v);
+}
+function updatePlaybackOptions() {
+  const select = $("playback");
+  const has = select.querySelector('option[value^="turn:"]') !== null;
+  if (settings.values.scheduler === "sequential") {
+    if (has) return;
+    const group = document.createElement("optgroup");
+    group.label = "Per turn";
+    group.innerHTML = TURN_OPTIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    select.append(group);
+    select.classList.add("has-turns");
+  } else if (has) {
+    select.classList.remove("has-turns");
+    const wasTurn = select.value.startsWith("turn:");
+    select.querySelector("optgroup")?.remove();
+    if (wasTurn) { select.value = "20"; client.speed(20); }
+  }
 }
 
 function onSettingChange() {
   if (state === "loading") return;
+  updatePlaybackOptions();
   if (state === "ready") {
     clearTimeout(restartTimer);
     restartTimer = setTimeout(() => newRun({ quiet: true }), 120); // debounce slider drags and typing
@@ -236,6 +271,7 @@ client.on("ready", (list) => {
 // and sends the points with each frame (time, size, time, size, ...).
 const trace = { points: new Float64Array(0) };
 window.lcm.trace = trace;
+window.lcm.overview = overview;
 function drawTrace() {
   const canvas = $("hud_plot"), ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -256,9 +292,59 @@ function drawTrace() {
 }
 const fmtSize = (v) => (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v >= 1e-3 ? v.toFixed(3) : v.toExponential(1));
 
+/* Playing a turn at a time: say, in plain words, whose turn it is and what the algorithm does. */
+const RULES = {
+  Gathering: "It goes to the average position of all the robots it sees (the centre of gravity).",
+  SEC: "It goes to the nearest point of the smallest circle around the robots it sees.",
+  GoToCenter: "It heads for the centre of the smallest circle around the robots it sees, but never so far that it could lose sight of a neighbour.",
+};
+const fmtNumber = (v) => (v === 0 ? "0" : v >= 1e-3 ? String(+v.toPrecision(3)) : v.toExponential(2));
+let endNote = null;   // "ended", "stalled" or null: which note is up
+let stepOfNumbers = 0; // the gap between neighbouring numbers where the swarm is, set from the frame
+function showEndNote(kind) {
+  endNote = kind;
+  const el = $("turn_caption");
+  el.hidden = !kind;
+  if (!kind) return;
+  const points = trace.points, size = points.length ? points[points.length - 1] : 0;
+  const zoomed = renderer.zoom > 20 ? ` This view is zoomed in ${fmtZoomWords(renderer.zoom)} times; the grid and the scale bar show the real size.` : "";
+  let html;
+  if (kind === "ended") {
+    html = `<div class="cap-head">Finished: every robot has terminated</div><div class="cap-body">Grey robots have terminated. The swarm is ${fmtSize(size)} units across (from its centre to its farthest robot).${zoomed}</div>`;
+  } else {
+    // Stalled: a whole round in which no robot could move or finish. Often the numbers have run out: a robot's
+    // destination rounds to the spot where it already stands.
+    const p = settings.values.threshold_precision, eps = 10 ** -p;
+    const numbers = stepOfNumbers > 0 && eps < 2 * stepOfNumbers
+      ? ` Here, the computer's numbers cannot tell two positions apart if they are closer than ${fmtDistance(stepOfNumbers)}, but the precision setting (${p}) asks for ε = ${fmtDistance(eps)}, which is finer. So a robot's destination rounds to where it already stands, and it does not move. Try a precision of ${Math.max(2, Math.floor(-Math.log10(stepOfNumbers * 20)))} or less.`
+      : "";
+    html = `<div class="cap-head">Stalled: nothing can move any more</div><div class="cap-body">A whole round passed in which no robot could move or finish. The swarm is ${fmtSize(size)} units across.${numbers}${zoomed}</div>`;
+  }
+  if (el.innerHTML !== html) el.innerHTML = html;
+}
+function updateCaption(f) {
+  const el = $("turn_caption"), w = f.walk;
+  if (!w) {
+    // A run that is over, in a view that is zoomed in on the swarm or played a turn at a time: say so, because
+    // grey robots a long way apart on screen can look like a failure when they are a hair apart in fact.
+    stepOfNumbers = ulpOf(Math.max(Math.abs(f.originX ?? 0), Math.abs(f.originY ?? 0)));
+    showEndNote(f.stop === "stalled" ? "stalled" : f.ended && (renderer.follow || typeof playbackSpeed() === "object") ? "ended" : null);
+    return;
+  }
+  el.hidden = false;
+  endNote = null;
+  const who = `<strong>Turn ${(f.turns ?? 0).toLocaleString()}</strong> · Robot ${w.robot}`;
+  const rule = RULES[$("algorithm").value] ?? "";
+  el.innerHTML = w.phase === "decide"
+    ? `<div class="cap-head">${who} looks and decides</div><div class="cap-body">${rule || "It looks at the others and picks its destination, the ✕."}</div>`
+    : `<div class="cap-head">${who} moves</div><div class="cap-body">It walks ${fmtNumber(w.length)} units to the ✕.${w.cut ? " The adversary stops it short of its destination (non-rigid movement)." : ""}</div>`;
+}
+
 client.on("frame", (f) => {
   frame = f;
+  renderer.options.walk = f.walk ?? null;
   if (f.trace) trace.points = f.trace;
+  updateCaption(f);
   if (fitPending) { fitPending = false; fitToStart(f); }
   renderer.setFrame(f);
   if (firstFrame) { firstFrame = false; $("loading").hidden = true; resolveReady(); }
@@ -290,9 +376,66 @@ let hudAt = 0, rateFrom = null, rate = 0, draws = 0, fps = 0, fpsAt = performanc
 let legendAt = 0;
 renderer.onDraw = () => {
   draws++;
+  updateScale();
+  updateZoomRows();
+  overview.draw();
+  if (endNote) showEndNote(endNote);  // the view is still settling after the run ends: keep its zoom up to date
   const now = performance.now();
   if (state !== "running" || now - legendAt > 250) { legendAt = now; updateLegend(); }
 };
+
+/** The scale bar: the nearest 1, 2 or 5 × 10^k simulation units that makes a bar of about 90 px. */
+const SUPERSCRIPT = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+const fmtLength = (v) => {
+  if (v >= 1e-3) return String(+v.toPrecision(1));
+  const [m, e] = v.toExponential(0).split("e");
+  return `${m}×10${[...String(Number(e))].map((c) => SUPERSCRIPT[c]).join("")}`;
+};
+let scaleShown = "";
+function updateScale() {
+  const s = renderer.scale;
+  if (!(s > 0) || !isFinite(s)) return;
+  const want = 90 / s, pow = 10 ** Math.floor(Math.log10(want)), m = want / pow;
+  const len = (m >= 5 ? 5 : m >= 2 ? 2 : 1) * pow;
+  const px = Math.round(len * s), label = fmtLength(len);
+  const key = `${px}|${label}`;
+  if (key === scaleShown) return;
+  scaleShown = key;
+  $("hud_scale_bar").style.width = `${px}px`;
+  $("hud_scale").textContent = label;
+  $("hud_scale").dataset.value = String(len);
+}
+
+/** "1.3×", "230×", "4.5k×", "30.1M×": how far the view is zoomed in, kept short for the panel. */
+function fmtZoom(z) {
+  if (z >= 1e15) {  // beyond a trillion: 4.1×10¹⁶×
+    const [m, e] = z.toExponential(1).split("e");
+    return `${m}×10${[...String(Number(e))].map((c) => SUPERSCRIPT[c]).join("")}×`;
+  }
+  if (z < 10) return `${z.toFixed(2)}×`;
+  if (z < 1e3) return `${z.toFixed(z < 100 ? 1 : 0)}×`;
+  const units = [[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "k"]];  // thousand, million, billion, trillion
+  for (const [size, suffix] of units) if (z >= size) return `${(z / size).toFixed(1)}${suffix}×`;
+  return `${z}×`;
+}
+/** The same in words for a sentence: "173.2 billion", "4.1×10¹⁶". */
+function fmtZoomWords(z) {
+  if (z >= 1e15) return fmtZoom(z).replace(/×$/, "");
+  const units = [[1e12, "trillion"], [1e9, "billion"], [1e6, "million"]];
+  for (const [size, word] of units) if (z >= size) return `${(z / size).toFixed(1)} ${word}`;
+  return Math.round(z).toLocaleString();
+}
+/** The zoom gauge (logarithmic, 1× to 10¹⁸ ×) and the distance between the labelled grid lines. */
+let zoomShown = "";
+function updateZoomRows() {
+  const z = renderer.zoom, text = fmtZoom(z), grid = renderer.gridState;
+  const key = `${text}|${grid?.spacing ?? ""}`;
+  if (key === zoomShown) return;
+  zoomShown = key;
+  $("hud_zoom").textContent = text;
+  $("hud_zoom_fill").style.width = `${Math.max(0, Math.min(1, Math.log10(Math.max(z, 1)) / 18)) * 100}%`;
+  $("hud_grid").textContent = !renderer.options.grid ? "off" : !grid ? "—" : grid.valid ? fmtLength(grid.spacing) : "numbers run out";
+}
 
 function updateHud(force = false) {
   const now = performance.now();
@@ -318,7 +461,10 @@ function updateHud(force = false) {
   $("hud_bar").style.width = `${(100 * frame.terminated) / Math.max(1, frame.robots)}%`;
   drawTrace();
   $("hud_epochs_row").hidden = frame.epochs == null;
-  if (frame.epochs != null) $("hud_epochs").textContent = frame.epochs.toLocaleString();
+  if (frame.epochs != null) {
+    $("hud_epochs").textContent = frame.epochs.toLocaleString();
+    $("hud_turns").textContent = (frame.turns ?? 0).toLocaleString();
+  }
   $("hud_events").textContent = (frame.events - frame.ticks).toLocaleString();
   $("hud_ticks").textContent = frame.ticks.toLocaleString();
   $("hud_rate").textContent = state === "running" ? Math.round(rate).toLocaleString() : "—";
@@ -368,7 +514,15 @@ $("algorithm").addEventListener("change", () => {
   if (state === "ready") onSettingChange();
   else newRun();
 });
-$("playback").addEventListener("change", (e) => client.speed(Number(e.target.value)));
+$("playback").addEventListener("change", () => {
+  const speed = playbackSpeed();
+  client.speed(speed);
+  if (typeof speed !== "object") {  // not played a turn at a time any more: drop the turn caption and marks at once
+    $("turn_caption").hidden = true;
+    renderer.options.walk = null;
+    renderer.requestDraw();
+  }
+});
 $("defaults").addEventListener("click", () => settings.reset());
 $("toggle_settings").addEventListener("click", toggleSettings);
 $("close_settings").addEventListener("click", toggleSettings);
@@ -391,6 +545,8 @@ function updateInsets() {
   const hud = visible("hud");
   root.setProperty("--hud-bottom", `${Math.round(hud ? hud.bottom : 0)}px`);
   const settingsRect = visible("settings"), tools = visible("tools"), legend = visible("legend");
+  // The overview map sits just left of the view tools, in the bottom right corner.
+  if (tools && tools.height > tools.width) $("overview").style.right = `${Math.round(innerWidth - tools.left + 8)}px`;
   if (innerWidth <= 760) {
     // Phones: the settings sheet floats over the view instead of narrowing it.
     const bottomEdge = Math.min(tools ? tools.top : innerHeight, legend ? legend.top : innerHeight);
@@ -408,7 +564,23 @@ function updateInsets() {
 /* ------------------------------------------------------------ view tools */
 $("zoom_in").addEventListener("click", () => renderer.zoomAt(1.25));
 $("zoom_out").addEventListener("click", () => renderer.zoomAt(0.8));
+$("hud_zoom_in").addEventListener("click", () => renderer.zoomAt(1.25));
+$("hud_zoom_out").addEventListener("click", () => renderer.zoomAt(0.8));
 $("fit").addEventListener("click", () => renderer.resetView());
+$("grid").addEventListener("click", toggleGrid);
+function toggleOverview() {
+  $("overview").hidden = !$("overview").hidden;
+  updateInsets();
+  renderer.requestDraw();
+}
+function toggleGrid() {
+  renderer.options.grid = !renderer.options.grid;
+  $("grid").setAttribute("aria-pressed", String(renderer.options.grid));
+  renderer.requestDraw();
+}
+$("follow").addEventListener("click", toggleFollow);
+function toggleFollow() { renderer.setFollow(!renderer.follow); }
+renderer.onFollowChange = (on) => $("follow").setAttribute("aria-pressed", String(on));
 $("fullscreen").addEventListener("click", toggleFullscreen);
 function toggleFullscreen() {
   const doc = document, el = doc.documentElement;
@@ -428,16 +600,11 @@ function onFullscreenChange() {
 }
 document.addEventListener("fullscreenchange", onFullscreenChange);
 document.addEventListener("webkitfullscreenchange", onFullscreenChange);
-$("lights").addEventListener("click", toggleLights);
 $("links").addEventListener("click", toggleLinks);
 function toggleLinks() {
+  if ($("links").hidden) return;  // unlimited sight: everyone sees everyone, so there is nothing to show
   renderer.options.links = !renderer.options.links;
   $("links").setAttribute("aria-pressed", String(renderer.options.links));
-  renderer.requestDraw();
-}
-function toggleLights() {
-  renderer.options.showLights = !renderer.options.showLights;
-  $("lights").setAttribute("aria-pressed", String(renderer.options.showLights));
   renderer.requestDraw();
 }
 
@@ -502,6 +669,10 @@ canvas.addEventListener("pointerdown", (e) => {
 });
 canvas.addEventListener("pointermove", (e) => {
   const rect = canvas.getBoundingClientRect();
+  if (measure.on && !drag) {  // the ruler follows the pointer until its second point is placed
+    measureHover(e.clientX - rect.left, e.clientY - rect.top);
+    return;
+  }
   if (drag) {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (drag.moved || Math.hypot(dx, dy) > 3) {
@@ -518,13 +689,48 @@ canvas.addEventListener("pointermove", (e) => {
 canvas.addEventListener("pointerup", (e) => {
   const rect = canvas.getBoundingClientRect();
   if (drag && !drag.moved) {
-    const i = renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
-    inspector.select(i);
+    if (measure.on) measureClick(e.clientX - rect.left, e.clientY - rect.top);
+    else inspector.select(renderer.pick(e.clientX - rect.left, e.clientY - rect.top));
   }
   drag = null;
   canvas.classList.remove("panning");
 });
-canvas.addEventListener("pointerleave", () => inspector.leave());
+canvas.addEventListener("pointerleave", () => { inspector.leave(); if (measure.on && measure.hover) { measure.hover = null; renderer.requestDraw(); } });
+
+/* ------------------------------------------------------------ measuring */
+// Click a point (or a robot), then a second one: the distance is written on a ruler between them. A robot is
+// picked when the click is near it and the end stays attached to it (the number follows it as it moves); empty
+// space is a fixed point in the world. A third click starts over. Esc clears it, and again leaves the tool.
+const measure = { on: false, a: null, b: null, hover: null };
+function measurePointAt(sx, sy) {
+  const i = renderer.pick(sx, sy, 14);
+  if (i >= 0) return { robot: i };
+  const [x, y] = renderer.toWorld(sx, sy);
+  return { x, y };
+}
+function measureHover(sx, sy) {
+  measure.hover = measurePointAt(sx, sy);
+  renderer.requestDraw();
+}
+function measureClick(sx, sy) {
+  const p = measurePointAt(sx, sy);
+  if (!measure.a || measure.b) { measure.a = p; measure.b = null; } else measure.b = p;
+  measure.hover = p;
+  renderer.requestDraw();
+}
+function setMeasure(on) {
+  measure.on = on;
+  measure.a = measure.b = measure.hover = null;
+  $("measure").setAttribute("aria-pressed", String(on));
+  canvas.classList.toggle("measuring", on);
+  renderer.options.measure = on ? measure : null;
+  inspector.leave();
+  if (on) toast("Measure: click a point or a robot, then a second one. Esc clears.");
+  renderer.requestDraw();
+}
+function toggleMeasure() { setMeasure(!measure.on); }
+$("measure").addEventListener("click", toggleMeasure);
+window.lcm.measure = measure;
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
@@ -544,6 +750,7 @@ window.addEventListener("keydown", (e) => {
     if (!$("shortcuts").hidden) openShortcuts(false);
     else if (!$("export_menu").hidden) $("export_menu").hidden = true;
     else if (!$("examples_menu").hidden) { openExamples(false); $("examples").focus(); }
+    else if (measure.on) { if (measure.a) { measure.a = measure.b = measure.hover = null; renderer.requestDraw(); } else setMeasure(false); }
     else inspector.select(-1);
     return;
   }
@@ -556,8 +763,11 @@ window.addEventListener("keydown", (e) => {
     ArrowRight: () => step(e.shiftKey ? "time" : "event"),
     r: newRun, R: newRun,
     f: () => renderer.resetView(), F: toggleFullscreen,
+    z: toggleFollow, Z: toggleFollow,
+    g: toggleGrid, G: toggleGrid,
+    o: toggleOverview, O: toggleOverview,
+    m: toggleMeasure, M: toggleMeasure,
     "+": () => renderer.zoomAt(1.25), "=": () => renderer.zoomAt(1.25), "-": () => renderer.zoomAt(0.8),
-    l: toggleLights, L: toggleLights,
     v: toggleLinks, V: toggleLinks,
     s: toggleSettings, S: toggleSettings,
     h: toggleClean, H: toggleClean,

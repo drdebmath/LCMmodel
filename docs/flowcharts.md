@@ -126,7 +126,7 @@ flowchart TD
 | Every live robot terminated? | Crashed and Byzantine robots don't count: the run ends once all the others have terminated. |
 | Ended | advance() returns Ended and the page shows that every robot terminated. |
 
-`advance` — [`crates/lcm-core/src/sim.rs:383`](../crates/lcm-core/src/sim.rs#L383)
+`advance` — [`crates/lcm-core/src/sim.rs:407`](../crates/lcm-core/src/sim.rs#L407)
 
 ```rust
 /// Handles events until the budget, a limit or the end is reached.
@@ -152,7 +152,7 @@ pub fn advance(&mut self, budget: Budget) -> StopReason {
 }
 ```
 
-`step` — [`crates/lcm-core/src/sim.rs:405`](../crates/lcm-core/src/sim.rs#L405)
+`step` — [`crates/lcm-core/src/sim.rs:429`](../crates/lcm-core/src/sim.rs#L429)
 
 ```rust
 /// Handles the next event.
@@ -245,7 +245,7 @@ pub fn step(&mut self) -> StepInfo {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:690`](../crates/lcm-core/src/sim.rs#L690)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:714`](../crates/lcm-core/src/sim.rs#L714)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -273,7 +273,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`look` — [`crates/lcm-core/src/sim.rs:515`](../crates/lcm-core/src/sim.rs#L515)
+`look` — [`crates/lcm-core/src/sim.rs:539`](../crates/lcm-core/src/sim.rs#L539)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -363,7 +363,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:666`](../crates/lcm-core/src/sim.rs#L666)
+`wait` — [`crates/lcm-core/src/sim.rs:690`](../crates/lcm-core/src/sim.rs#L690)
 
 ```rust
 /// `Robot.wait`.
@@ -391,7 +391,7 @@ fn wait(&mut self, i: usize, t: f64) {
 }
 ```
 
-`globally_terminated` — [`crates/lcm-core/src/sim.rs:814`](../crates/lcm-core/src/sim.rs#L814)
+`globally_terminated` — [`crates/lcm-core/src/sim.rs:838`](../crates/lcm-core/src/sim.rs#L838)
 
 ```rust
 /// `Scheduler._check_global_termination`: every robot that is neither
@@ -500,7 +500,7 @@ flowchart TD
 | Schedule WAIT at arrival | A WAIT event goes in the queue for the moment the robot reaches its target; other robots see it moving until then. |
 | Arrive | At the arrival time the robot is placed exactly on its target, its light turns green, and its next LOOK is scheduled. |
 
-`look` — [`crates/lcm-core/src/sim.rs:515`](../crates/lcm-core/src/sim.rs#L515)
+`look` — [`crates/lcm-core/src/sim.rs:539`](../crates/lcm-core/src/sim.rs#L539)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
@@ -590,7 +590,7 @@ fn look(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`build_view` — [`crates/lcm-core/src/sim.rs:494`](../crates/lcm-core/src/sim.rs#L494)
+`build_view` — [`crates/lcm-core/src/sim.rs:518`](../crates/lcm-core/src/sim.rs#L518)
 
 ```rust
 /// The snapshot robot `i` takes at `t`, filtered by its visibility.
@@ -643,7 +643,7 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> Decision {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:690`](../crates/lcm-core/src/sim.rs#L690)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:714`](../crates/lcm-core/src/sim.rs#L714)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -671,7 +671,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`begin_move` — [`crates/lcm-core/src/sim.rs:601`](../crates/lcm-core/src/sim.rs#L601)
+`begin_move` — [`crates/lcm-core/src/sim.rs:625`](../crates/lcm-core/src/sim.rs#L625)
 
 ```rust
 /// `Robot.move` and the WAIT scheduling that follows it.
@@ -711,7 +711,7 @@ fn begin_move(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:666`](../crates/lcm-core/src/sim.rs#L666)
+`wait` — [`crates/lcm-core/src/sim.rs:690`](../crates/lcm-core/src/sim.rs#L690)
 
 ```rust
 /// `Robot.wait`.
@@ -869,7 +869,7 @@ flowchart TD
 | Draw the swarm | Tiny robots are drawn as rectangles, larger ones as pre-drawn sprites per colour; at most one draw per screen frame. 10,000 robots take about 4–6 ms without a GPU. |
 | Update stats and legend | Time, events per second, terminated count and the legend counts, refreshed at most every 200 ms so the page stays light. |
 
-`startPulling` — [`web/client.js:92`](../web/client.js#L92)
+`startPulling` — [`web/client.js:95`](../web/client.js#L95)
 
 ```js
 startPulling() {
@@ -884,7 +884,7 @@ startPulling() {
 }
 ```
 
-`requestFrame` — [`web/client.js:83`](../web/client.js#L83)
+`requestFrame` — [`web/client.js:86`](../web/client.js#L86)
 
 ```js
 requestFrame() {
@@ -897,11 +897,12 @@ requestFrame() {
 }
 ```
 
-`slice` — [`web/worker.js:101`](../web/worker.js#L101)
+`slice` — [`web/worker.js:179`](../web/worker.js#L179)
 
 ```js
 function slice(gen) {
   if (!sim || !playing || gen !== generation) return;
+  if (perTurn !== null) return pacedSlice(gen);
   const start = performance.now();
   const due = speed === Infinity ? Infinity : anchor.sim + ((start - anchor.wall) / 1000) * speed;
   let caughtUp = false;
@@ -926,12 +927,13 @@ function slice(gen) {
 }
 ```
 
-`advance` — [`crates/lcm-wasm/src/lib.rs:86`](../crates/lcm-wasm/src/lib.rs#L86)
+`advance` — [`crates/lcm-wasm/src/lib.rs:97`](../crates/lcm-wasm/src/lib.rs#L97)
 
 ```rust
 /// Handles up to `max_events` events, stopping early before the first
 /// event after `until_time`, at a configured limit, or at the end.
 pub fn advance(&mut self, max_events: u32, until_time: f64) -> Stop {
+    self.view_time = None;
     self.sim
         .advance(Budget {
             max_events: u64::from(max_events),
@@ -941,7 +943,7 @@ pub fn advance(&mut self, max_events: u32, until_time: f64) -> Stop {
 }
 ```
 
-`postFrame` — [`web/worker.js:134`](../web/worker.js#L134)
+`postFrame` — [`web/worker.js:213`](../web/worker.js#L213)
 
 ```js
 function postFrame(extra = {}) {
@@ -953,12 +955,20 @@ function postFrame(extra = {}) {
   self.postMessage({
     type: "frame",
     run,
-    time: sim.time(),
+    time: sim.frame_time(),  // the run's time, or the time part-way along a walk being paced
+    originX: sim.frame_origin_x(),
+    originY: sim.frame_origin_y(),
     events: sim.event_count(),
     ticks: sim.tick_count?.() ?? 0,
     robots: n,
     terminated: sim.terminated_count(),
     epochs: sim.sequential?.() ? sim.epochs_completed() : null,
+    turns: sim.sequential?.() ? sim.turn_count() : null,
+    // While a turn is played one at a time: who is walking, in which beat, how far, and the settle time.
+    walk: perTurn !== null && pace
+      ? { robot: pace.robot, phase: pace.progress < 0 ? "decide" : "move", length: pace.length, cut: pace.cut,
+          settle: pace.settle, algorithm: pace.algorithm }
+      : null,
     trace: Float64Array.from(trace),
     ended: sim.ended(),
     stop,
@@ -972,7 +982,7 @@ function postFrame(extra = {}) {
 }
 ```
 
-`fill_frame` — [`crates/lcm-wasm/src/lib.rs:261`](../crates/lcm-wasm/src/lib.rs#L261)
+`fill_frame` — [`crates/lcm-wasm/src/lib.rs:330`](../crates/lcm-wasm/src/lib.rs#L330)
 
 ```rust
 /// Captures the current state straight into caller-owned arrays, so the
@@ -1001,7 +1011,7 @@ pub fn fill_frame(
 }
 ```
 
-`draw` — [`web/renderer.js:222`](../web/renderer.js#L222)
+`draw` — [`web/renderer.js:452`](../web/renderer.js#L452)
 
 ```js
 draw(ctx = this.ctx, dpr = this.dpr) {
@@ -1011,11 +1021,15 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   ctx.fillStyle = this.theme.bg;
   ctx.fillRect(0, 0, this.width, this.height);
 
+  if (this.follow && frame) this.stepFollow();
   const s = this.scale;
   const ox = this.width / 2 + this.pan.x;
   const oy = this.height / 2 + this.pan.y;
-  const X = (x) => ox + x * s;
-  const Y = (y) => oy - y * s;
+  const WX = (x) => ox + (x - this.anchor.x) * s;
+  const WY = (y) => oy - (y - this.anchor.y) * s;
+
+  if (this.options.grid) this.drawGrid(ctx, s, ox, oy);
+  else this.gridState = null;
 
   // Start area (a drawing guide, not a wall: robots can move past it).
   const o = this.outline;
@@ -1025,14 +1039,14 @@ draw(ctx = this.ctx, dpr = this.dpr) {
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
     const rot = ((o.rotation ?? 0) * Math.PI) / 180;
-    const P = (x, y) => [X(x * Math.cos(rot) - y * Math.sin(rot)), Y(x * Math.sin(rot) + y * Math.cos(rot))];
+    const P = (x, y) => [WX(x * Math.cos(rot) - y * Math.sin(rot)), WY(x * Math.sin(rot) + y * Math.cos(rot))];
     if (o.kind === "rect") {
       const corners = [[-o.w / 2, -o.h / 2], [o.w / 2, -o.h / 2], [o.w / 2, o.h / 2], [-o.w / 2, o.h / 2]].map(([x, y]) => P(x, y));
       corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
       ctx.closePath();
     } else if (o.kind === "circle" || o.kind === "ring") {
-      ctx.moveTo(X(o.r), Y(0)); ctx.arc(X(0), Y(0), o.r * s, 0, 2 * Math.PI);
-      if (o.kind === "ring" && o.inner > 0) { ctx.moveTo(X(o.inner), Y(0)); ctx.arc(X(0), Y(0), o.inner * s, 0, 2 * Math.PI); }
+      ctx.moveTo(WX(o.r), WY(0)); ctx.arc(WX(0), WY(0), o.r * s, 0, 2 * Math.PI);
+      if (o.kind === "ring" && o.inner > 0) { ctx.moveTo(WX(o.inner), WY(0)); ctx.arc(WX(0), WY(0), o.inner * s, 0, 2 * Math.PI); }
     } else if (o.kind === "line") {
       ctx.moveTo(...P(-o.length / 2, 0)); ctx.lineTo(...P(o.length / 2, 0));
     } else if (o.kind === "polygon") {
@@ -1048,6 +1062,11 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   if (!frame) { this.lastDrawMs = performance.now() - t0; return; }
 
   const { xy, flags, fault, task, light, target, circle } = frame;
+  // The frame's numbers are offsets from its origin (see Frame in lcm-core): add the origin
+  // here in f64, so a swarm far from (0, 0) and tiny next to that distance stays distinct.
+  const fx = ox + ((frame.originX ?? 0) - this.anchor.x) * s, fy = oy - ((frame.originY ?? 0) - this.anchor.y) * s;
+  const X = (x) => fx + x * s;
+  const Y = (y) => fy - y * s;
   const n = flags.length;
   if (this.colorOf.length !== n) this.colorOf = new Uint8Array(n);
   const colorOf = this.colorOf, counts = this.counts;
@@ -1057,7 +1076,7 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   const V = this.options.visibility;
 
   // Visibility circles (behind everything); the links replace them when they are shown.
-  if (V && n <= LOD.visibility && !this.options.links) {
+  if (V && n <= LOD.visibility && !this.options.links && V * s < HUGE) {
     ctx.strokeStyle = "rgba(100,110,200,.22)";
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
@@ -1092,12 +1111,12 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   // Circles the robots computed (SEC and friends).
   if (n <= LOD.circles) {
     // With a robot selected, everyone else's circle fades so its own stands out.
-    ctx.strokeStyle = this.selected >= 0 ? "rgba(255,150,0,0.16)" : "rgba(255,150,0,0.55)";
+    ctx.strokeStyle = this.selected >= 0 || this.options.walk ? "rgba(255,150,0,0.16)" : "rgba(255,150,0,0.55)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const cr = circle[3 * i + 2];
-      if (!(cr >= 0)) continue;
+      if (!(cr >= 0) || cr * s > HUGE) continue;
       const cx = X(circle[3 * i]), cy = Y(circle[3 * i + 1]);
       ctx.moveTo(cx + cr * s, cy);
       ctx.arc(cx, cy, cr * s, 0, 2 * Math.PI);
@@ -1174,18 +1193,109 @@ draw(ctx = this.ctx, dpr = this.dpr) {
     }
   }
 
+  // Playing a turn at a time: name the robots, ring the one whose turn it is, and show where the
+  // algorithm sends it. While it decides, thin lines show whom it looked at.
+  const walk = this.options.walk;
+  if (walk && walk.robot < n) {
+    const i = walk.robot, rx = X(xy[2 * i]), ry = Y(xy[2 * i + 1]);
+    const has = target[2 * i] === target[2 * i];
+    const tx = has ? X(target[2 * i]) : rx, ty = has ? Y(target[2 * i + 1]) : ry;
+    const accent = this.theme.accent;
+    ctx.save();
+    // The circle this robot worked out stands out; the other robots' circles are faded (above).
+    const cr = circle[3 * i + 2];
+    if (cr >= 0 && cr * s < HUGE) {
+      ctx.strokeStyle = "rgba(255,150,0,0.95)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(X(circle[3 * i]), Y(circle[3 * i + 1]), cr * s, 0, 2 * Math.PI); ctx.stroke();
+    }
+    if (walk.phase === "decide" && n <= 24) {
+      ctx.strokeStyle = "rgba(110,120,190,.55)"; ctx.lineWidth = 1.3; ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      for (let j = 0; j < n; j++) {
+        if (j === i || (flags[j] & 3) === STATE_CRASH) continue;
+        if (V && Math.hypot(xy[2 * j] - xy[2 * i], xy[2 * j + 1] - xy[2 * i + 1]) > V) continue;
+        ctx.moveTo(rx, ry); ctx.lineTo(X(xy[2 * j]), Y(xy[2 * j + 1]));
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (has) {
+      ctx.strokeStyle = accent; ctx.lineWidth = 2.2; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(tx, ty); ctx.stroke();
+      ctx.lineWidth = 3.4;
+      ctx.beginPath(); ctx.moveTo(tx - 8, ty - 8); ctx.lineTo(tx + 8, ty + 8); ctx.moveTo(tx + 8, ty - 8); ctx.lineTo(tx - 8, ty + 8); ctx.stroke();
+    }
+    ctx.strokeStyle = accent; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(rx, ry, Math.max(r, 2) + 6, 0, 2 * Math.PI); ctx.stroke();
+    if (n <= 12) {
+      ctx.font = "600 13px system-ui, sans-serif"; ctx.lineJoin = "round"; ctx.textBaseline = "alphabetic";
+      for (let j = 0; j < n; j++) {
+        if ((flags[j] & 3) === STATE_CRASH) continue;
+        const label = `R${j}`, lx = X(xy[2 * j]) + Math.max(r, 2) + 6, ly = Y(xy[2 * j + 1]) - Math.max(r, 2) - 6;
+        ctx.lineWidth = 4; ctx.strokeStyle = this.theme.bg; ctx.strokeText(label, lx, ly);
+        ctx.fillStyle = j === i ? accent : this.theme.text; ctx.fillText(label, lx, ly);
+      }
+    }
+    ctx.restore();
+  }
+
+  // The measuring tool: a ruler from one point to another, with the distance written on it.
+  const measure = this.options.measure;
+  if (measure) {
+    const hover = measure.hover && measure.hover.robot !== undefined ? this.measurePoint(measure.hover) : null;
+    const info = this.measureInfo();
+    ctx.save();
+    const color = "#c026d3";
+    const ring = (p) => { ctx.beginPath(); ctx.arc(WX(p.x), WY(p.y), Math.max(r, 2) + 5, 0, 2 * Math.PI); ctx.stroke(); };
+    if (hover && !measure.b) { ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6; ring(hover); ctx.globalAlpha = 1; }
+    if (info) {
+      const ax = WX(info.a.x), ay = WY(info.a.y), bx = WX(info.b.x), by = WY(info.b.y);
+      ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2; ctx.lineCap = "round";
+      if (!info.done) ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.setLineDash([]);
+      const len = Math.hypot(bx - ax, by - ay) || 1, nx = -(by - ay) / len, ny = (bx - ax) / len;
+      for (const [px, py] of [[ax, ay], [bx, by]]) {  // ruler ends
+        ctx.beginPath(); ctx.moveTo(px - nx * 7, py - ny * 7); ctx.lineTo(px + nx * 7, py + ny * 7); ctx.stroke();
+      }
+      if (info.a.robot !== undefined) ring(info.a);
+      else { ctx.beginPath(); ctx.arc(ax, ay, 3.5, 0, 2 * Math.PI); ctx.fill(); }
+      if (info.done && info.b.robot !== undefined) ring(info.b);
+      else if (info.done) { ctx.beginPath(); ctx.arc(bx, by, 3.5, 0, 2 * Math.PI); ctx.fill(); }
+      // The label, beside the middle of the line.
+      const name = (p, fallback) => (p.robot !== undefined ? `R${p.robot}` : fallback);
+      const title = `${name(info.a, "A")} → ${info.done ? name(info.b, "B") : "…"}  ${fmtDistance(info.d)}`;
+      const detail = `dx ${fmtDistance(Math.abs(info.dx))}   dy ${fmtDistance(Math.abs(info.dy))}`;
+      ctx.font = "600 13px system-ui, sans-serif";
+      const w1 = ctx.measureText(title).width;
+      ctx.font = "11px system-ui, sans-serif";
+      const w2 = ctx.measureText(detail).width, bw = Math.max(w1, w2) + 16, bh = 40;
+      const { left, top } = this.insets;
+      let lx = (ax + bx) / 2 + nx * (bh / 2 + 12) - bw / 2, ly = (ay + by) / 2 + ny * (bh / 2 + 12) - bh / 2;
+      lx = Math.min(Math.max(lx, left + 6), this.width - bw - 6); ly = Math.min(Math.max(ly, top + 6), this.height - bh - 6);
+      ctx.fillStyle = this.theme.bg; ctx.globalAlpha = 0.94;
+      ctx.beginPath(); (ctx.roundRect ? ctx.roundRect(lx, ly, bw, bh, 8) : ctx.rect(lx, ly, bw, bh)); ctx.fill();
+      ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = color; ctx.font = "600 13px system-ui, sans-serif"; ctx.textBaseline = "alphabetic";
+      ctx.fillText(title, lx + 8, ly + 17);
+      ctx.fillStyle = this.theme.text; ctx.globalAlpha = 0.75; ctx.font = "11px system-ui, sans-serif";
+      ctx.fillText(detail, lx + 8, ly + 33);
+    }
+    ctx.restore();
+  }
+
   // Hovered and selected robots, drawn in full at any swarm size.
   const mark = (i, ring, strong) => {
     if (i < 0 || i >= n) return;
     const x = X(xy[2 * i]), y = Y(xy[2 * i + 1]);
     ctx.strokeStyle = this.theme.accent;
     if (strong) {
-      if (V && !((flags[i] & 3) === STATE_CRASH)) {
+      if (V && V * s < HUGE && !((flags[i] & 3) === STATE_CRASH)) {
         ctx.globalAlpha = 0.35;
         ctx.beginPath(); ctx.arc(x, y, V * s, 0, 2 * Math.PI); ctx.stroke();
         ctx.globalAlpha = 1;
       }
-      if (this.options.allowedRegion && V && !((flags[i] & 3) === STATE_CRASH)) {
+      if (this.options.allowedRegion && V && V * s < HUGE && !((flags[i] & 3) === STATE_CRASH)) {
         // Go-To-Center: the destination must stay inside the disc of radius V/2 around the
         // midpoint with every robot it sees; where the discs overlap is the allowed region.
         const xi = xy[2 * i], yi = xy[2 * i + 1];
@@ -1200,7 +1310,7 @@ draw(ctx = this.ctx, dpr = this.dpr) {
         ctx.strokeStyle = this.theme.accent;
       }
       const cr = circle[3 * i + 2];
-      if (cr >= 0) {
+      if (cr >= 0 && cr * s < HUGE) {
         ctx.strokeStyle = "rgba(255,150,0,0.9)"; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(X(circle[3 * i]), Y(circle[3 * i + 1]), cr * s, 0, 2 * Math.PI); ctx.stroke();
         ctx.strokeStyle = this.theme.accent;
@@ -1305,7 +1415,7 @@ flowchart TD
 | Stop it on the way | The adversary picks the stopping point, never before δ along the way: just after δ, anywhere between δ and the destination at random, a set fraction of the way, or the fraction this turn of the schedule names. |
 | Arrive, and the turn ends | The robot stands at its destination, or at the point where it was stopped. It does not schedule its own next Look: control goes back to next_turn(). |
 
-`next_turn` — [`crates/lcm-core/src/sim.rs:714`](../crates/lcm-core/src/sim.rs#L714)
+`next_turn` — [`crates/lcm-core/src/sim.rs:738`](../crates/lcm-core/src/sim.rs#L738)
 
 ```rust
 /// Sequential scheduler: queues the Look of the next robot to take a turn:
@@ -1409,7 +1519,7 @@ fn next_turn(&mut self, previous: f64) {
 }
 ```
 
-`limited_target` — [`crates/lcm-core/src/sim.rs:637`](../crates/lcm-core/src/sim.rs#L637)
+`limited_target` — [`crates/lcm-core/src/sim.rs:661`](../crates/lcm-core/src/sim.rs#L661)
 
 ```rust
 /// Non-rigid movement with a `delta`: where the adversary stops robot `i`

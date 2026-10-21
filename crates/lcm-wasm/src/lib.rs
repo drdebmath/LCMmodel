@@ -6,7 +6,9 @@
 //! can transfer their buffers to the page without copying again.
 
 use lcm_algorithms::sq_trace::Tracer;
-use lcm_core::{Budget, EventKind, Frame, RobotState, SimConfig, Simulation, StopReason};
+use lcm_core::{
+    Budget, EventKind, Frame, RobotState, SimConfig, Simulation, StepOutcome, StopReason,
+};
 use wasm_bindgen::prelude::*;
 
 /// `advance` result codes, shared with `web/worker.js`.
@@ -20,6 +22,8 @@ pub enum Stop {
     MaxTime = 4,
     Stalled = 5,
     MaxTurns = 6,
+    /// Only `advance_to_move` returns it: a robot has just started a move.
+    Moved = 7,
 }
 
 impl From<StopReason> for Stop {
@@ -64,6 +68,11 @@ pub struct WasmSimulation {
     frame: Frame,
     /// Reused by `swarm_size`, so sampling it allocates nothing.
     positions: Vec<lcm_core::Point>,
+    /// A time between two events at which to draw the robots that are walking, set by the page
+    /// while it paces a turn. Display only: the run's own clock (`time`) is not touched.
+    view_time: Option<f64>,
+    /// The robot `advance_to_move` last saw start a move.
+    moved: i32,
 }
 
 #[wasm_bindgen]
@@ -80,12 +89,15 @@ impl WasmSimulation {
             sim,
             frame: Frame::default(),
             positions: Vec::new(),
+            view_time: None,
+            moved: -1,
         })
     }
 
     /// Handles up to `max_events` events, stopping early before the first
     /// event after `until_time`, at a configured limit, or at the end.
     pub fn advance(&mut self, max_events: u32, until_time: f64) -> Stop {
+        self.view_time = None;
         self.sim
             .advance(Budget {
                 max_events: u64::from(max_events),
@@ -94,9 +106,64 @@ impl WasmSimulation {
             .into()
     }
 
+    /// Handles events one by one, as `advance` does, but stops as soon as a robot starts a move
+    /// (`Stop::Moved`; `moved_robot` says which), even if that is at `until_time` itself. The page
+    /// uses it to skip turns in which nobody moves, and to catch the start of every walk,
+    /// including one that begins at the instant the last one ends.
+    pub fn advance_to_move(&mut self, max_events: u32, until_time: f64) -> Stop {
+        self.view_time = None;
+        for _ in 0..max_events {
+            // A limit or the end first, as `advance` checks them (a budget of 0 is only that check).
+            let limit = self.sim.advance(Budget {
+                max_events: 0,
+                until_time,
+            });
+            if limit != StopReason::Budget {
+                return limit.into();
+            }
+            if self.sim.next_event_time().is_some_and(|t| t > until_time) {
+                return Stop::UntilTime;
+            }
+            let info = self.sim.step();
+            if info.outcome == StepOutcome::Moved {
+                self.moved = info.robot;
+                return Stop::Moved;
+            }
+        }
+        Stop::Budget
+    }
+
+    /// The robot `advance_to_move` last saw start a move, or -1.
+    #[must_use]
+    pub fn moved_robot(&self) -> i32 {
+        self.moved
+    }
+
+    /// When robot `i` arrives, if it is on a move right now; NaN if it is not.
+    #[must_use]
+    pub fn arrival_time(&self, i: u32) -> f64 {
+        let i = i as usize;
+        if i >= self.sim.robots().len() {
+            return f64::NAN;
+        }
+        self.sim.arrival_time(i).unwrap_or(f64::NAN)
+    }
+
+    /// Draw the robots as they are at time `t`, a time between the last event handled and the
+    /// next one (a walk has no events inside it, so this is what makes it glide). NaN, or any
+    /// time before the run's clock, goes back to drawing the run's own time.
+    pub fn set_view_time(&mut self, t: f64) {
+        self.view_time = (t.is_finite() && t >= self.sim.time()).then_some(t);
+    }
+
     #[must_use]
     pub fn time(&self) -> f64 {
         self.sim.time()
+    }
+
+    /// The time the current frame shows: the view time while one is set, else the run's time.
+    fn display_time(&self) -> f64 {
+        self.view_time.unwrap_or_else(|| self.sim.time())
     }
 
     /// Events handled so far. `f64` because JS numbers are exact up to 2⁵³.
@@ -178,6 +245,7 @@ impl WasmSimulation {
     /// `[time, robot (-1 = none), kind, outcome]`: kind 0 crash, 1 look,
     /// 2 wait, 3 visualize, -1 none; outcome is `StepOutcome::code`.
     pub fn step_one(&mut self) -> Box<[f64]> {
+        self.view_time = None;
         let info = self.sim.step();
         let kind = match info.kind {
             Some(EventKind::Crash) => 0.0,
@@ -203,7 +271,7 @@ impl WasmSimulation {
         if i >= r.len() {
             return "null".to_owned();
         }
-        let p = self.sim.position_at(i, self.sim.time());
+        let p = self.sim.position_at(i, self.display_time());
         let point = |p: Option<lcm_core::Point>| p.map(|p| [p.x, p.y]);
         serde_json::json!({
             "id": i,
@@ -217,6 +285,7 @@ impl WasmSimulation {
             "light": r.light[i].map(|l| format!("{l:?}")),
             "task": r.task[i].map(|t| format!("{t:?}")),
             "target": point(r.target[i]),
+            "goal": point(r.goal(i)),
             "move_start": point(r.start_time[i].map(|_| r.start_pos[i])),
             "speed": r.speed[i],
             "travelled": r.travelled[i],
@@ -285,7 +354,7 @@ impl WasmSimulation {
 
     /// Captures the state at the current time; read it with the getters below.
     pub fn capture_frame(&mut self) {
-        self.sim.write_frame(self.sim.time(), &mut self.frame);
+        self.sim.write_frame(self.display_time(), &mut self.frame);
     }
 
     #[must_use]
@@ -293,7 +362,19 @@ impl WasmSimulation {
         self.frame.time
     }
 
-    /// `[x0, y0, x1, y1, …]`
+    /// World coordinates the frame's positions, targets and circle centres are
+    /// measured from (a robot's world position is origin + offset, added in f64).
+    #[must_use]
+    pub fn frame_origin_x(&self) -> f64 {
+        self.frame.origin[0]
+    }
+
+    #[must_use]
+    pub fn frame_origin_y(&self) -> f64 {
+        self.frame.origin[1]
+    }
+
+    /// `[x0, y0, x1, y1, …]`, offsets from the frame origin.
     #[must_use]
     pub fn xy(&self) -> js_sys::Float32Array {
         js_sys::Float32Array::from(self.frame.xy.as_slice())
