@@ -12,7 +12,7 @@ import { Inspector } from "./inspector.js";
 import { Overview } from "./overview.js";
 import { buildSettings, readConfig } from "./settings.js";
 import { parseCoordinates, startOutline } from "./start.js";
-import { readLink, setUpEmbed, whenFirstSeen } from "./embed.js";
+import { buildEmbedDialog, copyText, linkQuery, pageAddress, readLink, setUpEmbed, whenFirstSeen } from "./embed.js";
 
 const $ = (id) => document.getElementById(id);
 renderIcons();
@@ -636,9 +636,18 @@ function toggleLinks() {
 
 $("export").addEventListener("click", (e) => { e.stopPropagation(); openExamples(false); $("export_menu").hidden = !$("export_menu").hidden; });
 document.addEventListener("click", () => { $("export_menu").hidden = true; openExamples(false); });
-for (const b of document.querySelectorAll("[data-export]")) {
-  b.addEventListener("click", () => (b.dataset.export === "png" ? exportPng() : exportCsv()));
+// Links to the current case: the full page, or the iframe code for another web page (embed.js).
+const caseQuery = () => linkQuery({ values: settings.values, algorithm: $("algorithm").value, playback: $("playback").value, points: settings.customPoints });
+const embedDialog = buildEmbedDialog(caseQuery, toast);
+renderIcons($("embed_dialog"));
+window.lcm.caseLink = () => `${pageAddress()}?${caseQuery()}`;
+window.lcm.embedDialog = embedDialog;
+async function copyCaseLink() {
+  if (await copyText(window.lcm.caseLink())) toast("Link copied: it opens the simulator with these settings");
+  else toast("Could not copy: the browser did not allow it", true);
 }
+const EXPORTS = { png: () => exportPng(), csv: () => exportCsv(), link: copyCaseLink, embed: () => embedDialog.open() };
+for (const b of document.querySelectorAll("[data-export]")) b.addEventListener("click", EXPORTS[b.dataset.export]);
 
 function fileStem() {
   const c = config();
@@ -784,6 +793,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (embedded && e.key !== " ") return; // embedded: Space plays and pauses, nothing else
+  if (!$("embed_dialog").hidden) return; // the embed window is open: keys are for it
   const typing = e.target.closest?.("input, select, textarea");
   if (settings.editor.isOpen || typing || e.ctrlKey || e.metaKey || e.altKey) return;
   // Space/Enter on a focused button already clicks it; don't toggle twice.

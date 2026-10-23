@@ -54,6 +54,85 @@ await js("window.lcm.ready");
 check("link: unknown or bad values fall back to the defaults",
   (await js("window.lcm.state")) === "ready" && (await js("window.lcm.settings.values.num_of_robots")) === 500 && (await js("document.getElementById('playback').value")) === "20");
 
+// ── links made by the page ─────────────────────────────────────────────────
+// "Copy link to this case" gives a link that opens the same case: every setting, the algorithm, the
+// exact custom points and the playback speed come back as they were.
+const SETUPS = [
+  ["the defaults", null, {}, null],
+  ["the original world box", null, { open_world: false }, null],
+  ["a rotated line", null, { pattern: "line", num_of_robots: 30, rotation: 45, size: 800 }, "5"],
+  ["a ring of robots", "SEC", { pattern: "circle", arrangement: "ring", inner: 0.4, num_of_robots: 40 }, null],
+  ["custom points, limited sight, one at a time", "GoToCenter",
+    { pattern: "custom", custom: "-80, 10\n0, 0\n95.5, -5.25", unlimited_visibility: false, visibility_radius: 100, scheduler: "sequential", turn_gap: "none" }, "turn:1"],
+  ["faults, non-rigid moves, a turn limit", "Gathering",
+    { num_of_faults: 5, fault_type: "byzantine", rigid_movement: false, delta: 5, stop_policy: "fraction", stop_fraction: 0.3,
+      scheduler: "sequential", activation_order: "random", max_turns: 100, threshold_precision: 8, random_seed: 99 }, "Infinity"],
+  ["SqGathering with stacked points", "SqGathering", { multiplicities: 2, num_of_robots: 12 }, "turn:3"],
+];
+const snapshot = () => js(`(() => ({ values: { ...window.lcm.settings.values, custom: undefined }, points: window.lcm.settings.customPoints,
+  algorithm: document.getElementById("algorithm").value, playback: document.getElementById("playback").value }))()`);
+for (const [name, algorithm, values, playback] of SETUPS) {
+  await navigate(`${base}/`);
+  await until("!!window.lcm", 10000);
+  await js("window.lcm.ready");
+  if (algorithm) await js(`(() => { const s = document.getElementById("algorithm"); s.value = ${JSON.stringify(algorithm)}; s.dispatchEvent(new Event("change")); })()`);
+  await js(`window.lcm.settings.apply(${JSON.stringify(values)})`);
+  await sleep(300);
+  if (playback) await js(`(() => { const s = document.getElementById("playback"); s.value = ${JSON.stringify(playback)}; s.dispatchEvent(new Event("change")); })()`);
+  const want = await snapshot();
+  const link = await js("window.lcm.caseLink()");
+  await navigate(link);
+  await until("!!window.lcm", 10000);
+  await js("window.lcm.ready");
+  const got = await snapshot();
+  const diff = Object.keys(want.values).filter((k) => JSON.stringify(want.values[k]) !== JSON.stringify(got.values[k]));
+  if (want.values.pattern === "custom" && JSON.stringify(want.points) !== JSON.stringify(got.points)) diff.push("points");
+  if (want.algorithm !== got.algorithm) diff.push("algorithm");
+  if (want.playback !== got.playback) diff.push("playback");
+  check(`copied link, ${name}: opens the same case`, !diff.length && got.algorithm !== "",
+    diff.length ? JSON.stringify({ link, diff: diff.map((k) => [k, want.values[k] ?? want[k], got.values[k] ?? got[k]]) }) : link.replace(base, ""));
+}
+
+// "Embed in a web page…": the iframe code for the current case, with the buttons and size chosen.
+await navigate(`${base}/?algorithm=GoToCenter&${CHAIN}&speed=turn:1`);
+await until("!!window.lcm", 10000);
+await js("window.lcm.ready");
+await js("document.getElementById('export').click()");
+await js("document.querySelector('[data-export=embed]').click()");
+await sleep(200);
+const dialog = await js(`({ open: !document.getElementById("embed_dialog").hidden, code: window.lcm.embedDialog.code, src: window.lcm.embedDialog.src })`);
+const src = new URL(dialog.src);
+check("embed window: opens from the Export menu with iframe code for this case",
+  dialog.open && dialog.code.startsWith("<iframe src=\"") && dialog.code.includes('width="100%" height="420"')
+  && src.searchParams.has("embed") && !src.searchParams.has("controls") && src.searchParams.get("algorithm") === "GoToCenter"
+  && src.searchParams.get("points") === "-80,10;0,0;95,-5" && src.searchParams.get("speed") === "turn:1", dialog.code);
+await shot("embed-dialog");
+await js(`(() => { const d = document.getElementById("embed_dialog");
+  d.querySelector("[data-control=step]").click(); d.querySelector("[data-control=speed]").click();
+  const w = d.querySelector("#embed_w"), h = d.querySelector("#embed_h");
+  w.value = "500"; h.value = "500px"; w.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+const changed = await js("({ code: window.lcm.embedDialog.code, src: window.lcm.embedDialog.src })");
+check("embed window: the buttons and size chosen go into the code",
+  new URL(changed.src).searchParams.get("controls") === "play,reset,step" && changed.code.includes('width="500" height="500"'), changed.code);
+await send("Browser.grantPermissions", { origin: base, permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"] });
+await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+await js("document.querySelector('#embed_dialog [data-action=copy-code]').click()");
+const said = await until("/copied/i.test(document.getElementById('toast').textContent) && !document.getElementById('toast').hidden", 3000);
+check("embed window: Copy code copies the code and says so", said && (await js("navigator.clipboard.readText()")) === changed.code,
+  await js("document.getElementById('toast').textContent"));
+await js(`document.getElementById("embed_dialog").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+check("embed window: Esc closes it", await js("document.getElementById('embed_dialog').hidden"));
+// The code works: in an iframe it shows the same robots, with the buttons chosen.
+const frameSrc = changed.code.match(/src="([^"]+)"/)[1].replace(/&amp;/g, "&");
+await js(`document.body.insertAdjacentHTML("beforeend", '<iframe id="made" style="position:fixed;left:0;top:0;width:500px;height:500px;z-index:99" src="${frameSrc}"></iframe>')`);
+const made = `document.getElementById("made").contentWindow`;
+await until(`${made}?.lcm?.renderer?.frame`, 15000);
+const madeState = await js(`(() => { const w = ${made}, d = w.document, f = w.lcm.renderer.frame, shown = (id) => getComputedStyle(d.getElementById(id)).display !== "none";
+  const xy = []; for (let i = 0; i < f.flags.length; i++) xy.push([Math.round(f.originX + f.xy[2 * i]), Math.round(f.originY + f.xy[2 * i + 1])]);
+  return { algorithm: d.getElementById("algorithm").value, xy, buttons: ["play", "reset", "step_event", "playback"].filter(shown), embed: d.body.classList.contains("embed") }; })()`);
+check("embed window: the code works (same robots, chosen buttons)", madeState.embed && madeState.algorithm === "GoToCenter"
+  && JSON.stringify(madeState.xy) === JSON.stringify([[-80, 10], [0, 0], [95, -5]]) && JSON.stringify(madeState.buttons) === JSON.stringify(["play", "reset", "step_event"]), JSON.stringify(madeState));
+
 // ── embedded in an article ─────────────────────────────────────────────────
 await js("localStorage.setItem('lcm-theme', 'light')");
 await size(1000, 800);
