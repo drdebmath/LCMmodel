@@ -15,6 +15,8 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/ja
   ".wasm": "application/wasm", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml" };
 
 const server = createServer((req, res) => {
+  // An empty page on the same origin as the simulator, for checks that build their own page around it.
+  if (req.url === "/__blank") { res.writeHead(200, { "content-type": "text/html" }).end("<!doctype html><title>blank</title>"); return; }
   let path = normalize(join(ROOT, decodeURIComponent(new URL(req.url, "http://x").pathname)));
   // A folder serves its index.html, as GitHub Pages does.
   if (path.startsWith(ROOT) && existsSync(path) && statSync(path).isDirectory()) path = join(path, "index.html");

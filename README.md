@@ -39,8 +39,6 @@ New in the Rust core: **SqGathering** (Algorithm 8 of the sequential-schedulers 
         width="100%" height="420" loading="lazy" style="border:1px solid #ccc; border-radius:8px"></iframe>
 ```
 
-A sample page with two demos: `web/tests/embed-host.html`.
-
 **What's where:** [`report.md`](report.md) is the full report (method, results, every test). [`docs/core-schema.md`](docs/core-schema.md) is the core's contract. The code is in `crates/` (Rust) and `web/` (browser page; `index.html` at the root opens it, the original page is in `old/`).
 
 **From the command line:** `cargo build --release -p lcm-cli`, then `./target/release/lcm run config.json` runs a configuration (the same settings as the page, see [`docs/core-schema.md`](docs/core-schema.md)) and prints a one-line JSON summary. Add `--trace trace.jsonl` (or `trace.csv`) to also write what every robot event did: the robot, the event, its position and target, the circle its algorithm computed, and at each Look which robots it could see. `--ticks` adds the clock ticks. For example, Go-To-Center on a chain of three robots with limited sight, one at a time:
