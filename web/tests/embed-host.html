@@ -8,23 +8,42 @@
   body { font: 16px/1.6 system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px 16px 400px; color: #222; background: #fff; }
   .tall { height: 1400px; color: #777; }
   iframe { display: block; width: 100%; height: 420px; border: 1px solid #ccc; border-radius: 8px; }
-  code { background: #f2f2f2; padding: 1px 4px; border-radius: 4px; }
+  code { background: #f2f2f2; padding: 1px 4px; border-radius: 4px; word-break: break-all; }
+  .see { color: #555; font-size: 14.5px; }
 </style>
 </head>
 <body>
-<!-- A page like the professor's lecture notes, with simulator demos further down. Used by
-     scripts/embed-check.mjs; also a working example of the iframe code to copy. -->
+<!-- A page like the professor's lecture notes, with one simulator demo per algorithm further down.
+     Used by scripts/embed-check.mjs; also a working example of the iframe code to copy. -->
 <h1>Embedding the simulator</h1>
 <p>Each demo below is an <code>&lt;iframe&gt;</code> of the simulator with <code>?embed</code> in its link. It starts
 playing the first time it is scrolled into view; after that its play button is the reader's.</p>
 <p class="tall">(Text of the article…)</p>
 
-<h2>SqGathering, a turn at a time</h2>
-<iframe id="demo_sq" title="SqGathering, a turn at a time" loading="lazy"
-  src="../../?embed&algorithm=SqGathering&robots=6&seed=7&speed=turn:1"></iframe>
+<h2>Gathering</h2>
+<p class="see">20 robots, async scheduler. Each one moves to the average of all robots; they meet at one point.</p>
+<iframe id="demo_gathering" title="Gathering" loading="lazy"
+  src="../../?embed&algorithm=Gathering&robots=20&seed=1&speed=5"></iframe>
+
+<h2>Smallest Enclosing Circle</h2>
+<p class="see">12 robots. Each one moves to the nearest point of the smallest circle around them all; they end on that circle (drawn).</p>
+<iframe id="demo_sec" title="Smallest Enclosing Circle" loading="lazy"
+  src="../../?embed&algorithm=SEC&robots=12&seed=2&speed=5"></iframe>
+
+<h2>Uniform Circle Formation</h2>
+<p class="see">10 robots spread on a circle at even spacing.</p>
+<iframe id="demo_circle" title="Uniform Circle Formation" loading="lazy"
+  src="../../?embed&algorithm=CircleFormation&robots=10&seed=3&speed=5"></iframe>
 
 <h2>Go-To-Center on a chain of three robots</h2>
+<p class="see">Limited sight (100): each robot sees only its neighbour. One robot at a time, a turn per second.
+This one also has reset and speed buttons, and the dark theme.</p>
 <iframe id="demo_gtc" title="Go-To-Center on a chain of three robots" loading="lazy"
   src="../../?embed&controls=play,reset,speed&algorithm=GoToCenter&points=-80,10;0,0;95,-5&visibility=100&scheduler=sequential&turn_gap=none&robot_speeds=10&speed=turn:1&theme=dark"></iframe>
+
+<h2>SqGathering, a turn at a time</h2>
+<p class="see">6 robots, one at a time (sequential scheduler), a turn per second, with a caption for each turn.</p>
+<iframe id="demo_sq" title="SqGathering, a turn at a time" loading="lazy"
+  src="../../?embed&algorithm=SqGathering&robots=6&seed=7&speed=turn:1"></iframe>
 </body>
 </html>

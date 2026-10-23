@@ -117,6 +117,21 @@ check("embed: controls=play,reset,speed shows those three, and the link's points
   JSON.stringify(gtc.shown) === JSON.stringify(["play", "reset", "playback"]) && gtc.dark === "dark" && gtc.robots === 3, JSON.stringify(gtc));
 check("embed: the link's theme does not change the reader's own choice", (await js("localStorage.getItem('lcm-theme')")) === "light");
 
+// One demo per algorithm: each starts when scrolled to, and runs the algorithm and swarm its link asks for.
+const DEMOS = [["demo_gathering", "Gathering", 20], ["demo_sec", "SEC", 12], ["demo_circle", "CircleFormation", 10],
+  ["demo_gtc", "GoToCenter", 3], ["demo_sq", "SqGathering", 6]];
+await js("window.scrollTo(0, 0)");
+for (const [id, algorithm, robots] of DEMOS) {
+  const w = frameOf(id);
+  await js(`document.getElementById(${JSON.stringify(id)}).scrollIntoView({ block: "center" })`);
+  const going = await until(`["running", "paused", "ended"].includes(${w}?.lcm?.state)`, 15000);
+  await sleep(4000);
+  await shot(`embed-${algorithm}`);
+  const got = await js(`({ algorithm: ${w}.document.getElementById("algorithm").value, robots: ${w}.lcm.renderer.frame.flags.length, time: ${w}.lcm.stats.time, state: ${w}.lcm.state })`);
+  check(`embed: the ${algorithm} demo starts when scrolled to and runs ${robots} robots`,
+    going && got.algorithm === algorithm && got.robots === robots && got.time > 0, JSON.stringify(got));
+}
+
 // ── on a phone ─────────────────────────────────────────────────────────────
 await size(390, 844, true);
 await navigate(`${base}/web/tests/embed-host.html`);
