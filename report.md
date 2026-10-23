@@ -530,7 +530,7 @@ python3 -m http.server 8000
 2. Whether to add the proposed extra verification before stage 3 (recommended).
 3. When to remove the original page and Pyodide (after all algorithms are ported).
 4. Browsers still to test by hand: Firefox, Safari, mobile layout.
-5. The flowchart page's GitHub buttons point to the `rust-core` branch of `imstillsamarth/LCMmodel`; switch `REPO_URL` in `scripts/gen-flowcharts.py` if the code moves.
+5. ~~The flowchart page's GitHub buttons point to the `rust-core` branch of `imstillsamarth/LCMmodel`; switch `REPO_URL` in `scripts/gen-flowcharts.py` if the code moves.~~ Done: they point to `drdebmath/LCMmodel`, branch `main`.
 
 ---
 
