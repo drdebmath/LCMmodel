@@ -2,16 +2,16 @@
 
 A simulator for Look-Compute-Move robots in the Asynchronous System
 
-## Rust + WebAssembly version (branch `rust-core`)
+## Rust + WebAssembly version
 
 The simulator core has been ported to Rust and runs in the browser as WebAssembly, in a background worker, with **no Python or Pyodide**. The math is unchanged. The Rust core runs its own simulations from the settings (it does not need Python or any recorded data); to prove it matches, its tests run the same settings and seeds as recorded Python runs and compare the two event by event. So far the core and five algorithms (Gathering, Smallest Enclosing Circle, Uniform Circle Formation, Go-To-Center and SqGathering) are ported; the other algorithms follow.
 New in the Rust core: **SqGathering** (Algorithm 8 of the sequential-schedulers paper), below.
 
 **Try it** (no install, runs entirely in your browser, CPU only):
 
-- New simulator (Rust core, up to 10,000 robots): <https://imstillsamarth.github.io/LCMmodel/>
-- Interactive flowcharts with the code of every step: <https://imstillsamarth.github.io/LCMmodel/web/docs.html>
-- The original Pyodide simulator, for comparison: <https://imstillsamarth.github.io/LCMmodel/old/>
+- New simulator (Rust core, up to 10,000 robots): <https://drdebmath.github.io/LCMmodel/>
+- Interactive flowcharts with the code of every step: <https://drdebmath.github.io/LCMmodel/web/docs.html>
+- The original Pyodide simulator, for comparison: <https://drdebmath.github.io/LCMmodel/old/>
 
 **Highlights:** 99–357× faster than the Python engine in the browser on identical runs (135–784× natively); 10,000 robots at 60 fps without a GPU; about 350 KB to download instead of about 16 MB.
 
@@ -38,8 +38,6 @@ New in the Rust core: **SqGathering** (Algorithm 8 of the sequential-schedulers 
 <iframe src="https://drdebmath.github.io/LCMmodel/?embed&algorithm=GoToCenter&points=-80,10;0,0;95,-5&visibility=100&scheduler=sequential&speed=turn:1"
         width="100%" height="420" loading="lazy" style="border:1px solid #ccc; border-radius:8px"></iframe>
 ```
-
-A sample page with two demos: `web/tests/embed-host.html`.
 
 **What's where:** [`report.md`](report.md) is the full report (method, results, every test). [`docs/core-schema.md`](docs/core-schema.md) is the core's contract. The code is in `crates/` (Rust) and `web/` (browser page; `index.html` at the root opens it, the original page is in `old/`).
 

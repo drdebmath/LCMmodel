@@ -19,6 +19,27 @@ async function navigate(url) {
   await sleep(50);
   await send("Page.navigate", { url });
 }
+// A test article: text, then one embedded demo per algorithm further down (as on a lecture page).
+// It is written into an empty page of the test server, so the demos are on the same origin and can be inspected.
+const DEMO_LINKS = {
+  demo_gathering: "algorithm=Gathering&robots=20&seed=1",
+  demo_sec: "algorithm=SEC&robots=12&seed=2",
+  demo_circle: "algorithm=CircleFormation&robots=10&seed=3",
+  demo_gtc: "controls=play,reset,step,speed&algorithm=GoToCenter&points=-80,10;0,0;95,-5&visibility=100&scheduler=sequential&turn_gap=none&robot_speeds=10&speed=turn:1&theme=dark",
+  demo_sq: "algorithm=SqGathering&robots=6&seed=7&speed=turn:1",
+};
+const ARTICLE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body { font: 16px/1.6 system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px 16px 400px; background: #fff; }
+.tall { height: 1400px; } iframe { display: block; width: 100%; height: 420px; border: 1px solid #ccc; border-radius: 8px; margin: 24px 0; }</style></head>
+<body><h1>Article</h1><p class="tall">Text of the article…</p>
+${Object.entries(DEMO_LINKS).map(([id, q]) => `<iframe id="${id}" title="${id}" loading="lazy" src="${base}/?embed&${q}"></iframe>`).join("\n")}
+</body></html>`;
+/** An empty page of the test server (same origin as the simulator), with `html` written into it. */
+async function openBlank(html = "") {
+  await navigate(`${base}/__blank`);
+  await until("document.readyState === 'complete'", 10000);
+  if (html) await js(`document.open(); document.write(${JSON.stringify(html)}); document.close(); true`);
+}
 const size = (width, height, mobile = false) =>
   send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: mobile ? 2 : 1, mobile });
 
@@ -194,8 +215,7 @@ await js(`document.getElementById("loop").remove()`);
 // ── embedded in an article ─────────────────────────────────────────────────
 await js("localStorage.setItem('lcm-theme', 'light')");
 await size(1000, 800);
-await navigate(`${base}/web/tests/embed-host.html`);
-await until("document.readyState === 'complete'", 10000);
+await openBlank(ARTICLE);
 const frameOf = (id) => `document.getElementById(${JSON.stringify(id)}).contentWindow`;
 const sqWin = frameOf("demo_sq"), gtcWin = frameOf("demo_gtc");
 const stateOf = (w) => js(`${w}?.lcm?.state ?? "none"`);
@@ -311,8 +331,7 @@ const SIZE_DEMOS = {
   SEC: "algorithm=SEC&robots=12&seed=2",
 };
 for (const [name, query] of Object.entries(SIZE_DEMOS)) for (const [bw, bh] of [[240, 180], [320, 240], [500, 500], [900, 220], [280, 560]]) {
-  await navigate(`${base}/web/tests/smoke.html`);
-  await until("document.readyState === 'complete'", 10000);
+  await openBlank("<!doctype html><body style='margin:8px'></body>");
   await js(`document.body.innerHTML = '<iframe id="box" style="width:${bw}px;height:${bh}px" src="${base}/?embed&${query}"></iframe>'`);
   const win = frameOf("box");
   const going = await until(`["running", "ended"].includes(${win}?.lcm?.state)`, 15000);
@@ -348,8 +367,7 @@ for (const [name, query] of Object.entries(SIZE_DEMOS)) for (const [bw, bh] of [
 
 // ── on a phone ─────────────────────────────────────────────────────────────
 await size(390, 844, true);
-await navigate(`${base}/web/tests/embed-host.html`);
-await until("document.readyState === 'complete'", 10000);
+await openBlank(ARTICLE);
 const fitOf = (win) => js(`(() => {
   const w = ${win}, d = w.document, inside = (id) => { const r = d.getElementById(id).getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= w.innerWidth && r.bottom <= w.innerHeight; };
   const t = d.getElementById("toolbar").getBoundingClientRect(), o = d.getElementById("embed_open").getBoundingClientRect();
