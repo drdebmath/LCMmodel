@@ -279,6 +279,7 @@ client.on("ready", (list) => {
   if (speed && [...$("playback").options].some((o) => o.value === speed)) $("playback").value = speed;
   $("loading_text").textContent = "Building the swarm…";
   newRun();
+  if (link.links && !$("links").hidden) setLinks(true); // who sees whom, asked for by the link
   syncAddress(); // a link with values the page could not use shows what it did use
 });
 
@@ -375,6 +376,8 @@ client.on("frame", (f) => {
   if (f.stop !== "running" && state !== "ended" && state !== "loading") {
     client.stopPulling(); // the run is over: nothing new to fetch or draw
     setState("ended");
+    // An embedded demo asked to loop starts again after a moment (unless the reader has reset it meanwhile).
+    if (link.loop) setTimeout(() => { if (state === "ended" && newRun({ quiet: true })) play(); }, 2500);
   }
   inspector.refresh();
   updateHud(state !== "running");
@@ -603,6 +606,7 @@ function toggleOverview() {
   updateInsets();
   renderer.requestDraw();
 }
+if (!link.grid) { renderer.options.grid = false; $("grid").setAttribute("aria-pressed", "false"); } // grid=0 in the link
 function toggleGrid() {
   renderer.options.grid = !renderer.options.grid;
   $("grid").setAttribute("aria-pressed", String(renderer.options.grid));
@@ -641,8 +645,13 @@ function toggleLinks() {
 $("export").addEventListener("click", (e) => { e.stopPropagation(); openExamples(false); $("export_menu").hidden = !$("export_menu").hidden; });
 document.addEventListener("click", () => { $("export_menu").hidden = true; openExamples(false); });
 // Links to the current case: the full page, or the iframe code for another web page (embed.js).
-const caseQuery = () => linkQuery({ values: settings.values, algorithm: $("algorithm").value, playback: $("playback").value, points: settings.customPoints });
-const embedDialog = buildEmbedDialog(caseQuery, toast);
+const caseQuery = (speed = $("playback").value) => linkQuery({ values: settings.values, algorithm: $("algorithm").value, playback: speed, points: settings.customPoints });
+const embedDialog = buildEmbedDialog({
+  query: caseQuery,
+  speeds: () => [...$("playback").options].map((o) => [o.value, o.text]),
+  speed: () => $("playback").value,
+  limitedSight: () => !settings.values.unlimited_visibility,
+}, toast);
 renderIcons($("embed_dialog"));
 window.lcm.caseLink = () => `${pageAddress()}?${caseQuery()}`;
 // The address bar follows the case on screen, so reloading the page or copying its address keeps the

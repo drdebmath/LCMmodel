@@ -150,6 +150,47 @@ const madeState = await js(`(() => { const w = ${made}, d = w.document, f = w.lc
   return { algorithm: d.getElementById("algorithm").value, xy, buttons: ["play", "reset", "step_event", "playback"].filter(shown), embed: d.body.classList.contains("embed") }; })()`);
 check("embed window: the code works (same robots, chosen buttons)", madeState.embed && madeState.algorithm === "GoToCenter"
   && JSON.stringify(madeState.xy) === JSON.stringify([[-80, 10], [0, 0], [95, -5]]) && JSON.stringify(madeState.buttons) === JSON.stringify(["play", "reset", "step_event"]), JSON.stringify(madeState));
+await js(`document.getElementById("made").remove()`);
+
+// The other options: speed, start, end, theme, what to show, border, size presets.
+await js("document.getElementById('export').click()");
+await js("document.querySelector('[data-export=embed]').click()");
+await sleep(200);
+const speeds = await js(`[...document.getElementById("embed_speed").options].map((o) => o.value)`);
+check("embed window: its speed menu lists the page's speeds, per turn too, and starts at the current one",
+  speeds.includes("turn:3") && speeds.includes("Infinity") && (await js(`document.getElementById("embed_speed").value`)) === "turn:1", JSON.stringify(speeds));
+await js(`(() => { const d = document.getElementById("embed_dialog"), set = (sel, v) => { const e = d.querySelector(sel); e.value = v; e.dispatchEvent(new Event("change", { bubbles: true })); };
+  set("#embed_speed", "turn:3"); set("#embed_start", "wait"); set("#embed_end", "loop"); set("#embed_theme", "dark");
+  for (const n of ["grid", "links", "open", "border"]) d.querySelector("[data-show=" + n + "]").click();
+  d.querySelector("[data-size='500x500']").click(); })()`);
+const all = await js("({ code: window.lcm.embedDialog.code, src: window.lcm.embedDialog.src })");
+const p = new URL(all.src).searchParams;
+check("embed window: speed, start, end, theme, grid, who-sees-whom, link, border and size all go into the code",
+  p.get("speed") === "turn:3" && p.get("autoplay") === "0" && p.get("loop") === "1" && p.get("theme") === "dark" && p.get("grid") === "0"
+  && p.get("links") === "1" && p.get("open") === "0" && all.code.includes('style="border: 0"') && all.code.includes('width="500" height="500"'), all.code);
+await shot("embed-dialog-options");
+await js(`document.getElementById("embed_dialog").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+await js(`document.body.insertAdjacentHTML("beforeend", '<iframe id="made2" style="position:fixed;left:0;top:0;width:500px;height:500px;z-index:99" src="${all.src}"></iframe>')`);
+const made2 = `document.getElementById("made2").contentWindow`;
+await until(`${made2}?.lcm?.renderer?.frame`, 15000);
+await sleep(2000);
+const opts = await js(`(() => { const w = ${made2}, d = w.document;
+  return { state: w.lcm.state, grid: w.lcm.renderer.options.grid, links: w.lcm.renderer.options.links, open: !!d.getElementById("embed_open"),
+    dark: d.documentElement.dataset.resolvedTheme, speed: d.getElementById("playback").value }; })()`);
+check("embed window: the code with those options works (waits for play, no grid, who sees whom, no link, dark, 3 s/turn)",
+  opts.state === "ready" && !opts.grid && opts.links && !opts.open && opts.dark === "dark" && opts.speed === "turn:3", JSON.stringify(opts));
+await js(`document.getElementById("made2").remove()`);
+
+// "Starts again after a moment": a looping demo plays to its end, then from the beginning again.
+await js(`document.body.insertAdjacentHTML("beforeend", '<iframe id="loop" style="position:fixed;left:0;top:0;width:400px;height:300px;z-index:99" src="${base}/?embed&loop=1&algorithm=GoToCenter&${CHAIN}&speed=max"></iframe>')`);
+const loopWin = `document.getElementById("loop").contentWindow`;
+const loopEnded = await until(`${loopWin}?.lcm?.state === "ended"`, 20000);
+// (At Max this run is over in moments, so look for frames of a new run rather than for "running".)
+await sleep(300);
+const framesAtEnd = await js(`${loopWin}.lcm.frames`);
+const loopAgain = loopEnded && await until(`${loopWin}.lcm.frames > ${framesAtEnd} + 1`, 6000);
+check("embed: with loop=1 it starts again after it ends", loopEnded && loopAgain, JSON.stringify({ framesAtEnd, now: await js(`${loopWin}.lcm.frames`), state: await js(`${loopWin}.lcm.state`) }));
+await js(`document.getElementById("loop").remove()`);
 
 // ── embedded in an article ─────────────────────────────────────────────────
 await js("localStorage.setItem('lcm-theme', 'light')");
