@@ -131,30 +131,24 @@ export async function copyText(text, field) {
   try { return document.execCommand("copy"); } catch { return false; }
 }
 
-/** The "Embed in a web page" window: the iframe code for the current run, with the buttons, speed,
- * start, ending, theme, what to show and size to give it. `run` describes the current run:
+/** The "Embed in a web page" window: the iframe code for the current run, with the buttons, speed and
+ * size to give it (the rest, such as the theme, can be added to the link by hand). `run` describes the current run:
  * `query(speed)` (its link query at that playback speed), `speeds()` ([[value, label], …] of the
- * playback menu), `speed()` (the current one) and `limitedSight()`. `say(message, error)` reports a copy. */
+ * playback menu) and `speed()` (the current one). `say(message, error)` reports a copy. */
 export function buildEmbedDialog(run, say) {
   const overlay = document.createElement("div");
   overlay.id = "embed_dialog";
   overlay.className = "overlay";
   overlay.hidden = true;
-  const box = (name, label, on, attr = "data-control") => `<label class="check"><input type="checkbox" ${attr}="${name}"${on ? " checked" : ""}> ${label}</label>`;
-  const select = (id, options) => `<select id="${id}">${options.map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select>`;
+  const box = (name, label, on) => `<label class="check"><input type="checkbox" data-control="${name}"${on ? " checked" : ""}> ${label}</label>`;
   overlay.innerHTML = `<div class="panel dialog wide" role="dialog" aria-modal="true" aria-labelledby="embed_title">
     <button class="btn small close" data-action="close" aria-label="Close"><span data-icon="close" data-size="15"></span></button>
     <h2 id="embed_title">Embed in a web page</h2>
-    <p class="sub">Paste this into a web page to show this case there, with the current settings.</p>
+    <p class="sub">Paste this into a web page to show this case there, with the current settings. It starts playing when a reader scrolls to it; after that the play button is theirs.</p>
     <div class="embed-options">
       <span class="k">Buttons</span>
       <span class="checks"><label class="check"><input type="checkbox" checked disabled> Play / pause</label>${box("reset", "Reset", true)}${box("speed", "Speed", true)}${box("step", "Step", false)}</span>
-      <label class="k" for="embed_speed">Speed</label><span>${select("embed_speed", [])}</span>
-      <label class="k" for="embed_start">Starts</label><span>${select("embed_start", [["auto", "By itself, when scrolled into view"], ["wait", "When the reader presses play"]])}</span>
-      <label class="k" for="embed_end">At the end</label><span>${select("embed_end", [["stop", "Stops"], ["loop", "Starts again after a moment"]])}</span>
-      <label class="k" for="embed_theme">Theme</label><span>${select("embed_theme", [["", "The reader's (light or dark)"], ["light", "Light"], ["dark", "Dark"]])}</span>
-      <span class="k">Show</span>
-      <span class="checks">${box("grid", "Grid", true, "data-show")}${box("links", "Who sees whom", false, "data-show")}${box("open", "“Open in simulator” link", true, "data-show")}${box("border", "Border", true, "data-show")}</span>
+      <label class="k" for="embed_speed">Speed</label><span><select id="embed_speed"></select></span>
       <span class="k">Size</span>
       <span class="size"><label>Width <input id="embed_w" type="text" value="100%" size="5" spellcheck="false"></label><label>Height <input id="embed_h" type="text" value="420" size="5" spellcheck="false"></label>
         <span class="presets">${[["100%", "420"], ["500", "500"], ["640", "360"]].map(([w, h]) => `<button class="btn small outline" type="button" data-size="${w}x${h}">${w === "100%" ? "Full width" : `${w} × ${h}`}</button>`).join("")}</span></span>
@@ -165,28 +159,14 @@ export function buildEmbedDialog(run, say) {
   </div>`;
   document.body.append(overlay);
   const $ = (sel) => overlay.querySelector(sel);
-  const shown = (name) => $(`[data-show=${name}]`).checked;
   const size = (v, fallback) => (/^\d+(\.\d+)?(px|%)?$/.test(v.trim()) ? v.trim().replace(/px$/, "") : fallback);
   let src = "";
   const update = () => {
     const controls = ["play", ...[...overlay.querySelectorAll("[data-control]")].filter((c) => c.checked).map((c) => c.dataset.control)];
     const standard = controls.join(",") === DEFAULT_CONTROLS.join(",");
-    const limited = run.limitedSight();
-    $("[data-show=links]").disabled = !limited;
-    $("[data-show=links]").closest("label").title = limited ? "" : "Only with limited visibility";
-    const options = [
-      !standard && `controls=${controls.join(",")}`,
-      $("#embed_start").value === "wait" && "autoplay=0",
-      $("#embed_end").value === "loop" && "loop=1",
-      $("#embed_theme").value && `theme=${$("#embed_theme").value}`,
-      !shown("grid") && "grid=0",
-      limited && shown("links") && "links=1",
-      !shown("open") && "open=0",
-    ].filter(Boolean);
-    src = `${pageAddress()}?${["embed", ...options].join("&")}&${run.query($("#embed_speed").value)}`;
+    src = `${pageAddress()}?embed${standard ? "" : `&controls=${controls.join(",")}`}&${run.query($("#embed_speed").value)}`;
     const w = size($("#embed_w").value, "100%"), h = size($("#embed_h").value, "420");
-    const style = shown("border") ? ` style="border: 1px solid #ccc; border-radius: 8px"` : ` style="border: 0"`;
-    $("#embed_code").value = `<iframe src="${src.replace(/&/g, "&amp;")}"\n  width="${w}" height="${h}" loading="lazy" title="Robot simulation"${style}></iframe>`;
+    $("#embed_code").value = `<iframe src="${src.replace(/&/g, "&amp;")}"\n  width="${w}" height="${h}" loading="lazy" title="Robot simulation" style="border: 1px solid #ccc; border-radius: 8px"></iframe>`;
     $("#embed_try").href = src;
   };
   const close = () => { overlay.hidden = true; };

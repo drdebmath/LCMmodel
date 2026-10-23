@@ -650,7 +650,6 @@ const embedDialog = buildEmbedDialog({
   query: caseQuery,
   speeds: () => [...$("playback").options].map((o) => [o.value, o.text]),
   speed: () => $("playback").value,
-  limitedSight: () => !settings.values.unlimited_visibility,
 }, toast);
 renderIcons($("embed_dialog"));
 window.lcm.caseLink = () => `${pageAddress()}?${caseQuery()}`;
