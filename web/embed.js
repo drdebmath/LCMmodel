@@ -6,13 +6,13 @@
  *
  * Any setting can be given by its key (docs/core-schema.md, and the list in settings.js), plus a few
  * short names: robots, seed, visibility (a radius; turns unlimited visibility off) and points
- * ("x,y;x,y;…", the robots' exact starting positions). Embed mode shows only play/pause and reset
- * unless `controls` lists others (play, reset, step, speed); it starts playing the first time it is seen. */
+ * ("x,y;x,y;…", the robots' exact starting positions). Embed mode shows only play/pause, reset and
+ * the speed menu unless `controls` lists others (play, reset, step, speed); it starts playing the first time it is seen. */
 import { SETTINGS } from "./settings.js";
 
 const ALIASES = { robots: "num_of_robots", seed: "random_seed" };
 const CONTROLS = ["play", "reset", "step", "speed"];
-const DEFAULT_CONTROLS = ["play", "reset"];
+const DEFAULT_CONTROLS = ["play", "reset", "speed"];
 const KEYS = new Set(SETTINGS.map((s) => s.key));
 const kindOf = Object.fromEntries(SETTINGS.map((s) => [s.key, s.kind]));
 
@@ -59,8 +59,17 @@ export function setUpEmbed(link) {
   a.href = full.href;
   a.target = "_blank";
   a.rel = "noopener";
-  a.textContent = "Open in simulator ↗";
+  a.title = "Open this case in the full simulator";
+  a.innerHTML = `<span class="long">Open in simulator </span>↗`;
   document.body.append(a);
+  // In a narrow frame with many buttons the link shrinks to its arrow rather than sit under the toolbar.
+  const toolbar = document.getElementById("toolbar");
+  const fit = () => {
+    a.classList.remove("short");
+    if (toolbar.getBoundingClientRect().right + 8 > a.getBoundingClientRect().left) a.classList.add("short");
+  };
+  new ResizeObserver(fit).observe(toolbar);
+  new ResizeObserver(fit).observe(document.body);
 }
 
 /** Calls `start` once, the first time at least half of the page is on screen. Inside an iframe the

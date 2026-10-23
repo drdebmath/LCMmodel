@@ -1,6 +1,6 @@
 // The simulator set up from its link, and embedded in another page, in headless Chrome:
 //  - a link sets the algorithm, settings, exact starting points and speed; the page does not start by itself;
-//  - in an <iframe> with ?embed only the chosen buttons show (play/pause and reset by default), with a link
+//  - in an <iframe> with ?embed only the chosen buttons show (play/pause, reset and speed by default), with a link
 //    to the full page; it starts playing the first time it is scrolled into view, and only then;
 //  - the wheel and a finger scroll the article, not the demo; only Space works as a key;
 //  - a theme in the link does not change the reader's own choice; the demo fits a phone.
@@ -72,10 +72,10 @@ await sleep(1500);
 await shot("embed-sq-desktop");
 const ui = await js(`(() => {
   const d = ${sqWin}.document, shown = (id) => { const e = d.getElementById(id); return !!e && getComputedStyle(e).display !== "none" && !e.hidden; };
-  return { play: shown("play") && shown("reset"), others: ["algorithm", "examples", "step_event", "step_time", "playback", "toggle_settings", "docs_link", "settings", "hud", "tools", "legend", "overview"].filter(shown),
+  return { play: shown("play") && shown("reset") && shown("playback"), others: ["algorithm", "examples", "step_event", "step_time", "toggle_settings", "docs_link", "settings", "hud", "tools", "legend", "overview"].filter(shown),
     caption: shown("turn_caption"), open: d.getElementById("embed_open")?.href ?? "" };
 })()`);
-check("embed: only play/pause and reset show by default (and the turn caption)", ui.play && !ui.others.length && ui.caption, JSON.stringify(ui));
+check("embed: only play/pause, reset and the speed menu show by default (and the turn caption)", ui.play && !ui.others.length && ui.caption, JSON.stringify(ui));
 const open = new URL(ui.open || "http://x/");
 check("embed: 'Open in simulator' opens the same case in the full page",
   open.searchParams.get("algorithm") === "SqGathering" && open.searchParams.get("robots") === "6" && !open.searchParams.has("embed"), ui.open);
@@ -115,10 +115,10 @@ await sleep(1200);
 await shot("embed-gtc-desktop");
 const gtc = await js(`(() => {
   const d = ${gtcWin}.document, shown = (id) => getComputedStyle(d.getElementById(id)).display !== "none";
-  return { shown: ["play", "reset", "playback", "step_event", "algorithm"].filter(shown), dark: d.documentElement.dataset.resolvedTheme, robots: ${gtcWin}.lcm.renderer.frame.flags.length };
+  return { shown: ["play", "step_event", "step_time", "reset", "playback", "algorithm"].filter(shown), dark: d.documentElement.dataset.resolvedTheme, robots: ${gtcWin}.lcm.renderer.frame.flags.length };
 })()`);
-check("embed: controls=play,reset,speed shows those three, and the link's points and dark theme are used",
-  JSON.stringify(gtc.shown) === JSON.stringify(["play", "reset", "playback"]) && gtc.dark === "dark" && gtc.robots === 3, JSON.stringify(gtc));
+check("embed: controls=play,reset,step,speed shows all four, and the link's points and dark theme are used",
+  JSON.stringify(gtc.shown) === JSON.stringify(["play", "step_event", "step_time", "reset", "playback"]) && gtc.dark === "dark" && gtc.robots === 3, JSON.stringify(gtc));
 check("embed: the link's theme does not change the reader's own choice", (await js("localStorage.getItem('lcm-theme')")) === "light");
 
 // One demo per algorithm: each starts when scrolled to, and runs the algorithm and swarm its link asks for.
@@ -140,16 +140,19 @@ for (const [id, algorithm, robots] of DEMOS) {
 await size(390, 844, true);
 await navigate(`${base}/web/tests/embed-host.html`);
 await until("document.readyState === 'complete'", 10000);
-await js("document.getElementById('demo_sq').scrollIntoView({ block: 'center' })");
-await until(`${sqWin}?.lcm?.state === "running"`, 15000);
-await sleep(1500);
-await shot("embed-sq-phone");
-const fit = await js(`(() => {
-  const w = ${sqWin}, d = w.document, inside = (id) => { const r = d.getElementById(id).getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= w.innerWidth && r.bottom <= w.innerHeight; };
+const fitOf = (win) => js(`(() => {
+  const w = ${win}, d = w.document, inside = (id) => { const r = d.getElementById(id).getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= w.innerWidth && r.bottom <= w.innerHeight; };
   const t = d.getElementById("toolbar").getBoundingClientRect(), o = d.getElementById("embed_open").getBoundingClientRect();
   return { sideways: d.documentElement.scrollWidth > w.innerWidth, toolbar: inside("toolbar"), open: inside("embed_open"), apart: t.right <= o.left, width: w.innerWidth };
 })()`);
-check("embed on a phone: fits, with no sideways scrolling and nothing overlapping", !fit.sideways && fit.toolbar && fit.open && fit.apart, JSON.stringify(fit));
+for (const [id, win] of [["demo_sq", sqWin], ["demo_gtc", gtcWin]]) {
+  await js(`document.getElementById("${id}").scrollIntoView({ block: "center" })`);
+  await until(`${win}?.lcm?.state === "running"`, 15000);
+  await sleep(800);
+  await shot(`embed-phone-${id}`);
+  const fit = await fitOf(win);
+  check(`embed on a phone (${id}): fits, with no sideways scrolling and nothing overlapping`, !fit.sideways && fit.toolbar && fit.open && fit.apart, JSON.stringify(fit));
+}
 
 check("no console errors", consoleErrors.length === 0, consoleErrors.join(" | "));
 await finish();
