@@ -206,7 +206,7 @@ export class Renderer {
     // below that the positions cannot say anything more, however far in the view goes.
     const stepOfNumbers = ulpOf(Math.max(Math.abs(sw.x), Math.abs(sw.y)));
     if (sw.extent > Math.max(1e-30, 0.45 * stepOfNumbers)) {
-      const w = Math.max(100, this.width - left - right), h = Math.max(100, this.height - top - bottom);
+      const w = Math.max(40, this.width - left - right), h = Math.max(40, this.height - top - bottom);
       const target = Math.min(this.followCap ?? Infinity, (0.92 * Math.min(w, h)) / (2 * sw.extent) / (this.scale / this.zoom));
       const next = Math.exp(Math.log(this.zoom) + (Math.log(target) - Math.log(this.zoom)) * k);
       this.zoom = Math.min(MAX_ZOOM, Math.max(0.05, next));
@@ -260,7 +260,7 @@ export class Renderer {
 
   get scale() {
     const { left, right, top, bottom } = this.insets;
-    const w = Math.max(100, this.width - left - right), h = Math.max(100, this.height - top - bottom);
+    const w = Math.max(40, this.width - left - right), h = Math.max(40, this.height - top - bottom);
     return Math.min(w / this.world.w, h / this.world.h) * 0.92 * this.zoom;
   }
 

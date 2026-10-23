@@ -62,11 +62,14 @@ export function setUpEmbed(link) {
   a.title = "Open this case in the full simulator";
   a.innerHTML = `<span class="long">Open in simulator </span>↗`;
   document.body.append(a);
-  // In a narrow frame with many buttons the link shrinks to its arrow rather than sit under the toolbar.
+  // In a narrow frame with many buttons the link shrinks to its arrow rather than sit under the toolbar,
+  // and in a very narrow one it goes (the demo itself still works).
   const toolbar = document.getElementById("toolbar");
+  const clash = () => toolbar.getBoundingClientRect().right + 8 > a.getBoundingClientRect().left;
   const fit = () => {
-    a.classList.remove("short");
-    if (toolbar.getBoundingClientRect().right + 8 > a.getBoundingClientRect().left) a.classList.add("short");
+    a.classList.remove("short", "gone");
+    if (clash()) a.classList.add("short");
+    if (clash()) a.classList.add("gone");
   };
   new ResizeObserver(fit).observe(toolbar);
   new ResizeObserver(fit).observe(document.body);

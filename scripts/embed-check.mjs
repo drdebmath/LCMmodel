@@ -163,6 +163,51 @@ for (const [id, algorithm] of DEMOS) {
     ended && view.out === 0 && view.offX < 0.15 && view.offY < 0.15, JSON.stringify({ ended, ...view }));
 }
 
+// ── boxes of different sizes ───────────────────────────────────────────────
+// Tiny, short and wide, tall and narrow: the buttons fit, the full-page link never sits under them (it
+// shrinks to its arrow, or goes), the caption fits, and every robot is in view while playing and at the end.
+await size(1400, 1000);
+const SIZE_DEMOS = {
+  "Go-To-Center with every button": "controls=play,reset,step,speed&algorithm=GoToCenter&points=-80,10;0,0;95,-5&visibility=100&scheduler=sequential&turn_gap=none&robot_speeds=10&speed=turn:0.25",
+  SqGathering: "algorithm=SqGathering&robots=6&seed=7&speed=turn:0.25",
+  SEC: "algorithm=SEC&robots=12&seed=2",
+};
+for (const [name, query] of Object.entries(SIZE_DEMOS)) for (const [bw, bh] of [[240, 180], [320, 240], [900, 220], [280, 560]]) {
+  await navigate(`${base}/web/tests/smoke.html`);
+  await until("document.readyState === 'complete'", 10000);
+  await js(`document.body.innerHTML = '<iframe id="box" style="width:${bw}px;height:${bh}px" src="${base}/?embed&${query}"></iframe>'`);
+  const win = frameOf("box");
+  const going = await until(`["running", "ended"].includes(${win}?.lcm?.state)`, 15000);
+  await sleep(700);
+  const layout = () => js(`(() => {
+    const w = ${win}, d = w.document, r = (id) => d.getElementById(id).getBoundingClientRect();
+    const inside = (b) => b.left >= -0.5 && b.top >= -0.5 && b.right <= w.innerWidth + 0.5 && b.bottom <= w.innerHeight + 0.5;
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const t = r("toolbar"), o = r("embed_open"), c = r("turn_caption"), link = getComputedStyle(d.getElementById("embed_open")).visibility !== "hidden";
+    const R = w.lcm.renderer, f = R.frame, v = R.viewRect();
+    let out = 0;
+    for (let i = 0; i < f.flags.length; i++) {
+      const x = f.originX + f.xy[2 * i], y = f.originY + f.xy[2 * i + 1];
+      if (x < v.x0 || x > v.x1 || y < v.y0 || y > v.y1) out++;
+    }
+    const problems = [];
+    if (!inside(t)) problems.push("buttons cut off");
+    if (link && (!inside(o) || hit(t, o))) problems.push("link under the buttons");
+    if (!d.getElementById("turn_caption").hidden && (!inside(c) || hit(c, t))) problems.push("caption");
+    if (d.documentElement.scrollWidth > w.innerWidth) problems.push("sideways scrolling");
+    if (out) problems.push(out + " robots out of view");
+    return problems;
+  })()`);
+  const playing = await layout();
+  await js(`(() => { const s = ${win}.document.getElementById("playback"); s.value = "Infinity"; s.dispatchEvent(new Event("change")); })()`);
+  const ended = await until(`${win}.lcm.state === "ended"`, 60000);
+  await sleep(1500);
+  const end = await layout();
+  await shot(`embed-size-${name.split(" ")[0]}-${bw}x${bh}`);
+  check(`embed, ${name}, in a ${bw}×${bh} box: everything fits and stays in view, playing and at the end`,
+    going && ended && !playing.length && !end.length, JSON.stringify({ playing, end }));
+}
+
 // ── on a phone ─────────────────────────────────────────────────────────────
 await size(390, 844, true);
 await navigate(`${base}/web/tests/embed-host.html`);

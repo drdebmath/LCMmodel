@@ -388,3 +388,9 @@ body.embed #turn_caption { left: 8px; bottom: 8px; width: min(440px, calc(100vw 
 #embed_open:hover { color: var(--accent); }
 #embed_open.short { padding: 6px 9px; }
 #embed_open.short .long { display: none; }
+#embed_open.gone { visibility: hidden; }
+/* A small box: the caption keeps to its first line, so the robots keep the room. */
+@media (max-height: 360px), (max-width: 340px) {
+  body.embed #turn_caption { padding: 5px 9px; }
+  body.embed #turn_caption .cap-body { display: none; }
+}
