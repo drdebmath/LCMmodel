@@ -136,6 +136,7 @@ function updatePlaybackOptions() {
 
 function onSettingChange() {
   if (state === "loading") return;
+  syncAddress();
   updatePlaybackOptions();
   if (state === "ready") {
     clearTimeout(restartTimer);
@@ -278,6 +279,7 @@ client.on("ready", (list) => {
   if (speed && [...$("playback").options].some((o) => o.value === speed)) $("playback").value = speed;
   $("loading_text").textContent = "Building the swarm…";
   newRun();
+  syncAddress(); // a link with values the page could not use shows what it did use
 });
 
 /* ------------------------------------------------------- swarm-size trace */
@@ -522,6 +524,7 @@ $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
 $("algorithm").addEventListener("change", () => {
   updateExamples();
+  syncAddress();
   // An algorithm that only works under the sequential scheduler (SqGathering)
   // switches it on, rather than failing with the async default.
   const a = algorithms.find((x) => x.key === $("algorithm").value);
@@ -535,6 +538,7 @@ $("algorithm").addEventListener("change", () => {
   else newRun();
 });
 $("playback").addEventListener("change", () => {
+  syncAddress();
   const speed = playbackSpeed();
   client.speed(speed);
   if (typeof speed !== "object") {  // not played a turn at a time any more: drop the turn caption and marks at once
@@ -641,6 +645,19 @@ const caseQuery = () => linkQuery({ values: settings.values, algorithm: $("algor
 const embedDialog = buildEmbedDialog(caseQuery, toast);
 renderIcons($("embed_dialog"));
 window.lcm.caseLink = () => `${pageAddress()}?${caseQuery()}`;
+// The address bar follows the case on screen, so reloading the page or copying its address keeps the
+// case (a link it was opened with does not go stale). An embedded demo leaves its address alone.
+let addressTimer = 0;
+function syncAddress() {
+  if (embedded) return;
+  clearTimeout(addressTimer);
+  addressTimer = setTimeout(() => {
+    const query = caseQuery();
+    const plain = query === `algorithm=${algorithms[0]?.key}`; // nothing but the defaults: a clean address
+    const url = plain || query.length > 8000 ? pageAddress() : `${pageAddress()}?${query}`; // (thousands of typed points: too long)
+    try { history.replaceState(null, "", url + location.hash); } catch {}
+  }, 250);
+}
 window.lcm.embedDialog = embedDialog;
 async function copyCaseLink() {
   if (await copyText(window.lcm.caseLink())) toast("Link copied: it opens the simulator with these settings");

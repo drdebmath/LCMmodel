@@ -93,6 +93,24 @@ for (const [name, algorithm, values, playback] of SETUPS) {
     diff.length ? JSON.stringify({ link, diff: diff.map((k) => [k, want.values[k] ?? want[k], got.values[k] ?? got[k]]) }) : link.replace(base, ""));
 }
 
+// The address bar follows the case: change the speed and a setting, and it says so; reloading keeps them.
+await navigate(`${base}/?algorithm=Gathering&robots=20&seed=1&speed=5`);
+await until("!!window.lcm", 10000);
+await js("window.lcm.ready");
+await js(`(() => { const s = document.getElementById("playback"); s.value = "100"; s.dispatchEvent(new Event("change")); })()`);
+await js(`window.lcm.settings.set("num_of_robots", 35)`);
+const followed = await until("location.search === '?algorithm=Gathering&robots=35&seed=1&speed=100'", 3000);
+check("address bar: follows changes to the speed and the settings", followed, await js("location.search"));
+await send("Page.reload");
+await sleep(300);
+await until("!!window.lcm", 10000);
+await js("window.lcm.ready");
+check("address bar: reloading the page keeps the case",
+  (await js("document.getElementById('playback').value")) === "100" && (await js("window.lcm.settings.values.num_of_robots")) === 35 && (await js("window.lcm.renderer.frame.flags.length")) === 35);
+await js(`window.lcm.settings.reset()`);
+await js(`(() => { const s = document.getElementById("playback"); s.value = "20"; s.dispatchEvent(new Event("change")); })()`);
+check("address bar: back to the defaults, it is the plain address again", await until("location.search === ''", 3000), await js("location.search"));
+
 // "Embed in a web page…": the iframe code for the current case, with the buttons and size chosen.
 await navigate(`${base}/?algorithm=GoToCenter&${CHAIN}&speed=turn:1`);
 await until("!!window.lcm", 10000);
@@ -156,6 +174,7 @@ const ui = await js(`(() => {
 })()`);
 check("embed: only play/pause, reset and the speed menu show by default (and the turn caption)", ui.play && !ui.others.length && ui.caption, JSON.stringify(ui));
 const open = new URL(ui.open || "http://x/");
+check("embed: the demo leaves its own address alone (it is not the reader's page)", (await js(`${sqWin}.location.search`)) === "?embed&algorithm=SqGathering&robots=6&seed=7&speed=turn:1", await js(`${sqWin}.location.search`));
 check("embed: 'Open in simulator' opens the same case in the full page",
   open.searchParams.get("algorithm") === "SqGathering" && open.searchParams.get("robots") === "6" && !open.searchParams.has("embed"), ui.open);
 
