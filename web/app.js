@@ -359,7 +359,13 @@ client.on("frame", (f) => {
   renderer.options.walk = f.walk ?? null;
   if (f.trace) trace.points = f.trace;
   updateCaption(f);
-  if (fitPending) { fitPending = false; fitToStart(f); }
+  if (fitPending) {
+    fitPending = false;
+    fitToStart(f);
+    // Embedded: start from the fitted view, then keep the swarm centred and in view as it moves, zooming
+    // out if it spreads but never in past the start (a gathering stays the size it was, in the middle).
+    if (embedded) { renderer.resetView(); renderer.followCap = 1; renderer.setFollow(true); }
+  }
   renderer.setFrame(f);
   if (firstFrame) { firstFrame = false; $("loading").hidden = true; resolveReady(); }
   if (f.lastEvent) showLastEvent(f.lastEvent);
@@ -561,6 +567,12 @@ function updateInsets() {
   const settingsRect = visible("settings"), tools = visible("tools"), legend = visible("legend");
   // The overview map sits just left of the view tools, in the bottom right corner.
   if (tools && tools.height > tools.width) $("overview").style.right = `${Math.round(innerWidth - tools.left + 8)}px`;
+  if (embedded) {
+    // Embedded: the robots use the whole box below the buttons, above the caption when there is one.
+    const caption = visible("turn_caption");
+    renderer.setInsets({ left: 0, right: 0, top: toolbar ? toolbar.bottom : 0, bottom: caption ? innerHeight - caption.top + 8 : 8 });
+    return;
+  }
   if (innerWidth <= 760) {
     // Phones: the settings sheet floats over the view instead of narrowing it.
     const bottomEdge = Math.min(tools ? tools.top : innerHeight, legend ? legend.top : innerHeight);
@@ -753,6 +765,7 @@ canvas.addEventListener("wheel", (e) => {
   renderer.zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
 }, { passive: false });
 new ResizeObserver(() => { renderer.resize(); updateInsets(); }).observe($("stage"));
+if (embedded) new ResizeObserver(updateInsets).observe($("turn_caption")); // the caption comes and goes
 updateInsets();
 renderer.resetView();
 

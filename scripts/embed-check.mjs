@@ -136,6 +136,33 @@ for (const [id, algorithm, robots] of DEMOS) {
     going && got.algorithm === algorithm && got.robots === robots && got.time > 0 && got.playback === (algorithm === "GoToCenter" || algorithm === "SqGathering" ? "turn:1" : "20"), JSON.stringify(got));
 }
 
+// Played to the end (fast), every demo still shows all its robots and circles, around the middle of its box.
+for (const [id, algorithm] of DEMOS) {
+  const w = frameOf(id);
+  await js(`document.getElementById(${JSON.stringify(id)}).scrollIntoView({ block: "center" })`);
+  await js(`(() => { const d = ${w}.document, s = d.getElementById("playback"); s.value = "Infinity"; s.dispatchEvent(new Event("change"));
+    if (${w}.lcm.state !== "running" && ${w}.lcm.state !== "ended") d.getElementById("play").click(); })()`);
+  const ended = await until(`${w}.lcm.state === "ended"`, 60000);
+  await sleep(2000); // the camera eases into place
+  await shot(`embed-end-${algorithm}`);
+  const view = await js(`(() => {
+    const r = ${w}.lcm.renderer, f = r.frame, v = r.viewRect(), n = f.flags.length;
+    let out = 0, sx = 0, sy = 0;
+    const inside = (x, y, pad = 0) => x - pad >= v.x0 && x + pad <= v.x1 && y - pad >= v.y0 && y + pad <= v.y1;
+    for (let i = 0; i < n; i++) {
+      const x = f.originX + f.xy[2 * i], y = f.originY + f.xy[2 * i + 1];
+      sx += x; sy += y;
+      if (!inside(x, y)) out++;
+      const cr = f.circle?.[3 * i + 2];
+      if (cr >= 0 && !inside(f.originX + f.circle[3 * i], f.originY + f.circle[3 * i + 1], cr * 0.98)) out++;
+    }
+    const w = v.x1 - v.x0, h = v.y1 - v.y0;
+    return { out, offX: Math.abs(sx / n - (v.x0 + v.x1) / 2) / w, offY: Math.abs(sy / n - (v.y0 + v.y1) / 2) / h };
+  })()`);
+  check(`embed: the ${algorithm} demo, played to the end, keeps every robot and circle in its box, near the middle`,
+    ended && view.out === 0 && view.offX < 0.15 && view.offY < 0.15, JSON.stringify({ ended, ...view }));
+}
+
 // ── on a phone ─────────────────────────────────────────────────────────────
 await size(390, 844, true);
 await navigate(`${base}/web/tests/embed-host.html`);
