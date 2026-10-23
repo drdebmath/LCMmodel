@@ -68,7 +68,10 @@ fn circle_edge_even_terminates_immediately() {
     };
     // Give it a generous ceiling so we know if it hangs rather than terminates.
     let sim = run_steps(&config, (n * 20) as u64);
-    assert!(sim.ended(), "should terminate: robots start on SEC boundary");
+    assert!(
+        sim.ended(),
+        "should terminate: robots start on SEC boundary"
+    );
     assert!(
         sim.robots().terminated.iter().all(|&t| t),
         "all robots must be marked terminated"
@@ -128,7 +131,8 @@ fn single_robot_terminates_at_its_own_position() {
     // Robot stays within eps of its initial position.
     assert!(
         close(r.pos[0].x, 42.0) && close(r.pos[0].y, -77.0),
-        "single robot drifted: {:?}", r.pos[0]
+        "single robot drifted: {:?}",
+        r.pos[0]
     );
 }
 
@@ -406,7 +410,10 @@ fn robots_on_a_short_arc_are_not_finished_at_the_start() {
     // The run does finish, on the circle of radius 106.07.
     let sim = run_to_end(&config);
     let radius = sim.robots().overlay[0].expect("a circle is shown").radius;
-    assert!((radius - 150.0 * 2.0_f64.sqrt() / 2.0).abs() < 0.05, "radius {radius}");
+    assert!(
+        (radius - 150.0 * 2.0_f64.sqrt() / 2.0).abs() < 0.05,
+        "radius {radius}"
+    );
 }
 
 #[test]
@@ -427,9 +434,15 @@ fn robots_standing_on_only_three_spots_use_the_smallest_circle() {
         ..sec_cfg()
     };
     let sim = run_steps(&config, 40);
-    assert!(sim.robots().terminated.iter().all(|t| !t), "finished too early");
+    assert!(
+        sim.robots().terminated.iter().all(|t| !t),
+        "finished too early"
+    );
     let sim = run_to_end(&config);
     let radius = sim.robots().overlay[0].expect("a circle is shown").radius;
     let expected = ((280.0_f64).powi(2) + (20.0_f64).powi(2)).sqrt() / 2.0;
-    assert!((radius - expected).abs() < 0.05, "radius {radius}, expected {expected}");
+    assert!(
+        (radius - expected).abs() < 0.05,
+        "radius {radius}, expected {expected}"
+    );
 }

@@ -83,6 +83,9 @@ jobs:
       - name: SqGathering on both pages (headless Chrome)
         if: ${{ !cancelled() }}
         run: bash scripts/ci-check.sh "SqGathering pages" node scripts/sqgathering-check.mjs "$RUNNER_TEMP/shots/sqgathering"
+      - name: Set up from a link, and embedded in another page (headless Chrome)
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci-check.sh "Links and embedding" node scripts/embed-check.mjs "$RUNNER_TEMP/shots/embed"
       - name: Simulator page (headless Chrome)
         # Its frame-rate targets (10,000 robots at 55+ fps) depend on the
         # machine; shared runners can miss them. A failure here is a warning.

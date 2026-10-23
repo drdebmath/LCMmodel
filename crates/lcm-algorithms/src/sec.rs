@@ -67,11 +67,14 @@ impl Algorithm for Sec {
 
         // Termination: every non-crashed robot is on the circle boundary.
         // Uses _is_point_on_circle: abs(dist - radius) < eps.
-        let terminate = sec.map_or(false, |c| {
+        let terminate = sec.is_some_and(|c| {
             if n == 0 {
                 return true;
             }
-            scratch.points.iter().all(|p| (dist(*p, c.center) - c.radius).abs() < eps)
+            scratch
+                .points
+                .iter()
+                .all(|p| (dist(*p, c.center) - c.radius).abs() < eps)
         });
 
         Decision {
@@ -322,7 +325,10 @@ mod tests {
         let r = 2.0_f64;
         let a = pt(r, 0.0);
         let b = pt(r * libm::cos(TAU / 3.0), r * libm::sin(TAU / 3.0));
-        let c_pt = pt(r * libm::cos(2.0 * TAU / 3.0), r * libm::sin(2.0 * TAU / 3.0));
+        let c_pt = pt(
+            r * libm::cos(2.0 * TAU / 3.0),
+            r * libm::sin(2.0 * TAU / 3.0),
+        );
         let c = circle_from_three(a, b, c_pt);
         assert!(pt_close(c.center, pt(0.0, 0.0)));
         assert!(close(c.radius, r));
@@ -502,5 +508,4 @@ mod tests {
     // ── collinear_sec ────────────────────────────────────────────────────────
 
     // ── concyclic_sec ────────────────────────────────────────────────────────
-
 }

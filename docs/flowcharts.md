@@ -1011,7 +1011,7 @@ pub fn fill_frame(
 }
 ```
 
-`draw` — [`web/renderer.js:452`](../web/renderer.js#L452)
+`draw` — [`web/renderer.js:462`](../web/renderer.js#L462)
 
 ```js
 draw(ctx = this.ctx, dpr = this.dpr) {
@@ -1924,7 +1924,7 @@ fn compute(&self, look: &Look<'_>, rng: &mut Rng, scratch: &mut Scratch) -> Deci
 }
 ```
 
-`welzl_recur` — [`crates/lcm-algorithms/src/sec.rs:119`](../crates/lcm-algorithms/src/sec.rs#L119)
+`welzl_recur` — [`crates/lcm-algorithms/src/sec.rs:122`](../crates/lcm-algorithms/src/sec.rs#L122)
 
 ```rust
 pub(crate) fn welzl_recur(

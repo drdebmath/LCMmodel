@@ -86,6 +86,7 @@ export class Renderer {
     // (its centre - anchor) * scale and stays exact however far in the view has zoomed.
     this.anchor = { x: 0, y: 0 };
     this.follow = false;     // zoom in and out with the swarm (see stepFollow)
+    this.followCap = null;   // embedded demos: Follow zooms in no further than this, and keeps the circles in view too
     this.needAnchor = false;
     this.swarm = null;       // { x, y, extent }: centre and radius of the robots that have not crashed
     this.lastStep = 0;
@@ -157,6 +158,14 @@ export class Renderer {
       const tx = f.target[2 * w.robot], ty = f.target[2 * w.robot + 1];
       far = Math.max(far, tx * tx + ty * ty);
     }
+    // An embedded demo keeps the circles its algorithm draws in view as well as the robots.
+    const c = f.circle;
+    if (this.followCap != null && c && flags.length <= LOD.circles) {
+      for (let i = 0, n = flags.length; i < n; i++) {
+        const cr = c[3 * i + 2];
+        if (cr >= 0) far = Math.max(far, (Math.hypot(c[3 * i], c[3 * i + 1]) + cr) ** 2);
+      }
+    }
     this.swarm = any ? { x: f.originX ?? 0, y: f.originY ?? 0, extent: Math.sqrt(far) } : null;
   }
 
@@ -197,8 +206,8 @@ export class Renderer {
     // below that the positions cannot say anything more, however far in the view goes.
     const stepOfNumbers = ulpOf(Math.max(Math.abs(sw.x), Math.abs(sw.y)));
     if (sw.extent > Math.max(1e-30, 0.45 * stepOfNumbers)) {
-      const w = Math.max(100, this.width - left - right), h = Math.max(100, this.height - top - bottom);
-      const target = (0.92 * Math.min(w, h)) / (2 * sw.extent) / (this.scale / this.zoom);
+      const w = Math.max(40, this.width - left - right), h = Math.max(40, this.height - top - bottom);
+      const target = Math.min(this.followCap ?? Infinity, (0.92 * Math.min(w, h)) / (2 * sw.extent) / (this.scale / this.zoom));
       const next = Math.exp(Math.log(this.zoom) + (Math.log(target) - Math.log(this.zoom)) * k);
       this.zoom = Math.min(MAX_ZOOM, Math.max(0.05, next));
       gap = Math.abs(Math.log(target / this.zoom));
@@ -246,11 +255,12 @@ export class Renderer {
     const fitted = this.isFitted();
     this.insets = insets;
     if (fitted && !this.follow) this.fitView(); // keep a fitted view fitted; leave a zoomed one alone
+    else this.requestDraw(); // (following, the next draw re-frames the swarm in the new space)
   }
 
   get scale() {
     const { left, right, top, bottom } = this.insets;
-    const w = Math.max(100, this.width - left - right), h = Math.max(100, this.height - top - bottom);
+    const w = Math.max(40, this.width - left - right), h = Math.max(40, this.height - top - bottom);
     return Math.min(w / this.world.w, h / this.world.h) * 0.92 * this.zoom;
   }
 

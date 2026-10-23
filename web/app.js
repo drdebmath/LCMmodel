@@ -12,9 +12,14 @@ import { Inspector } from "./inspector.js";
 import { Overview } from "./overview.js";
 import { buildSettings, readConfig } from "./settings.js";
 import { parseCoordinates, startOutline } from "./start.js";
+import { buildEmbedDialog, copyText, linkQuery, pageAddress, readLink, setUpEmbed, whenFirstSeen } from "./embed.js";
 
 const $ = (id) => document.getElementById(id);
 renderIcons();
+// A run described by the page's link, and the small embed version of the page (embed.js).
+const link = readLink(location.search);
+const embedded = link.embed;
+if (embedded) setUpEmbed(link);
 
 const renderer = new Renderer($("canvas"));
 // The overview map; clicking it moves the view (which stops following the swarm).
@@ -28,6 +33,7 @@ let restartTimer = 0; // a settings change waiting to rebuild the run (0 = none)
 let firstFrame = true;
 
 const settings = buildSettings($("settings_body"), onSettingChange);
+if (Object.keys(link.settings).length) settings.apply(link.settings);
 renderIcons($("settings_body"));
 renderIcons($("coords"));
 const inspector = new Inspector({
@@ -130,6 +136,7 @@ function updatePlaybackOptions() {
 
 function onSettingChange() {
   if (state === "loading") return;
+  syncAddress();
   updatePlaybackOptions();
   if (state === "ready") {
     clearTimeout(restartTimer);
@@ -261,9 +268,19 @@ $("examples_menu").addEventListener("keydown", (e) => {
 client.on("ready", (list) => {
   algorithms = list;
   $("algorithm").innerHTML = list.map((a) => `<option value="${a.key}">${a.name}</option>`).join("");
+  const asked = list.find((a) => a.key === link.algorithm);
+  if (asked) {
+    $("algorithm").value = asked.key;
+    if (asked.sequential_only) settings.set("scheduler", "sequential", false);
+  }
   updateExamples();
+  updatePlaybackOptions();
+  const speed = link.speed === "max" ? "Infinity" : link.speed;
+  if (speed && [...$("playback").options].some((o) => o.value === speed)) $("playback").value = speed;
   $("loading_text").textContent = "Building the swarm…";
   newRun();
+  if (link.links && !$("links").hidden) setLinks(true); // who sees whom, asked for by the link
+  syncAddress(); // a link with values the page could not use shows what it did use
 });
 
 /* ------------------------------------------------------- swarm-size trace */
@@ -345,7 +362,13 @@ client.on("frame", (f) => {
   renderer.options.walk = f.walk ?? null;
   if (f.trace) trace.points = f.trace;
   updateCaption(f);
-  if (fitPending) { fitPending = false; fitToStart(f); }
+  if (fitPending) {
+    fitPending = false;
+    fitToStart(f);
+    // Embedded: start from the fitted view, then keep the swarm centred and in view as it moves, zooming
+    // out if it spreads but never in past the start (a gathering stays the size it was, in the middle).
+    if (embedded) { renderer.resetView(); renderer.followCap = 1; renderer.setFollow(true); }
+  }
   renderer.setFrame(f);
   if (firstFrame) { firstFrame = false; $("loading").hidden = true; resolveReady(); }
   if (f.lastEvent) showLastEvent(f.lastEvent);
@@ -353,6 +376,8 @@ client.on("frame", (f) => {
   if (f.stop !== "running" && state !== "ended" && state !== "loading") {
     client.stopPulling(); // the run is over: nothing new to fetch or draw
     setState("ended");
+    // An embedded demo asked to loop starts again after a moment (unless the reader has reset it meanwhile).
+    if (link.loop) setTimeout(() => { if (state === "ended" && newRun({ quiet: true })) play(); }, 2500);
   }
   inspector.refresh();
   updateHud(state !== "running");
@@ -502,6 +527,7 @@ $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
 $("algorithm").addEventListener("change", () => {
   updateExamples();
+  syncAddress();
   // An algorithm that only works under the sequential scheduler (SqGathering)
   // switches it on, rather than failing with the async default.
   const a = algorithms.find((x) => x.key === $("algorithm").value);
@@ -515,6 +541,7 @@ $("algorithm").addEventListener("change", () => {
   else newRun();
 });
 $("playback").addEventListener("change", () => {
+  syncAddress();
   const speed = playbackSpeed();
   client.speed(speed);
   if (typeof speed !== "object") {  // not played a turn at a time any more: drop the turn caption and marks at once
@@ -547,6 +574,12 @@ function updateInsets() {
   const settingsRect = visible("settings"), tools = visible("tools"), legend = visible("legend");
   // The overview map sits just left of the view tools, in the bottom right corner.
   if (tools && tools.height > tools.width) $("overview").style.right = `${Math.round(innerWidth - tools.left + 8)}px`;
+  if (embedded) {
+    // Embedded: the robots use the whole box below the buttons, above the caption when there is one.
+    const caption = visible("turn_caption");
+    renderer.setInsets({ left: 0, right: 0, top: toolbar ? toolbar.bottom : 0, bottom: caption ? innerHeight - caption.top + 8 : 8 });
+    return;
+  }
   if (innerWidth <= 760) {
     // Phones: the settings sheet floats over the view instead of narrowing it.
     const bottomEdge = Math.min(tools ? tools.top : innerHeight, legend ? legend.top : innerHeight);
@@ -573,6 +606,7 @@ function toggleOverview() {
   updateInsets();
   renderer.requestDraw();
 }
+if (!link.grid) { renderer.options.grid = false; $("grid").setAttribute("aria-pressed", "false"); } // grid=0 in the link
 function toggleGrid() {
   renderer.options.grid = !renderer.options.grid;
   $("grid").setAttribute("aria-pressed", String(renderer.options.grid));
@@ -610,9 +644,35 @@ function toggleLinks() {
 
 $("export").addEventListener("click", (e) => { e.stopPropagation(); openExamples(false); $("export_menu").hidden = !$("export_menu").hidden; });
 document.addEventListener("click", () => { $("export_menu").hidden = true; openExamples(false); });
-for (const b of document.querySelectorAll("[data-export]")) {
-  b.addEventListener("click", () => (b.dataset.export === "png" ? exportPng() : exportCsv()));
+// Links to the current case: the full page, or the iframe code for another web page (embed.js).
+const caseQuery = (speed = $("playback").value) => linkQuery({ values: settings.values, algorithm: $("algorithm").value, playback: speed, points: settings.customPoints });
+const embedDialog = buildEmbedDialog({
+  query: caseQuery,
+  speeds: () => [...$("playback").options].map((o) => [o.value, o.text]),
+  speed: () => $("playback").value,
+}, toast);
+renderIcons($("embed_dialog"));
+window.lcm.caseLink = () => `${pageAddress()}?${caseQuery()}`;
+// The address bar follows the case on screen, so reloading the page or copying its address keeps the
+// case (a link it was opened with does not go stale). An embedded demo leaves its address alone.
+let addressTimer = 0;
+function syncAddress() {
+  if (embedded) return;
+  clearTimeout(addressTimer);
+  addressTimer = setTimeout(() => {
+    const query = caseQuery();
+    const plain = query === `algorithm=${algorithms[0]?.key}`; // nothing but the defaults: a clean address
+    const url = plain || query.length > 8000 ? pageAddress() : `${pageAddress()}?${query}`; // (thousands of typed points: too long)
+    try { history.replaceState(null, "", url + location.hash); } catch {}
+  }, 250);
 }
+window.lcm.embedDialog = embedDialog;
+async function copyCaseLink() {
+  if (await copyText(window.lcm.caseLink())) toast("Link copied: it opens the simulator with these settings");
+  else toast("Could not copy: the browser did not allow it", true);
+}
+const EXPORTS = { png: () => exportPng(), csv: () => exportCsv(), link: copyCaseLink, embed: () => embedDialog.open() };
+for (const b of document.querySelectorAll("[data-export]")) b.addEventListener("click", EXPORTS[b.dataset.export]);
 
 function fileStem() {
   const c = config();
@@ -642,12 +702,12 @@ async function exportCsv() {
 const THEMES = ["system", "light", "dark"];
 const media = matchMedia("(prefers-color-scheme: dark)");
 function currentTheme() { try { return localStorage.getItem("lcm-theme") || "system"; } catch { return "system"; } }
-function applyTheme(t) {
+function applyTheme(t, save = true) {
   if (t === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
   const dark = t === "dark" || (t === "system" && media.matches);
   document.documentElement.dataset.resolvedTheme = dark ? "dark" : "light";
-  try {
+  if (save) try {
     localStorage.setItem("lcm-theme", t);
     localStorage.setItem("darkMode", String(dark)); // shared with docs.html
   } catch {}
@@ -658,7 +718,8 @@ function applyTheme(t) {
 function cycleTheme() { applyTheme(THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]); }
 $("theme").addEventListener("click", cycleTheme);
 media.addEventListener("change", () => { if (currentTheme() === "system") applyTheme("system"); });
-applyTheme(currentTheme());
+// A theme in the link is for this page only: it does not change the reader's choice for the simulator.
+applyTheme(link.theme ?? currentTheme(), !link.theme);
 
 /* ---------------------------------------------- canvas: pan, zoom, pick */
 const canvas = $("canvas");
@@ -732,11 +793,13 @@ function toggleMeasure() { setMeasure(!measure.on); }
 $("measure").addEventListener("click", toggleMeasure);
 window.lcm.measure = measure;
 canvas.addEventListener("wheel", (e) => {
+  if (embedded && !e.ctrlKey) return; // inside another page the wheel scrolls that page; Ctrl + wheel zooms
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
   renderer.zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
 }, { passive: false });
 new ResizeObserver(() => { renderer.resize(); updateInsets(); }).observe($("stage"));
+if (embedded) new ResizeObserver(updateInsets).observe($("turn_caption")); // the caption comes and goes
 updateInsets();
 renderer.resetView();
 
@@ -754,6 +817,8 @@ window.addEventListener("keydown", (e) => {
     else inspector.select(-1);
     return;
   }
+  if (embedded && e.key !== " ") return; // embedded: Space plays and pauses, nothing else
+  if (!$("embed_dialog").hidden) return; // the embed window is open: keys are for it
   const typing = e.target.closest?.("input, select, textarea");
   if (settings.editor.isOpen || typing || e.ctrlKey || e.metaKey || e.altKey) return;
   // Space/Enter on a focused button already clicks it; don't toggle twice.
@@ -791,3 +856,8 @@ function toast(message, error = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, error ? 8000 : 2500);
 }
+
+/* ------------------------------------------------------------------ embed */
+// Embedded in another page: play by itself the first time it is scrolled into view; after that the
+// play button is the reader's.
+if (link.autoplay) window.lcm.ready.then(() => whenFirstSeen(() => { if (state === "ready") play(); }));
