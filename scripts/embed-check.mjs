@@ -131,9 +131,9 @@ for (const [id, algorithm, robots] of DEMOS) {
   const going = await until(`["running", "paused", "ended"].includes(${w}?.lcm?.state)`, 15000);
   await sleep(4000);
   await shot(`embed-${algorithm}`);
-  const got = await js(`({ algorithm: ${w}.document.getElementById("algorithm").value, robots: ${w}.lcm.renderer.frame.flags.length, time: ${w}.lcm.stats.time, state: ${w}.lcm.state })`);
-  check(`embed: the ${algorithm} demo starts when scrolled to and runs ${robots} robots`,
-    going && got.algorithm === algorithm && got.robots === robots && got.time > 0, JSON.stringify(got));
+  const got = await js(`({ algorithm: ${w}.document.getElementById("algorithm").value, playback: ${w}.document.getElementById("playback").value, robots: ${w}.lcm.renderer.frame.flags.length, time: ${w}.lcm.stats.time, state: ${w}.lcm.state })`);
+  check(`embed: the ${algorithm} demo starts when scrolled to and runs ${robots} robots (at 20× unless its link says)`,
+    going && got.algorithm === algorithm && got.robots === robots && got.time > 0 && got.playback === (algorithm === "GoToCenter" || algorithm === "SqGathering" ? "turn:1" : "20"), JSON.stringify(got));
 }
 
 // ── on a phone ─────────────────────────────────────────────────────────────
