@@ -371,3 +371,18 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
   .field select, .field input[type="number"] { height: 36px; }
   input[type="range"] { height: 28px; }
 }
+
+/* Embedded in another page (?embed, see embed.js): the robots and the chosen buttons only. */
+body.embed :is(#settings, #hud, #inspector, #legend, #tools, #overview, #examples_menu, #export_menu, #dirty) { display: none !important; }
+body.embed #toolbar > :is(.brand, #algorithm, #examples, .divider, #toggle_settings, #docs_link, #play, #step_event, #step_time, #reset, #playback) { display: none; }
+body.embed.embed-play #toolbar > #play,
+body.embed.embed-step #toolbar > :is(#step_event, #step_time),
+body.embed.embed-reset #toolbar > #reset,
+body.embed.embed-speed #toolbar > #playback { display: inline-flex; }
+body.embed #toolbar { top: 8px; left: 8px; right: auto; padding: 4px; flex-wrap: nowrap; }
+body.embed #toolbar .label { display: none; }
+/* A finger on the demo scrolls the page around it (the mouse still drags the view). */
+body.embed #canvas { touch-action: pan-x pan-y pinch-zoom; }
+body.embed #turn_caption { left: 8px; bottom: 8px; width: min(440px, calc(100vw - 16px)); padding: 7px 10px; font-size: 12.5px; }
+#embed_open { position: fixed; top: 8px; right: 8px; padding: 6px 10px; font-size: 12px; color: var(--text-2); text-decoration: none; z-index: 6; }
+#embed_open:hover { color: var(--accent); }

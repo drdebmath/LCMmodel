@@ -12,9 +12,14 @@ import { Inspector } from "./inspector.js";
 import { Overview } from "./overview.js";
 import { buildSettings, readConfig } from "./settings.js";
 import { parseCoordinates, startOutline } from "./start.js";
+import { readLink, setUpEmbed, whenFirstSeen } from "./embed.js";
 
 const $ = (id) => document.getElementById(id);
 renderIcons();
+// A run described by the page's link, and the small embed version of the page (embed.js).
+const link = readLink(location.search);
+const embedded = link.embed;
+if (embedded) setUpEmbed(link);
 
 const renderer = new Renderer($("canvas"));
 // The overview map; clicking it moves the view (which stops following the swarm).
@@ -28,6 +33,7 @@ let restartTimer = 0; // a settings change waiting to rebuild the run (0 = none)
 let firstFrame = true;
 
 const settings = buildSettings($("settings_body"), onSettingChange);
+if (Object.keys(link.settings).length) settings.apply(link.settings);
 renderIcons($("settings_body"));
 renderIcons($("coords"));
 const inspector = new Inspector({
@@ -261,7 +267,15 @@ $("examples_menu").addEventListener("keydown", (e) => {
 client.on("ready", (list) => {
   algorithms = list;
   $("algorithm").innerHTML = list.map((a) => `<option value="${a.key}">${a.name}</option>`).join("");
+  const asked = list.find((a) => a.key === link.algorithm);
+  if (asked) {
+    $("algorithm").value = asked.key;
+    if (asked.sequential_only) settings.set("scheduler", "sequential", false);
+  }
   updateExamples();
+  updatePlaybackOptions();
+  const speed = link.speed === "max" ? "Infinity" : link.speed;
+  if (speed && [...$("playback").options].some((o) => o.value === speed)) $("playback").value = speed;
   $("loading_text").textContent = "Building the swarm…";
   newRun();
 });
@@ -642,12 +656,12 @@ async function exportCsv() {
 const THEMES = ["system", "light", "dark"];
 const media = matchMedia("(prefers-color-scheme: dark)");
 function currentTheme() { try { return localStorage.getItem("lcm-theme") || "system"; } catch { return "system"; } }
-function applyTheme(t) {
+function applyTheme(t, save = true) {
   if (t === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
   const dark = t === "dark" || (t === "system" && media.matches);
   document.documentElement.dataset.resolvedTheme = dark ? "dark" : "light";
-  try {
+  if (save) try {
     localStorage.setItem("lcm-theme", t);
     localStorage.setItem("darkMode", String(dark)); // shared with docs.html
   } catch {}
@@ -658,7 +672,8 @@ function applyTheme(t) {
 function cycleTheme() { applyTheme(THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]); }
 $("theme").addEventListener("click", cycleTheme);
 media.addEventListener("change", () => { if (currentTheme() === "system") applyTheme("system"); });
-applyTheme(currentTheme());
+// A theme in the link is for this page only: it does not change the reader's choice for the simulator.
+applyTheme(link.theme ?? currentTheme(), !link.theme);
 
 /* ---------------------------------------------- canvas: pan, zoom, pick */
 const canvas = $("canvas");
@@ -732,6 +747,7 @@ function toggleMeasure() { setMeasure(!measure.on); }
 $("measure").addEventListener("click", toggleMeasure);
 window.lcm.measure = measure;
 canvas.addEventListener("wheel", (e) => {
+  if (embedded && !e.ctrlKey) return; // inside another page the wheel scrolls that page; Ctrl + wheel zooms
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
   renderer.zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
@@ -754,6 +770,7 @@ window.addEventListener("keydown", (e) => {
     else inspector.select(-1);
     return;
   }
+  if (embedded && e.key !== " ") return; // embedded: Space plays and pauses, nothing else
   const typing = e.target.closest?.("input, select, textarea");
   if (settings.editor.isOpen || typing || e.ctrlKey || e.metaKey || e.altKey) return;
   // Space/Enter on a focused button already clicks it; don't toggle twice.
@@ -791,3 +808,8 @@ function toast(message, error = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, error ? 8000 : 2500);
 }
+
+/* ------------------------------------------------------------------ embed */
+// Embedded in another page: play by itself the first time it is scrolled into view; after that the
+// play button is the reader's.
+if (link.autoplay) window.lcm.ready.then(() => whenFirstSeen(() => { if (state === "ready") play(); }));

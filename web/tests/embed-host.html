@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Embedding the simulator</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px 16px 400px; color: #222; background: #fff; }
+  .tall { height: 1400px; color: #777; }
+  iframe { display: block; width: 100%; height: 420px; border: 1px solid #ccc; border-radius: 8px; }
+  code { background: #f2f2f2; padding: 1px 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<!-- A page like the professor's lecture notes, with simulator demos further down. Used by
+     scripts/embed-check.mjs; also a working example of the iframe code to copy. -->
+<h1>Embedding the simulator</h1>
+<p>Each demo below is an <code>&lt;iframe&gt;</code> of the simulator with <code>?embed</code> in its link. It starts
+playing the first time it is scrolled into view; after that its play button is the reader's.</p>
+<p class="tall">(Text of the article…)</p>
+
+<h2>SqGathering, a turn at a time</h2>
+<iframe id="demo_sq" title="SqGathering, a turn at a time" loading="lazy"
+  src="../../?embed&algorithm=SqGathering&robots=6&seed=7&speed=turn:1"></iframe>
+
+<h2>Go-To-Center on a chain of three robots</h2>
+<iframe id="demo_gtc" title="Go-To-Center on a chain of three robots" loading="lazy"
+  src="../../?embed&controls=play,reset,speed&algorithm=GoToCenter&points=-80,10;0,0;95,-5&visibility=100&scheduler=sequential&turn_gap=none&robot_speeds=10&speed=turn:1&theme=dark"></iframe>
+</body>
+</html>
