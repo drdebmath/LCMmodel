@@ -16,8 +16,8 @@
 <!-- A page like the professor's lecture notes, with one simulator demo per algorithm further down.
      Used by scripts/embed-check.mjs; also a working example of the iframe code to copy. -->
 <h1>Embedding the simulator</h1>
-<p>Each demo below is an <code>&lt;iframe&gt;</code> of the simulator with <code>?embed</code> in its link. It starts
-playing the first time it is scrolled into view; after that its play button is the reader's.</p>
+<p>Each demo below is an <code>&lt;iframe&gt;</code> of the simulator with <code>?embed</code> in its link. It shows play/pause and reset, starts
+playing the first time it is scrolled into view, and after that its play button is the reader's.</p>
 <p class="tall">(Text of the article…)</p>
 
 <h2>Gathering</h2>
@@ -37,7 +37,7 @@ playing the first time it is scrolled into view; after that its play button is t
 
 <h2>Go-To-Center on a chain of three robots</h2>
 <p class="see">Limited sight (100): each robot sees only its neighbour. One robot at a time, a turn per second.
-This one also has reset and speed buttons, and the dark theme.</p>
+This one also has the speed menu, and the dark theme.</p>
 <iframe id="demo_gtc" title="Go-To-Center on a chain of three robots" loading="lazy"
   src="../../?embed&controls=play,reset,speed&algorithm=GoToCenter&points=-80,10;0,0;95,-5&visibility=100&scheduler=sequential&turn_gap=none&robot_speeds=10&speed=turn:1&theme=dark"></iframe>
 

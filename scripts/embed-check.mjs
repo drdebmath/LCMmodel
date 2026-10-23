@@ -1,6 +1,6 @@
 // The simulator set up from its link, and embedded in another page, in headless Chrome:
 //  - a link sets the algorithm, settings, exact starting points and speed; the page does not start by itself;
-//  - in an <iframe> with ?embed only the chosen buttons show (play/pause by default), with a link
+//  - in an <iframe> with ?embed only the chosen buttons show (play/pause and reset by default), with a link
 //    to the full page; it starts playing the first time it is scrolled into view, and only then;
 //  - the wheel and a finger scroll the article, not the demo; only Space works as a key;
 //  - a theme in the link does not change the reader's own choice; the demo fits a phone.
@@ -72,14 +72,18 @@ await sleep(1500);
 await shot("embed-sq-desktop");
 const ui = await js(`(() => {
   const d = ${sqWin}.document, shown = (id) => { const e = d.getElementById(id); return !!e && getComputedStyle(e).display !== "none" && !e.hidden; };
-  return { play: shown("play"), others: ["algorithm", "examples", "step_event", "step_time", "reset", "playback", "toggle_settings", "docs_link", "settings", "hud", "tools", "legend", "overview"].filter(shown),
+  return { play: shown("play") && shown("reset"), others: ["algorithm", "examples", "step_event", "step_time", "playback", "toggle_settings", "docs_link", "settings", "hud", "tools", "legend", "overview"].filter(shown),
     caption: shown("turn_caption"), open: d.getElementById("embed_open")?.href ?? "" };
 })()`);
-check("embed: only play/pause shows by default (and the turn caption)", ui.play && !ui.others.length && ui.caption, JSON.stringify(ui));
+check("embed: only play/pause and reset show by default (and the turn caption)", ui.play && !ui.others.length && ui.caption, JSON.stringify(ui));
 const open = new URL(ui.open || "http://x/");
 check("embed: 'Open in simulator' opens the same case in the full page",
   open.searchParams.get("algorithm") === "SqGathering" && open.searchParams.get("robots") === "6" && !open.searchParams.has("embed"), ui.open);
 
+await js(`${sqWin}.document.getElementById("reset").click()`);
+check("embed: reset starts the case again from the beginning", await until(`${sqWin}.lcm.state === "ready" && ${sqWin}.lcm.stats.time === 0`, 3000), await stateOf(sqWin));
+await js(`${sqWin}.document.getElementById("play").click()`);
+check("embed: the play button plays it", await until(`${sqWin}.lcm.state === "running"`, 3000));
 await js(`${sqWin}.document.getElementById("play").click()`);
 check("embed: the play button pauses it", await until(`${sqWin}.lcm.state === "paused"`, 3000));
 await js("window.scrollTo(0, 0)");

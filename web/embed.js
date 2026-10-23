@@ -6,12 +6,13 @@
  *
  * Any setting can be given by its key (docs/core-schema.md, and the list in settings.js), plus a few
  * short names: robots, seed, visibility (a radius; turns unlimited visibility off) and points
- * ("x,y;x,y;…", the robots' exact starting positions). Embed mode shows only play/pause unless
- * `controls` lists more (play, reset, step, speed); it starts playing the first time it is seen. */
+ * ("x,y;x,y;…", the robots' exact starting positions). Embed mode shows only play/pause and reset
+ * unless `controls` lists others (play, reset, step, speed); it starts playing the first time it is seen. */
 import { SETTINGS } from "./settings.js";
 
 const ALIASES = { robots: "num_of_robots", seed: "random_seed" };
 const CONTROLS = ["play", "reset", "step", "speed"];
+const DEFAULT_CONTROLS = ["play", "reset"];
 const KEYS = new Set(SETTINGS.map((s) => s.key));
 const kindOf = Object.fromEntries(SETTINGS.map((s) => [s.key, s.kind]));
 
@@ -34,14 +35,14 @@ export function readLink(search) {
   for (const s of SETTINGS) if (s.key in given) settings[s.key] = given[s.key];
 
   const embed = q.has("embed") && q.get("embed") !== "0";
-  const controls = (q.get("controls") ?? "play").split(",").map((c) => c.trim()).filter((c) => CONTROLS.includes(c));
+  const controls = (q.get("controls") ?? DEFAULT_CONTROLS.join(",")).split(",").map((c) => c.trim()).filter((c) => CONTROLS.includes(c));
   return {
     settings,
     algorithm: q.get("algorithm"),
     speed: q.get("speed"),
     theme: ["light", "dark"].includes(q.get("theme")) ? q.get("theme") : null,
     embed,
-    controls: controls.length ? controls : ["play"],
+    controls: controls.length ? controls : DEFAULT_CONTROLS,
     autoplay: embed && q.get("autoplay") !== "0",
   };
 }
