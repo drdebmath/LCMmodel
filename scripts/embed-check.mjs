@@ -172,7 +172,7 @@ const SIZE_DEMOS = {
   SqGathering: "algorithm=SqGathering&robots=6&seed=7&speed=turn:0.25",
   SEC: "algorithm=SEC&robots=12&seed=2",
 };
-for (const [name, query] of Object.entries(SIZE_DEMOS)) for (const [bw, bh] of [[240, 180], [320, 240], [900, 220], [280, 560]]) {
+for (const [name, query] of Object.entries(SIZE_DEMOS)) for (const [bw, bh] of [[240, 180], [320, 240], [500, 500], [900, 220], [280, 560]]) {
   await navigate(`${base}/web/tests/smoke.html`);
   await until("document.readyState === 'complete'", 10000);
   await js(`document.body.innerHTML = '<iframe id="box" style="width:${bw}px;height:${bh}px" src="${base}/?embed&${query}"></iframe>'`);
