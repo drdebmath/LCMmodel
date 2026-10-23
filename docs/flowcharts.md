@@ -1011,7 +1011,7 @@ pub fn fill_frame(
 }
 ```
 
-`draw` — [`web/renderer.js:452`](../web/renderer.js#L452)
+`draw` — [`web/renderer.js:462`](../web/renderer.js#L462)
 
 ```js
 draw(ctx = this.ctx, dpr = this.dpr) {
