@@ -2,7 +2,7 @@
 //!
 //! No DOM, file I/O, threads or GPU: the same code runs natively and inside a
 //! browser worker. The contract is `docs/core-schema.md`; the behavioural
-//! reference is the Python simulator in the repository root.
+//! reference is the original Python simulator, whose recorded runs are in `fixtures/`.
 
 mod algorithm;
 mod config;

@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Tests (core, algorithms, Python parity fixtures, CLI)
+      - name: Tests (core, algorithms, recorded-run parity fixtures, CLI)
         run: cargo test --workspace
       - name: Lints (reported, not enforced)
         run: |
@@ -70,7 +70,7 @@ jobs:
           bash scripts/ci-check.sh "SqGathering trace parity (rebuilt web/pkg)" node scripts/check-seq-parity.mjs
 
       - name: Flowcharts match the code
-        run: bash scripts/ci-check.sh "Flowcharts match the code" python3 scripts/gen-flowcharts.py --check
+        run: bash scripts/ci-check.sh "Flowcharts match the code" node scripts/gen-flowcharts.mjs --check
 
       # Each browser check runs even if an earlier one failed, so one run
       # reports every problem at once.

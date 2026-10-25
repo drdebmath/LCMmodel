@@ -1,4 +1,4 @@
-//! Plane geometry the core needs, with the exact arithmetic of `robot.py`.
+//! Plane geometry the core needs, with the exact arithmetic of the original simulator.
 //! Algorithm-specific geometry lives with the algorithms.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

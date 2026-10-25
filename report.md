@@ -40,9 +40,9 @@
 
 | File                                         |    Lines | Role                                                                    |
 | -------------------------------------------- | -------: | ----------------------------------------------------------------------- |
-| `robot.py`                                   |      945 | Robot state machine, geometry, 6 algorithms, faults, lights             |
-| `scheduler.py`                               |      459 | Discrete-event scheduler (heap), fault assignment, termination, TwoTask |
-| `run.py`                                     |      174 | JS↔Python bridge (JSON in/out), limits of 10,000 events / time 1,000    |
+| Python robot module (since removed)          |      945 | Robot state machine, geometry, 6 algorithms, faults, lights             |
+| Python scheduler module (since removed)      |      459 | Discrete-event scheduler (heap), fault assignment, termination, TwoTask |
+| Python run module (since removed)            |      174 | JS↔Python bridge (JSON in/out), limits of 10,000 events / time 1,000    |
 | `main.js`, `index.html`                      | 393, 215 | UI, Canvas2D drawing, Pyodide loader                                    |
 | `pyodide/`                                   |    16 MB | Vendored Pyodide + numpy                                                |
 | `static/`, `requirements.txt`, `config.json` |        – | Leftovers of an older Flask/SocketIO version (unused)                   |
@@ -51,7 +51,7 @@ Algorithms: Gathering (centre of gravity), SEC (smallest enclosing circle, Welzl
 
 ### 2.2 Why the current version is slow
 
-1. **One event per animation frame:** `simStep()` handles a single event per `requestAnimationFrame`, capping the browser at ~60 events/s. Combined with the 10,000-event limit in `run.py`, runs with more than a few robots never finish in the browser.
+1. **One event per animation frame:** `simStep()` handles a single event per `requestAnimationFrame`, capping the browser at ~60 events/s. Combined with the 10,000-event limit in the Python run module, runs with more than a few robots never finish in the browser.
 2. **O(n²) multiplicity check on every LOOK**, although no algorithm reads its result.
 3. **A log string describing the whole swarm is built on every LOOK.**
 4. **JSON serialisation on every step** across the JS↔Pyodide boundary.
@@ -124,7 +124,7 @@ These were **documented, not changed**; each will be a deliberate decision later
 | 1   | **SEC and GoToCenter crash at ≥ 1,000 robots.** The Welzl routine recurses n deep, hits Python's recursion limit, and the error is caught, so every robot freezes and the run "terminates" having done nothing. | 990 robots: works; 1,000 and 2,000: `maximum recursion depth exceeded` |
 | 2   | **TwoTask never terminates.**                                                                                                                                                                                   | Stopped at 200,000 events (sim time ≈3,500) without ending             |
 | 3   | **Non-rigid movement behaves exactly like rigid.** The WAIT event is scheduled at the full-distance arrival time, so robots always reach their target.                                                          | Forcing rigid behaviour for non-rigid robots changed no test result    |
-| 4   | **Gathering's centre includes crashed robots, but its termination test ignores them.**                                                                                                                          | `robot.py` `_midpoint` / `_midpoint_terminal`                          |
+| 4   | **Gathering's centre includes crashed robots, but its termination test ignores them.**                                                                                                                          | Python `_midpoint` / `_midpoint_terminal`                              |
 | –   | The old canvas sets its size using the device pixel ratio but draws without scaling, so drawings are mis-scaled on high-DPI screens.                                                                            | `main.js` `resizeCanvas`                                               |
 
 ---
@@ -141,17 +141,15 @@ crates/lcm-algorithms/      algorithms + registry (Gathering only for now) + par
 crates/lcm-cli/             native runner and benchmark (`lcm run`, `lcm bench`)
 crates/lcm-wasm/            browser bridge (WebAssembly bindings)
 index.html                  the simulator page (served at the site's main address); its files are in web/
-old/index.html              the original Pyodide page, served at /old/
 web/                        simulator: styles.css, app.js, settings.js, start.js, client.js, worker.js,
                             renderer.js, inspector.js, icons.js, pkg/ (built core + build.json)
                             · flowcharts: docs.html (generated), docs.css, docs.js · index.html: redirect to /
-reference/                  Python harness: portable random generator + fixture generator
 fixtures/                   9 recorded Python runs + 5,000 CPython round() results
-scripts/                    build-wasm.sh, check-wasm-parity.mjs, compare-speed.py, gen-flowcharts.py,
-                            ui-check.mjs, docs-check.mjs, browser-smoke.py, lib/browser.mjs (headless-Chrome driver)
+scripts/                    build-wasm.sh, check-wasm-parity.mjs, gen-flowcharts.mjs, serve.mjs,
+                            ui-check.mjs, docs-check.mjs, lib/browser.mjs (headless-Chrome driver)
 ```
 
-About 6,500 lines of new code, tests and scripts. The original Python files (`robot.py`, `scheduler.py`, `run.py`) are **unchanged**. The original page moved from `index.html` to `old/index.html` with one added line (`<base href="../">`, so it still loads its files from the root), and one line of `main.js` changed so the bundled Pyodide fallback is found from `/old/` too (§5.10).
+About 6,500 lines of new code, tests and scripts. The original Python files were **unchanged** during the port (they and the old Pyodide page have since been removed from the repository; the recorded runs in `fixtures/` remain).
 
 Toolchain: Rust 1.98.1 (+ `wasm32-unknown-unknown`), wasm-bindgen 0.2.129, Node 24.14.1, Python 3.12.3, Google Chrome (headless tests).
 
@@ -171,7 +169,7 @@ It defines:
 ### 5.3 Rust core (`crates/lcm-core`)
 
 - **Python-exact float helpers** (`pyfloat.rs`): `py_sum`, `py_mod`, `py_round`, `pow10_neg`.
-- **Random generator** (`rng.rs`): SplitMix64 with `random`, `uniform`, `exponential`, `integers`, `shuffle` and `choice`. The same generator is implemented in `reference/portable_rng.py`.
+- **Random generator** (`rng.rs`): SplitMix64 with `random`, `uniform`, `exponential`, `integers`, `shuffle` and `choice`. The fixtures were recorded with the same generator.
 - **Event loop** (`sim.rs`): a line-by-line port of `Scheduler.handle_event` and `Robot.look/move/wait`. It covers the Byzantine override, the "only I am visible" termination, omission, the freeze threshold, sub-tick moves, the light cooldown and global termination.
 - **Robot state as arrays** (`robots.rs`), and positions interpolated at the exact look time.
 - **Event queue** (`event.rs`), ordered like Python's heap.
@@ -204,7 +202,7 @@ This first version was replaced by the redesign in §5.8; it is kept here as a r
 - **Live stats:** simulated time, events, events/s, terminated, draw time and fps, worker load.
 - **Theme and layout:** dark mode (shared setting with the old page) and a mobile panel toggle.
 
-### 5.7 Flowcharts (`scripts/gen-flowcharts.py`)
+### 5.7 Flowcharts (`scripts/gen-flowcharts.mjs`)
 
 As in CCMModel, the flowcharts are generated from one set of chart definitions into two outputs, with the code of each function copied straight from the source files, so a chart can never show code that differs from what runs:
 
@@ -305,7 +303,7 @@ The page went through two simplifications after review: the first version (two d
 
 The Python simulator is the reference ("answer key"), because the goal is identical behaviour:
 
-1. `reference/gen_fixtures.py` runs the **unmodified** Python modules. The only substitution is numpy's generator, replaced by the portable one. Each fixture records every event (time, robot, kind, outcome, the robot's position or target, flags) for the first 1,500 events, plus the final state of every robot.
+1. The fixture generator ran the **unmodified** Python modules. The only substitution is numpy's generator, replaced by the portable one. Each fixture records every event (time, robot, kind, outcome, the robot's position or target, flags) for the first 1,500 events, plus the final state of every robot.
 2. The Rust test (`crates/lcm-algorithms/tests/parity.rs`) runs the Rust core with each fixture's settings and seed and requires:
    - identical events for the first 1,500;
    - identical end state for every robot after up to 200,000 events: position, target, state, frozen, terminated, light and distance travelled;
@@ -313,7 +311,7 @@ The Python simulator is the reference ("answer key"), because the goal is identi
 
    Tolerance is 1e-9 relative.
 3. `scripts/check-wasm-parity.mjs` runs every fixture in the browser build and the native build and requires the results to be identical down to the last bit.
-4. `scripts/browser-smoke.py` runs the worker and the full page in headless Chrome with `--disable-gpu`.
+4. The headless-Chrome checks run the worker and the full page with `--disable-gpu`.
 
 Other checks are independent of the Python:
 
@@ -373,7 +371,7 @@ Every event (order, robot, kind, outcome) is the same. The remaining differences
 
 ## 7. Performance
 
-### 7.1 Identical runs: Python vs Rust (`scripts/compare-speed.py`)
+### 7.1 Identical runs: Python vs Rust
 
 Same configuration and same random draws in all three, so the same events and the same result ("same run" is checked). Only the event loop is timed.
 
@@ -463,7 +461,7 @@ The simulation speed was also checked on its own: the core alone runs at 5,632�
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | One `Robot` class holding state, geometry, all algorithms and logging      | Separate engine, algorithms (one file each), browser bridge, page                           |
 | Algorithm lookup table inside `Robot`                                      | Plug-in interface + registry                                                                |
-| Global state in `run.py` (one simulation at a time)                        | `Simulation` objects (any number)                                                           |
+| Global state in the Python run module (one simulation at a time)                        | `Simulation` objects (any number)                                                           |
 | Random generator shared as a class attribute                               | Owned by each simulation                                                                    |
 | One Python object per robot; a new snapshot dictionary per LOOK            | Arrays per property; one reused snapshot buffer                                             |
 | O(n²) multiplicity check and full-swarm log string on every LOOK           | Removed from the hot path (same results)                                                    |
@@ -487,20 +485,17 @@ export PATH=$HOME/.cargo/bin:$PATH
 cargo test --workspace                          # Rust core vs Python, event by event
 cargo build --release -p lcm-cli && ./scripts/build-wasm.sh
 node scripts/check-wasm-parity.mjs              # browser build vs native, bit for bit
-python3 reference/gen_fixtures.py               # regenerate fixtures from the unmodified Python (needs numpy)
 
 # speed
-python3 scripts/compare-speed.py 20 50 100      # identical runs: Python vs Rust native vs browser (needs numpy)
 ./target/release/lcm bench --robots 10000 --seconds 10
 
 # browser (headless Chrome, GPU disabled)
-python3 scripts/browser-smoke.py 10000 5                                # worker only
 node scripts/ui-check.mjs                       # simulator page: 65 checks + screenshots
 node scripts/docs-check.mjs                     # flowchart page and addresses: 19 checks + screenshots
 
 # flowcharts
-python3 scripts/gen-flowcharts.py               # regenerate docs/flowcharts.md and web/docs.html
-python3 scripts/gen-flowcharts.py --check       # fail if they are out of date with the code
+python3 scripts/gen-flowcharts.mjs               # regenerate docs/flowcharts.md and web/docs.html
+python3 scripts/gen-flowcharts.mjs --check       # fail if they are out of date with the code
 
 # side by side, by hand
 python3 -m http.server 8000
@@ -530,7 +525,7 @@ python3 -m http.server 8000
 2. Whether to add the proposed extra verification before stage 3 (recommended).
 3. When to remove the original page and Pyodide (after all algorithms are ported).
 4. Browsers still to test by hand: Firefox, Safari, mobile layout.
-5. ~~The flowchart page's GitHub buttons point to the `rust-core` branch of `imstillsamarth/LCMmodel`; switch `REPO_URL` in `scripts/gen-flowcharts.py` if the code moves.~~ Done: they point to `drdebmath/LCMmodel`, branch `main`.
+5. ~~The flowchart page's GitHub buttons point to the `rust-core` branch of `imstillsamarth/LCMmodel`; switch `REPO_URL` in `scripts/gen-flowcharts.mjs` if the code moves.~~ Done: they point to `drdebmath/LCMmodel`, branch `main`.
 
 ---
 
@@ -560,15 +555,15 @@ Also: `cargo clippy --workspace --all-targets` gave 0 warnings, and `cargo check
 |   # | Test                                                                    | What it checks                                                                                     | Result                                                                      |
 | --: | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 |  11 | `node scripts/check-wasm-parity.mjs`                                    | Browser build vs native build vs Python, 9 fixtures                                                | Pass: event count and end time bit-identical, and both match Python         |
-|  12 | `browser-smoke.py 10000 5` (worker, headless Chrome, GPU off)           | The worker runs 10,000 robots; frames have correct sizes and finite values; the page never freezes | Pass: no errors, 5,008 events/s, worker busy 98 %, longest page pause 10 ms |
-|  13 | `browser-smoke.py 50 60` (worker)                                       | A run that finishes is reported as ended                                                           | Pass: 62,730 events in 0.049 s, 50 / 50 terminated, `stop = ended`          |
+|  12 | Browser smoke test, 10,000 robots, 5 s (worker, headless Chrome, GPU off)           | The worker runs 10,000 robots; frames have correct sizes and finite values; the page never freezes | Pass: no errors, 5,008 events/s, worker busy 98 %, longest page pause 10 ms |
+|  13 | Browser smoke test, 50 robots, 60 s (worker)                                       | A run that finishes is reported as ended                                                           | Pass: 62,730 events in 0.049 s, 50 / 50 terminated, `stop = ended`          |
 |  14 | `page-check.html`, 50 robots, 20×                                       | Full page: stats, drawing, pacing                                                                  | Pass: 60 fps, draw 0.39 ms, simulated time 99.8 after 5 s                   |
 |  15 | `page-check.html`, 2,000 robots, 20×                                    | Heaviest drawing case (outlines and target lines on)                                               | Pass: 62 fps, draw 10.07 ms, 30,450 events/s                                |
 |  16 | `page-check.html`, 10,000 robots, 20×                                   | Target size                                                                                        | Pass: 62 fps, draw 7.43 ms, 5,871 events/s, longest pause 44 ms             |
 |  17 | `page-check.html`, 60 robots, 8 mixed faults, visibility 120, lights on | Colours of every fault type, visibility circles, light rings                                       | Pass (checked on the screenshot)                                            |
 |  18 | `page-check.html?pause=1`, 200 robots                                   | Pause freezes time, Resume continues                                                               | Pass: time 19.9 → 19.9 while paused → 35.7 after 0.8 s at 20×               |
 |  19 | `page-check.html`, 30 robots, Max speed                                 | Run to the end on the full page                                                                    | Pass: 48,566 events in 0.10 s, message "every robot terminated"             |
-|  20 | `scripts/compare-speed.py 20 50 100`                                    | Identical runs in Python, native Rust and browser Rust; same events and end time                   | Pass (same run: yes ×3); timings in §7.1                                    |
+|  20 | Speed comparison, 20 50 100                                    | Identical runs in Python, native Rust and browser Rust; same events and end time                   | Pass (same run: yes ×3); timings in §7.1                                    |
 
 Tests 14–19 used the first version of the page. That page and its test (`web/tests/page-check.html`) were replaced on 30 September by the redesign, whose checks are in A.5.
 
@@ -598,7 +593,7 @@ Tests 14–19 used the first version of the page. That page and its test (`web/t
 | The parity test did not compare lights, frozen flag, target or distance travelled                                                                                                                                                                | Mutation test (light cooldown not caught)   | End-state comparison extended to the full robot state                                               | Same mutation now fails all 9 fixtures               |
 | The browser ran at 1,497 events/s: the worker was idle ≈70 % of the time                                                                                                                                                                         | Browser smoke test vs raw WebAssembly speed | Worker simulates continuously; the page only asks for frames                                        | 5,008 events/s, worker busy 98 %                     |
 | Pause followed by a quick Resume could start two simulation loops                                                                                                                                                                                | Code review of the pacing logic             | Generation counter: an older loop exits                                                             | Pause test (#18)                                     |
-| `compare-speed.py` passed the wrong argument to Node                                                                                                                                                                                             | First run of the script                     | Argument index fixed                                                                                | Test #20                                             |
+| The speed-comparison script passed the wrong argument to Node                                                                                                                                                                                             | First run of the script                     | Argument index fixed                                                                                | Test #20                                             |
 | Main-thread pause measurement included page load                                                                                                                                                                                                 | Page test results (#14–16)                  | Page-load and running pauses measured separately                                                    | 1.5 s at first load only; ≤ 44 ms while simulating   |
 | Measured draw time excluded Chrome's painting                                                                                                                                                                                                    | Suspiciously low 0.6 ms at 10,000 robots    | Timing forces painting to finish (`getImageData`)                                                   | Real cost 7.43 ms (#16)                              |
 | Legend showed "No robots" at the start                                                                                                                                                                                                           | UI check                                    | Legend updated from the draw that counted the colours                                               | Legend check passes                                  |

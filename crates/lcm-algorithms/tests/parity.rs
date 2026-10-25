@@ -1,4 +1,4 @@
-//! Replays the Python fixtures (`reference/gen_fixtures.py`) and requires the
+//! Replays the Python fixtures (`fixtures/`) and requires the
 //! Rust core to take the same steps: same event order, robots, kinds and
 //! outcomes, with times and coordinates equal to within 1e-9 (relative).
 

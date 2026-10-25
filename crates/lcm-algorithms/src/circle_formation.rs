@@ -1,10 +1,10 @@
 //! Uniform Circle Formation: `Robot._circle_formation` / `_circle_terminal`
-//! (Defago & Konagaya 2002; Flocchini et al.), mirroring `robot.py`.
+//! (Defago & Konagaya 2002; Flocchini et al.), mirroring the original simulator.
 //!
 //! Robots arrange at equal angular spacing on a common circle = centroid of the
 //! swarm + mean radius. The reference circle is recomputed from each look, so it
 //! is a smooth, moving target the swarm settles onto (see the note in
-//! `robot.py`: using the live SEC instead makes the centre hop forever).
+//! the original simulator: using the live SEC instead makes the centre hop forever).
 //!   Phase 1: a robot off the circle projects radially onto it.
 //!   Phase 2: a robot on the circle slides tangentially to the angular bisector
 //!            of its two neighbours (local gap-averaging) -> equal spacing.

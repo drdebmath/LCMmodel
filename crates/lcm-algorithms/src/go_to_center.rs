@@ -1,4 +1,4 @@
-//! Go-To-Center: `Robot._go_to_center` / `_gtc_terminal` in `robot.py`.
+//! Go-To-Center: `Robot._go_to_center` / `_gtc_terminal` in the original simulator.
 //!
 //! Ando, Oasa, Suzuki and Yamashita, "Distributed memoryless point convergence
 //! algorithm for mobile robots with limited visibility" (IEEE Trans. Robotics

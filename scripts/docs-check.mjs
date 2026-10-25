@@ -111,16 +111,9 @@ await shot("5-cycle-dark-code");
 await js("document.querySelector('.sim-card').click()");
 check("the button opens the simulator at the site root", await until("location.pathname.endsWith('/') && !location.pathname.includes('/web') && !!window.lcm", 8000));
 
-// Addresses: /web/ (the old link) lands on the simulator at the root; /old/ is the original page.
+// Addresses: /web/ (the old link) lands on the simulator at the root.
 await send("Page.navigate", { url: `${base}/web/#kept` });
 check("the old /web/ link lands on the simulator at the root", await until("!!window.lcm && !location.pathname.includes('/web') && location.hash === '#kept'", 8000));
 check("no errors in the console", consoleErrors.length === 0, consoleErrors.join(" / "));
 
-// The original page tries Pyodide from a CDN first. Blocking the CDN makes the check
-// independent of the internet and tests its fallback, the bundled pyodide/ (found from /old/).
-await send("Network.enable");
-await send("Network.setBlockedURLs", { urls: ["*cdn.jsdelivr.net*"] });
-await send("Page.navigate", { url: `${base}/old/` });
-check("/old/ is the original Pyodide simulator and it finishes loading (bundled Pyodide)", await until(
-  "document.title === 'Asynchronous Simulator' && typeof pythonRunner !== 'undefined' && !!pythonRunner", 90000));
 await finish();

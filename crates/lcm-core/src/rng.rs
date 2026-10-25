@@ -1,7 +1,7 @@
 //! The simulation's only source of randomness (docs/core-schema.md §4).
 //!
-//! `reference/portable_rng.py` implements the same streams in Python; any
-//! change here must be made there too, or the parity fixtures stop matching.
+//! the parity fixtures were recorded with the same streams; any
+//! change here makes them stop matching.
 
 const TWO_POW_M53: f64 = 1.0 / 9_007_199_254_740_992.0;
 

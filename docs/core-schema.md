@@ -11,8 +11,8 @@ and no GPU. It must run 10,000 robots inside a browser Web Worker on the CPU.
 
 ## 1. Reference semantics
 
-The Python simulator (`robot.py`, `scheduler.py`, `run.py` at commit
-`e68bb8f`) is the behavioural reference. The Rust core reproduces its math
+The original Python simulator (commit `e68bb8f`, since removed from the
+repository) is the behavioural reference; its recorded runs are in `fixtures/`. The Rust core reproduces its math
 exactly, including float details that change results:
 
 | Python construct | Rust equivalent (`lcm_core::pyfloat`) |
@@ -71,7 +71,7 @@ JSON form (serde, camelCase is **not** used; names match `main.js params()`):
 | `threshold_precision` | u8 | 1 ..= 15; ε = 10^-p |
 | `random_seed` | u64 | |
 | `multiplicity_detection` | bool | display only; no algorithm reads it (§9) |
-| `max_events`, `max_time` | u64 / f64 or null | safety limits, same semantics as `run.py` (§6) |
+| `max_events`, `max_time` | u64 / f64 or null | safety limits, same semantics as the original simulator (§6) |
 | `open_world` | bool | `true`: no world box, algorithms get no bounds. Default `false` (the original) |
 | `start` | object or null | a generated start (§4.3); null keeps the original start |
 | `scheduler` | string | `async` (the original, default) or `sequential`: one robot at a time does a whole Look-Compute-Move while the rest stay still |
@@ -119,8 +119,7 @@ The position of robot `i` at time `t` is derived, never stored:
 ### 4.1 Generator
 
 One `SplitMix64` stream seeded with `random_seed`, consumed in exactly the
-order Python consumes `self.generator`. The Python reference harness
-(`reference/portable_rng.py`) implements the same generator so fixtures are
+order Python consumes `self.generator`. The recorded fixtures were produced with the same generator, so they are
 reproducible bit for bit.
 
 | Method | Definition |
@@ -161,7 +160,7 @@ In this order:
    draws; `even` placements use no randomness. These starts are new: the Python has
    no equivalent.
 3. Otherwise the original: a **separate** generator seeded with the same seed
-   (Python `run.py` does this) draws all `x = uniform(−W/2, W/2)`, then all
+   (the original simulator does this) draws all `x = uniform(−W/2, W/2)`, then all
    `y = uniform(−H/2, H/2)`, with W, H defaulting to 100.
 
 The world box only places robots and is drawn; robots are never kept inside it.
@@ -206,7 +205,7 @@ sim.write_frame(sim.time(), &mut frame);        // render data (§8)
 
 `advance` is how the browser runs: a frame's budget of events, then render.
 Rendering frequency never changes results. `max_events` / `max_time` apply
-`run.py`'s checks: time is tested before each event, the event counter after
+the original simulator's checks: time is tested before each event, the event counter after
 it is incremented.
 
 `advance` also stops with `Stalled` under the sequential scheduler when a whole
@@ -297,8 +296,8 @@ having done nothing.
 
 ## 10. Parity protocol
 
-`reference/gen_fixtures.py` runs the unmodified Python modules with the
-portable generator and records, per event, `(time, robot, kind, outcome)`
+The fixtures in `fixtures/` were recorded from the original Python simulator,
+unmodified except for a portable random generator, and hold, per event, `(time, robot, kind, outcome)`
 and the acting robot's resulting position, target, state and flags, plus the
 final state. `cargo test -p lcm-algorithms --test parity` runs the Rust core on the settings of every
 fixture and requires identical event kinds, robots and outcomes, and times

@@ -152,7 +152,7 @@ lcm run fixtures/sqgathering/k1_one_multiplicity.json   # the same run, core sum
 `--max-turns N`, `--trace -|FILE.jsonl`, `--format table|json`, `--print-config`. A run stopped by
 a limit reports `INCOMPLETE (budget-limited)` and exits 3; a stalled run exits 4.
 
-**In the browser** (`python scripts/serve.py`, then http://localhost:8000/):
+**In the browser** (`node scripts/serve.mjs`, then http://localhost:8000/):
 - the simulator: Algorithm → *SqGathering*. The scheduler switches to
   Sequential; Settings → Start → *Stacked points* gives κ > 0 starts, Settings → Movement sets δ and
   where robots stop. Multiplicity points are drawn with a ring.
@@ -170,5 +170,5 @@ request.
 | Rust tests (whole workspace) | `cargo test --workspace` |
 | Native vs Wasm, all fixtures and sequential runs (two SqGathering) | `node scripts/check-wasm-parity.mjs` |
 | SqGathering traces: native vs Wasm, batch vs turn by turn | `node scripts/check-seq-parity.mjs` |
-| Flowcharts match the code | `python3 scripts/gen-flowcharts.py --check` |
+| Flowcharts match the code | `node scripts/gen-flowcharts.mjs --check` |
 | Pages in headless Chrome | `node scripts/sqgathering-check.mjs`, `ui-check.mjs`, `responsive-check.mjs`, `docs-check.mjs` |

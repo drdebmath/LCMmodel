@@ -361,7 +361,7 @@ impl SimConfig {
     }
 
     /// World bounds as the robots see them: none in an open world; `0`
-    /// means unbounded (`run.py`'s `or None`).
+    /// means unbounded (the original simulator's `or None`).
     #[must_use]
     pub fn bounds(&self) -> (Option<f64>, Option<f64>) {
         if self.open_world {
@@ -373,7 +373,7 @@ impl SimConfig {
 
     /// Initial positions, in this order: the given list if it has one entry
     /// per robot; a generated start if `start` is set (`start::generate`);
-    /// otherwise uniform in the box from a generator of their own, like `run.py`.
+    /// otherwise uniform in the box from a generator of their own, like the original simulator.
     /// Then, if `multiplicities` is set, robots are stacked onto that many points.
     #[must_use]
     pub fn resolve_positions(&self) -> Vec<Point> {

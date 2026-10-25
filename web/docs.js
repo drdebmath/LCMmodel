@@ -1,6 +1,6 @@
 /* Flowchart page: chart navigation, pan/zoom, hover focus, the step detail
  * panel with highlighted source, and the guided tour. Chart data comes from
- * the JSON block that scripts/gen-flowcharts.py writes into docs.html.
+ * the JSON block that scripts/gen-flowcharts.mjs writes into docs.html.
  * Deep links: docs.html#chart or docs.html#chart/step. */
 import { icon, renderIcons } from "./icons.js";
 

@@ -1,7 +1,7 @@
 //! LCM algorithms and the registry that names them.
 //!
 //! Each algorithm is a port of the matching `Robot._<name>` method pair
-//! (compute + terminal check) in `robot.py`, keeping its operation order.
+//! (compute + terminal check) in the original simulator, keeping its operation order.
 //! Adding an algorithm: implement [`Algorithm`] in a new module and add one
 //! line to [`REGISTRY`]. An entry builds its [`Plan`] from the run's
 //! [`SimConfig`], so an algorithm can use the seed, the robot count and the

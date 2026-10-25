@@ -1,5 +1,5 @@
 //! Smallest Enclosing Circle: `Robot._smallest_enclosing_circle` / `_sec_terminal`.
-//! Welzl 1991, mirroring `robot.py` exactly — including `generator.integers(0, n)`
+//! Welzl 1991, mirroring the original simulator exactly — including `generator.integers(0, n)`
 //! at each recursive step and `round(dist, precision)` containment checks.
 
 use lcm_core::geom::{dist, Circle, Point};
