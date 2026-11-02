@@ -276,6 +276,7 @@ mod tests {
             visibility: f64::INFINITY,
             width_bound: None,
             height_bound: None,
+            multiplicity: lcm_core::MultiplicityModel::Weak,
         }
     }
 

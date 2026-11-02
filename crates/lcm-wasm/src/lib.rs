@@ -24,6 +24,9 @@ pub enum Stop {
     MaxTurns = 6,
     /// Only `advance_to_move` returns it: a robot has just started a move.
     Moved = 7,
+    MaxRounds = 8,
+    /// An `await` schedule waits for the next turn or round (adversary mode).
+    AwaitingSchedule = 9,
 }
 
 impl From<StopReason> for Stop {
@@ -36,6 +39,8 @@ impl From<StopReason> for Stop {
             StopReason::MaxTime => Self::MaxTime,
             StopReason::Stalled => Self::Stalled,
             StopReason::MaxTurns => Self::MaxTurns,
+            StopReason::MaxRounds => Self::MaxRounds,
+            StopReason::AwaitingSchedule => Self::AwaitingSchedule,
         }
     }
 }
@@ -60,6 +65,20 @@ pub fn algorithms() -> String {
         })
         .collect();
     serde_json::Value::Array(list).to_string()
+}
+
+/// Where `config_json`'s settings leave the model its algorithm was designed
+/// or proved for, as a JSON list of sentences (empty inside the model).
+///
+/// # Errors
+/// Malformed JSON.
+#[wasm_bindgen]
+pub fn notes(config_json: &str) -> Result<String, JsError> {
+    let config: SimConfig = serde_json::from_str(config_json)?;
+    Ok(serde_json::to_string(&lcm_algorithms::notes(
+        &config.algorithm,
+        &config,
+    ))?)
 }
 
 #[wasm_bindgen]
@@ -211,6 +230,89 @@ impl WasmSimulation {
         self.sim.sequential()
     }
 
+    /// `frames: "compass"`: each robot's compass deviation from the global
+    /// north, in radians (empty otherwise).
+    #[must_use]
+    pub fn compass(&self) -> js_sys::Float64Array {
+        js_sys::Float64Array::from(self.sim.compass_deviations())
+    }
+
+    /// How many robots see every other robot right now (mutual visibility).
+    #[allow(clippy::cast_precision_loss)]
+    pub fn seeing_everyone(&mut self) -> f64 {
+        self.sim.seeing_everyone() as f64
+    }
+
+    /// k-Async: Looks put off so far because they would have broken the bound.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn deferred_looks(&self) -> f64 {
+        self.sim.deferred_looks() as f64
+    }
+
+    /// SSYNC or FSYNC: robots act in rounds.
+    #[must_use]
+    pub fn in_rounds(&self) -> bool {
+        self.sim.in_rounds()
+    }
+
+    /// SSYNC/FSYNC: rounds begun so far.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn round_count(&self) -> f64 {
+        self.sim.round_count() as f64
+    }
+
+    /// SSYNC/FSYNC: the robots active in the round under way.
+    #[must_use]
+    pub fn round_members(&self) -> js_sys::Uint32Array {
+        let ids: Vec<u32> = self
+            .sim
+            .round_members()
+            .iter()
+            .map(|&i| u32::try_from(i).unwrap_or(u32::MAX))
+            .collect();
+        js_sys::Uint32Array::from(ids.as_slice())
+    }
+
+    /// A schedule ending in `await` has run out: the run waits for the
+    /// adversary's next turn (`push_turn`) or round (`push_round`).
+    #[must_use]
+    pub fn awaiting_schedule(&self) -> bool {
+        self.sim.awaiting_schedule()
+    }
+
+    /// Adds a turn for `robot`, stopped after `stop` of the way (NaN: let it
+    /// arrive, or stop it as the stop policy says).
+    ///
+    /// # Errors
+    /// Not a sequential run with an `await` schedule, no such robot, or a
+    /// stopping point the movement settings do not allow.
+    pub fn push_turn(&mut self, robot: u32, stop: f64) -> Result<(), JsError> {
+        let stop = stop.is_finite().then_some(stop);
+        self.sim.push_turn(robot as usize, stop)?;
+        Ok(())
+    }
+
+    /// Adds a round in which `robots` look and move together.
+    ///
+    /// # Errors
+    /// Not an SSYNC run with `await` rounds, an empty round, or no such robot.
+    pub fn push_round(&mut self, robots: &[u32]) -> Result<(), JsError> {
+        self.sim
+            .push_round(robots.iter().map(|&r| r as usize).collect())?;
+        Ok(())
+    }
+
+    /// Where robot `i` would go if it looked now, `[x, y]`, without changing
+    /// the run; empty if it would not compute (crashed, terminated, …).
+    pub fn preview_target(&mut self, i: u32) -> Box<[f64]> {
+        match self.sim.preview_target(i as usize) {
+            Some(p) => Box::new([p.x, p.y]),
+            None => Box::new([]),
+        }
+    }
+
     /// Sequential scheduler: turns taken so far (one per Look).
     #[must_use]
     #[allow(clippy::cast_precision_loss)]
@@ -218,7 +320,7 @@ impl WasmSimulation {
         self.sim.turn_count() as f64
     }
 
-    /// Sequential scheduler: epochs in which every live robot has had its turn.
+    /// Sequential and SSYNC/FSYNC: epochs in which every live robot has been active.
     #[must_use]
     #[allow(clippy::cast_precision_loss)]
     pub fn epochs_completed(&self) -> f64 {
@@ -260,6 +362,13 @@ impl WasmSimulation {
             kind,
             f64::from(info.outcome.code()),
         ])
+    }
+
+    /// What robot `i` would see and which rule it would apply if it looked
+    /// now, in its algorithm's words (`undefined` if it would not compute or
+    /// the algorithm gives no explanation). Changes nothing about the run.
+    pub fn explain(&mut self, i: u32) -> Option<String> {
+        self.sim.explain(i as usize)
     }
 
     /// Everything known about robot `i` at the current time, as JSON; `null`
@@ -505,4 +614,63 @@ impl WasmSqTrace {
 fn copy<T: Copy>(dst: &mut [T], src: &[T]) {
     let n = dst.len().min(src.len());
     dst[..n].copy_from_slice(&src[..n]);
+}
+
+// ----------------------------------------------------------------- ring
+// GatheRRing on a ring of nodes (crate lcm-ring), for web/ring.html.
+
+/// A ring run, stepped by the page one activation at a time.
+#[wasm_bindgen]
+pub struct WasmRing {
+    sim: lcm_ring::RingSim,
+}
+
+#[wasm_bindgen]
+impl WasmRing {
+    /// `config_json` is a `RingConfig`.
+    ///
+    /// # Errors
+    /// Malformed JSON or an invalid ring.
+    #[wasm_bindgen(constructor)]
+    pub fn new(config_json: &str) -> Result<WasmRing, JsError> {
+        let config: lcm_ring::RingConfig = serde_json::from_str(config_json)?;
+        let sim = lcm_ring::RingSim::new(&config).map_err(|e| JsError::new(&e))?;
+        Ok(Self { sim })
+    }
+
+    /// One activation as JSON (`null` once the run is over).
+    pub fn step(&mut self) -> String {
+        self.sim.step().map_or_else(
+            || "null".to_owned(),
+            |t| serde_json::to_string(&t).unwrap_or_default(),
+        )
+    }
+
+    /// The run now, as JSON: positions, status, counts, the task every robot
+    /// would take, the next robot and what it would do.
+    #[must_use]
+    pub fn state(&self) -> String {
+        let view = self.sim.view();
+        let next = self.sim.next_robot();
+        let (task, mv, rule) = lcm_ring::decide(&view, self.sim.positions[next]);
+        serde_json::json!({
+            "nodes": self.sim.config.nodes,
+            "positions": self.sim.positions,
+            "status": self.sim.status,
+            "epochs": self.sim.epochs,
+            "turns": self.sim.turns,
+            "next": next,
+            "task": task,
+            "rule": rule,
+            "move": match mv {
+                lcm_ring::Move::Stay => 0,
+                lcm_ring::Move::Step(d) => i32::from(d),
+                lcm_ring::Move::Either => 2,
+            },
+            "holes": view.holes,
+            "bound": self.sim.config.nodes.saturating_sub(3),
+            "unsolvable": lcm_ring::unsolvable(&self.sim.config),
+        })
+        .to_string()
+    }
 }

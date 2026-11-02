@@ -9,7 +9,7 @@
 //! the observation recomputed here is exactly the snapshot the robot used,
 //! and the destination it reports is the target the core recorded.
 
-use crate::sq_gathering::{decide, observe, occupancy};
+use crate::sq_gathering::{decide, observe_with, occupancy, Observation};
 use lcm_core::geom::dist;
 use lcm_core::{
     Budget, ConfigError, EventKind, Point, RobotState, SimConfig, Simulation, StopReason,
@@ -112,6 +112,12 @@ impl Tracer {
                 config.algorithm
             )));
         }
+        if config.scheduler != lcm_core::SchedulerKind::Sequential {
+            return Err(ConfigError::Unsupported(
+                "the SqGathering trace follows one robot per turn: it needs scheduler \"sequential\""
+                    .to_owned(),
+            ));
+        }
         let sim = crate::simulation(config)?;
         let eps = sim.model().eps;
         let mut tracer = Self {
@@ -175,10 +181,28 @@ impl Tracer {
         }
     }
 
+    /// Q′(t) of robot `i`: the robots it can see, as its multiplicity
+    /// detection lets it perceive them (in global coordinates).
+    fn observation(&self, before: &[Point], i: usize) -> Observation {
+        let model = self.sim.model();
+        let me = before[i];
+        let mut seen = Vec::with_capacity(before.len());
+        let mut me_index = 0;
+        for (j, &p) in before.iter().enumerate() {
+            if dist(me, p) <= model.visibility {
+                if j == i {
+                    me_index = seen.len();
+                }
+                seen.push(p);
+            }
+        }
+        observe_with(&seen, me_index, self.eps, model.multiplicity)
+    }
+
     fn record(&mut self, before: &[Point], i: usize, epoch: u64) -> Round {
         let eps = self.eps;
         let (_, counts, _) = occupancy(before, eps);
-        let obs = observe(before, i, eps);
+        let obs = self.observation(before, i);
         let decision = decide(&obs);
         let destination = decision.destination(&obs);
         let r = self.sim.robots();

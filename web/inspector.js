@@ -80,5 +80,9 @@ export class Inspector {
       ...(info.circle ? [["Circle", `(${fmt(info.circle[0], 1)}, ${fmt(info.circle[1], 1)}) r ${fmt(info.circle[2], 1)}`]] : []),
     ] : [["", "Loading…"]];
     this.card.querySelector("dl").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+    // The algorithm's own account of this robot's next Compute.
+    const why = this.card.querySelector("[data-field=why]");
+    why.hidden = !info?.why;
+    if (info?.why) why.innerHTML = `<span class="why-head">If it looked now</span>${info.why}`;
   }
 }

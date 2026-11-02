@@ -1,6 +1,8 @@
 //! What an algorithm sees and returns (docs/core-schema.md §7).
 
+use crate::config::MultiplicityModel;
 use crate::geom::{Circle, Point};
+use crate::occupancy::{perceive, Occupied};
 use crate::rng::Rng;
 use crate::robots::RobotState;
 
@@ -15,6 +17,8 @@ pub struct Model {
     pub visibility: f64,
     pub width_bound: Option<f64>,
     pub height_bound: Option<f64>,
+    /// What a robot can tell about points several robots share.
+    pub multiplicity: MultiplicityModel,
 }
 
 /// The robots one robot sees at the instant of its look, in ID order,
@@ -81,6 +85,20 @@ pub struct Look<'a> {
     pub model: &'a Model,
 }
 
+impl Look<'_> {
+    /// The occupied points this robot sees, as its multiplicity detection
+    /// lets it perceive them, and the index of the one it stands on.
+    #[must_use]
+    pub fn occupied(&self) -> (Vec<Occupied>, usize) {
+        perceive(
+            &self.view.pos,
+            self.me_index,
+            self.model.eps,
+            self.model.multiplicity,
+        )
+    }
+}
+
 /// Change to the circle a robot displays (Python `robot.sec`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OverlayUpdate {
@@ -112,6 +130,28 @@ pub trait Algorithm {
     fn key(&self) -> &'static str;
 
     fn compute(&self, look: &Look<'_>, rng: &mut Rng, scratch: &mut Scratch) -> Decision;
+
+    /// The algorithm draws random numbers to decide. A randomized run can
+    /// stand still for an epoch and still move later, so the core's stall
+    /// check (an epoch without progress means nothing will ever change) is
+    /// not applied to it.
+    fn randomized(&self) -> bool {
+        false
+    }
+
+    /// The core terminates a robot that sees no other robot still active
+    /// (the original simulator's rule). An algorithm for which terminated or
+    /// crashed robots are still where the others must go returns false and
+    /// decides termination itself.
+    fn stops_when_alone(&self) -> bool {
+        true
+    }
+
+    /// What the robot sees and the rule it applies to `look`, as sentences
+    /// for the page's inspector. `None`: the algorithm gives no explanation.
+    fn explain(&self, _look: &Look<'_>, _scratch: &mut Scratch) -> Option<String> {
+        None
+    }
 }
 
 /// Colour marking which task a robot was given (TwoTask).

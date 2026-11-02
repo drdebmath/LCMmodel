@@ -23,9 +23,11 @@
 //! occupied point. Points closer than ε (`10^-threshold_precision`) are one.
 
 use lcm_core::geom::dist;
+use lcm_core::occupancy::perceive;
+pub use lcm_core::LocalFrame;
 use lcm_core::{
-    Algorithm, ConfigError, Decision as CoreDecision, Look, OverlayUpdate, Plan, Point, Rng,
-    SchedulerKind, Scratch, SimConfig,
+    Algorithm, ConfigError, Decision as CoreDecision, Look, MultiplicityModel, OverlayUpdate, Plan,
+    Point, Rng, SchedulerKind, Scratch, SimConfig,
 };
 
 /// One element of Q′(t): an occupied point and its multiplicity bit.
@@ -47,63 +49,36 @@ pub struct Observation {
 /// Points closer than this are one location when no ε is given (tests).
 pub const DEFAULT_COINCIDENCE: f64 = 1e-9;
 
-/// Distinct locations of `positions` (first-seen order) and how many robots
-/// stand on each. Robot `i` stands on `groups[owner[i]]`.
-#[must_use]
-#[allow(clippy::cast_possible_truncation)]
-pub fn occupancy(positions: &[Point], tolerance: f64) -> (Vec<Point>, Vec<usize>, Vec<usize>) {
-    // Groups are bucketed in cells of side `tolerance`, so a point only has to
-    // be compared with the groups in its own and the 8 neighbouring cells.
-    // Taking the lowest matching index keeps the first-seen grouping of a
-    // plain linear scan, in O(n) instead of O(n²).
-    let cell = |v: f64| libm::floor(v / tolerance) as i64;
-    let mut buckets: std::collections::HashMap<(i64, i64), Vec<usize>> =
-        std::collections::HashMap::new();
-    let mut groups: Vec<Point> = Vec::new();
-    let mut counts: Vec<usize> = Vec::new();
-    let mut owner = Vec::with_capacity(positions.len());
-    for &p in positions {
-        let (cx, cy) = (cell(p.x), cell(p.y));
-        let mut found: Option<usize> = None;
-        for dx in -1..=1_i64 {
-            for dy in -1..=1_i64 {
-                let key = (cx.saturating_add(dx), cy.saturating_add(dy));
-                for &g in buckets.get(&key).map_or(&[][..], Vec::as_slice) {
-                    if dist(p, groups[g]) <= tolerance && found.is_none_or(|f| g < f) {
-                        found = Some(g);
-                    }
-                }
-            }
-        }
-        if let Some(g) = found {
-            counts[g] += 1;
-            owner.push(g);
-        } else {
-            buckets.entry((cx, cy)).or_default().push(groups.len());
-            owner.push(groups.len());
-            groups.push(p);
-            counts.push(1);
-        }
-    }
-    (groups, counts, owner)
-}
+pub use lcm_core::occupancy::occupancy;
 
 /// What robot `i` observes under weak multiplicity detection, in global
 /// coordinates. Two robots sharing a point and five sharing a point give the
 /// same observation.
 #[must_use]
 pub fn observe(positions: &[Point], i: usize, tolerance: f64) -> Observation {
-    let (groups, counts, owner) = occupancy(positions, tolerance);
+    observe_with(positions, i, tolerance, MultiplicityModel::Weak)
+}
+
+/// What robot `i` observes under `model`. Strong detection gives the same
+/// bits as weak (the rule never needs the count); without detection every
+/// bit is 0, so the robot always takes the κ = 0 branch (Theorem 4).
+#[must_use]
+pub fn observe_with(
+    positions: &[Point],
+    i: usize,
+    tolerance: f64,
+    model: MultiplicityModel,
+) -> Observation {
+    let (points, me) = perceive(positions, i, tolerance, model);
     Observation {
-        points: groups
+        points: points
             .iter()
-            .zip(&counts)
-            .map(|(&at, &c)| Observed {
-                at,
-                multiplicity: c >= 2,
+            .map(|o| Observed {
+                at: o.at,
+                multiplicity: o.multiple,
             })
             .collect(),
-        me: owner[i],
+        me,
     }
 }
 
@@ -274,66 +249,19 @@ pub fn decide(obs: &Observation) -> Decision {
     }
 }
 
-/// A robot's private coordinate system: itself at the origin, its own
-/// rotation, unit length and handedness (no shared chirality).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LocalFrame {
-    pub origin: Point,
-    pub angle: f64,
-    pub scale: f64,
-    pub reflect: bool,
-}
-
-impl LocalFrame {
-    #[must_use]
-    pub const fn global(origin: Point) -> Self {
-        Self {
-            origin,
-            angle: 0.0,
-            scale: 1.0,
-            reflect: false,
-        }
-    }
-
-    #[must_use]
-    pub fn to_local(&self, p: Point) -> Point {
-        let (s, c) = (libm::sin(self.angle), libm::cos(self.angle));
-        let dx = p.x - self.origin.x;
-        let dy = if self.reflect {
-            self.origin.y - p.y
-        } else {
-            p.y - self.origin.y
-        };
-        Point::new(
-            self.scale * (c * dx - s * dy),
-            self.scale * (s * dx + c * dy),
-        )
-    }
-
-    #[must_use]
-    pub fn to_global(&self, p: Point) -> Point {
-        let (s, c) = (libm::sin(self.angle), libm::cos(self.angle));
-        let (x, y) = (p.x / self.scale, p.y / self.scale);
-        let dx = c * x + s * y;
-        let dy = -s * x + c * y;
-        let dy = if self.reflect { -dy } else { dy };
-        Point::new(self.origin.x + dx, self.origin.y + dy)
-    }
-
-    /// The observation as this robot perceives it (same point order).
-    #[must_use]
-    pub fn localize(&self, obs: &Observation) -> Observation {
-        Observation {
-            points: obs
-                .points
-                .iter()
-                .map(|o| Observed {
-                    at: self.to_local(o.at),
-                    multiplicity: o.multiplicity,
-                })
-                .collect(),
-            me: obs.me,
-        }
+/// The observation as a robot with this frame perceives it (same point order).
+#[must_use]
+pub fn localize(frame: &LocalFrame, obs: &Observation) -> Observation {
+    Observation {
+        points: obs
+            .points
+            .iter()
+            .map(|o| Observed {
+                at: frame.to_local(o.at),
+                multiplicity: o.multiplicity,
+            })
+            .collect(),
+        me: obs.me,
     }
 }
 
@@ -341,7 +269,7 @@ impl LocalFrame {
 /// observed points, so it applies unchanged to the global observation.
 #[must_use]
 pub fn decide_in_frame(obs: &Observation, frame: &LocalFrame) -> Decision {
-    decide(&frame.localize(obs))
+    decide(&localize(frame, obs))
 }
 
 /// Algorithm 8 as an algorithm of the core. Stateless: robots are oblivious.
@@ -357,7 +285,12 @@ impl Algorithm for SqGathering {
     /// robot terminates when it sees a single occupied point: everyone is
     /// gathered there, and every robot activated from now on would stay.
     fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision {
-        let obs = observe(&look.view.pos, look.me_index, look.model.eps);
+        let obs = observe_with(
+            &look.view.pos,
+            look.me_index,
+            look.model.eps,
+            look.model.multiplicity,
+        );
         let decision = decide(&obs);
         CoreDecision {
             target: decision.destination(&obs),
@@ -365,26 +298,105 @@ impl Algorithm for SqGathering {
             overlay: OverlayUpdate::Keep,
         }
     }
+
+    fn explain(&self, look: &Look<'_>, _: &mut Scratch) -> Option<String> {
+        let obs = observe_with(
+            &look.view.pos,
+            look.me_index,
+            look.model.eps,
+            look.model.multiplicity,
+        );
+        let d = decide(&obs);
+        let points = obs.points.len();
+        let mut text = format!(
+            "It sees {points} occupied point{}, {} of them stack{} (κ = {}); it stands {} (b = {}).",
+            if points == 1 { "" } else { "s" },
+            d.kappa,
+            if d.kappa == 1 { "" } else { "s" },
+            d.kappa,
+            if d.on_multiplicity { "on a stack" } else { "alone" },
+            u8::from(d.on_multiplicity),
+        );
+        // The rule's description without its "κ = 1, b = 0:" condition, already said above.
+        let rule = d.rule.description();
+        let rule = rule.split_once(": ").map_or(rule, |(_, what)| what);
+        text.push_str(&format!(" So it does this: {rule}."));
+        let to = dist(obs.points[obs.me].at, d.destination(&obs));
+        if to > 0.0 {
+            text.push_str(&format!(" It moves {} units.", crate::num(to)));
+        }
+        if points == 1 {
+            text.push_str(" Only one occupied point: everyone is gathered, so it terminates.");
+        }
+        Some(text)
+    }
 }
 
-/// The registry entry's plan builder: SqGathering needs the paper's model.
+/// The registry entry's plan builder. Theorem 5 holds under any sequential
+/// scheduler with weak multiplicity detection; the asynchronous scheduler and
+/// faulty robots are refused. SSYNC/FSYNC, no multiplicity detection and
+/// limited visibility are allowed to show what the paper says about them
+/// (see [`notes`]).
 ///
 /// # Errors
-/// The asynchronous scheduler, limited visibility, or faulty robots.
+/// The asynchronous scheduler, or faulty robots.
 pub fn plan(config: &SimConfig) -> Result<Plan, ConfigError> {
     let refuse = |message: &str| Err(ConfigError::Unsupported(message.to_owned()));
-    if config.scheduler != SchedulerKind::Sequential {
+    if matches!(
+        config.scheduler,
+        SchedulerKind::Async | SchedulerKind::KAsync
+    ) {
         return refuse(
-            "SqGathering needs the sequential scheduler (Settings → Scheduler → Sequential):              with more than one robot active at once, gathering is unsolvable even with              multiplicity detection (Lemma 8 of the paper)",
+            "SqGathering does not run under this scheduler. Pick the sequential scheduler (Settings → Timing → Scheduler → Sequential), where one robot moves at a time and every robot sees an exact, up-to-date picture. When robots wake up on their own clocks, a robot can act on a picture that is already out of date, and with more than one robot active at once gathering can no longer be guaranteed, even for robots that can see stacks. SSYNC and FSYNC can be chosen as well, to watch what goes wrong when robots act in rounds.",
+        );
+    }
+    if config.num_of_faults > 0 {
+        return refuse("SqGathering is designed for robots that never fail: a faulty robot that crashes or misbehaves can keep the others from ever agreeing on one spot. Set Faulty robots to 0 (Settings → Model → Faults).");
+    }
+    Ok(Plan::single(Box::new(SqGathering)))
+}
+
+/// Where a run's settings leave the model of Theorem 5, and what the paper
+/// says happens there. Empty inside the model.
+#[must_use]
+pub fn notes(config: &SimConfig) -> Vec<String> {
+    let mut notes = Vec::new();
+    match config.scheduler {
+        SchedulerKind::Ssync => notes.push(
+            "Outside the model: SqGathering is designed for one robot at a time, and here robots act in rounds, several at once. When every robot on a stack moves at the same moment, the stack moves as a whole instead of breaking up, so two stacks can keep stepping towards each other without ever merging. No rule can rule this out for every possible choice of who acts in each round, so expect some runs that never gather."
+                .to_owned(),
+        ),
+        SchedulerKind::Fsync => notes.push(
+            "Outside the model: SqGathering is designed for one robot at a time, and here every robot moves in every round. Robots that see the same picture make the same move together, so the outcome depends on the start: some swarms gather, others fall into a pattern that repeats or stops. Rules made for all-at-once timing, such as walking to the centre of the smallest circle around the swarm, handle this case better."
+                .to_owned(),
+        ),
+        _ => {}
+    }
+    if config.multiplicity == MultiplicityModel::Local {
+        notes.push(
+            "Outside the model: with local detection a robot knows whether its own spot is a stack, but it cannot recognise stacks anywhere else. A robot on a stack therefore always stays where it is, and a robot on its own walks to its nearest neighbour, so once two stacks exist they wait for each other forever and never merge. Switch Multiplicity detection to Weak to give the robots what SqGathering expects."
+                .to_owned(),
+        );
+    }
+    if config.multiplicity == MultiplicityModel::None {
+        notes.push(
+            "Outside the model: these robots cannot see stacks at all, so every occupied spot looks like a single robot. Each robot simply walks to its nearest neighbour, and once only two occupied spots are left the scheduler can keep sending robots back and forth between them forever. Gathering cannot be guaranteed this way, even one robot at a time; switch Multiplicity detection to Weak to see the algorithm as it is meant to run."
+                .to_owned(),
         );
     }
     if config.visibility_radius.is_some() {
-        return refuse("SqGathering assumes unlimited visibility: turn on Unlimited visibility");
+        notes.push(
+            "Experimental: SqGathering is designed for robots that see the whole swarm. Here each robot applies the same rule to the robots within its sight radius, which is a natural way to extend it, but nobody knows whether it always gathers this way: it may work, or it may split the swarm into groups that never find each other again. Watch the run to see which happens."
+                .to_owned(),
+        );
     }
-    if config.num_of_faults > 0 {
-        return refuse("SqGathering assumes no faulty robots: set Faulty robots to 0");
+    if config.obstructed_visibility {
+        notes.push(
+            "Experimental: SqGathering is designed for robots that never hide one another. When robots block the view, a robot can miss a stack or a neighbour standing behind another robot and decide on an incomplete picture. Whether the rule still always gathers is not known, so treat this run as an experiment."
+                .to_owned(),
+        );
     }
-    Ok(Plan::single(Box::new(SqGathering)))
+    notes
 }
 
 #[cfg(test)]

@@ -216,7 +216,7 @@ check("async is the default; turn order, pause and epochs only show for sequenti
 await js("lcm.settings.set('scheduler', 'sequential'); lcm.settings.set('num_of_robots', 30); lcm.settings.set('robot_speeds', 10)");
 check("sequential shows the turn order and the pause between turns", (await js(shown("activation_order"))) && (await js(shown("turn_gap"))));
 await js("lcm.settings.set('turn_gap', 'none')");
-check("with no pause between turns, λ is greyed out", await js("document.getElementById('set-lambda_rate').disabled"));
+check("with no pause between turns, λ (which only sets the pauses) is hidden", await js("document.querySelector('[data-key=\"lambda_rate\"]').hidden"));
 await js("lcm.settings.set('turn_gap', 'random'); lcm.settings.set('activation_order', 'random')");
 check("λ sets the random pause", !(await js("document.getElementById('set-lambda_rate').disabled")));
 await until("lcm.state === 'ready' && lcm.renderer.frame.robots === 30", 3000);
@@ -297,6 +297,8 @@ await setPlayback(playback);
 await click("#reset");
 await js("lcm.settings.reset()");
 await until("lcm.state === 'ready' && lcm.renderer.frame.flags.length === 500", 3000);
+await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'CircleFormation'; s.dispatchEvent(new Event('change')); })()`);
+await sleep(300);
 check("the examples menu is hidden for an algorithm without examples", await js("document.getElementById('examples').hidden"));
 check("the allowed region is only drawn for Go-To-Center", (await js("lcm.renderer.options.allowedRegion")) === false);
 await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'GoToCenter'; s.dispatchEvent(new Event('change')); })()`);
@@ -346,7 +348,7 @@ await js("lcm.settings.reset()");
 await until("lcm.state === 'ready' && lcm.settings.values.pattern === 'cloud' && lcm.renderer.frame.flags.length === 500", 3000);
 await setPlayback(playback);
 await js("document.getElementById('links').getAttribute('aria-pressed') === 'true' && document.getElementById('links').click()");
-check("back on Center of Gravity, the examples menu is hidden again", await js("document.getElementById('examples').hidden && document.getElementById('algorithm').value === 'Gathering'"));
+check("back on Center of Gravity, the examples menu shows its own examples", await js("!document.getElementById('examples').hidden && document.getElementById('algorithm').value === 'Gathering' && /FSYNC/.test(document.getElementById('examples_menu').textContent)"));
 
 // Follow the swarm: the view zooms in as the swarm shrinks. It is display only.
 const TWO_ROBOTS = "lcm.settings.apply({ open_world: true, pattern: 'custom', custom: '-300, 0\\n300, 0', scheduler: 'sequential', turn_gap: 'none' })";
@@ -455,8 +457,8 @@ await key("L", "KeyL", 76);
 check("there is no lights button, and L does nothing", await js("!document.getElementById('lights') && lcm.renderer.options.showLights === false"));
 const toolsNow = await js(`(() => { const t = document.getElementById('tools'); const shown = [...t.querySelectorAll('button')].filter((b) => getComputedStyle(b).display !== 'none').map((b) => b.id);
   return { shown, columns: getComputedStyle(t).gridTemplateColumns.split(' ').length, linksHidden: document.getElementById('links').hidden }; })()`);
-check("the view tools are in pairs, two columns, without + and − (those are in the status panel): follow, fit, grid, measure, export, full screen, theme, help",
-  toolsNow.columns === 2 && JSON.stringify(toolsNow.shown) === JSON.stringify(["follow", "fit", "grid", "measure", "export", "fullscreen", "theme", "help"]), JSON.stringify(toolsNow));
+check("the view tools are in two columns, without + and − (those are in the status panel): follow, fit, grid, trails, measure, export, full screen, theme, help",
+  toolsNow.columns === 2 && JSON.stringify(toolsNow.shown) === JSON.stringify(["follow", "fit", "grid", "trails", "measure", "export", "fullscreen", "theme", "help"]), JSON.stringify(toolsNow));
 check("with unlimited sight the who-sees-whom button is hidden, and V does nothing", toolsNow.linksHidden && (await (async () => { await key("V", "KeyV", 86); return js("lcm.renderer.options.links === false"); })()));
 const zoomBefore = await js("(() => { lcm.renderer.resetView(); return lcm.renderer.zoom; })()");
 await click("#hud_zoom_in");
@@ -755,6 +757,25 @@ check("10,000 robots: draw < 16 ms per frame (CPU)", perf.drawWithPaintMs < 16, 
 check("10,000 robots: main thread never blocked > 50 ms", perf.maxPauseMs < 50, `${perf.maxPauseMs.toFixed(1)} ms`);
 check("10,000 robots at Max: simulation keeps the worker busy", maxSpeed.eventsPerSecond > 3000 && maxSpeed.busy > 0.85,
   `${maxSpeed.eventsPerSecond} events/s, worker ${Math.round(maxSpeed.busy * 100)} %, ${maxSpeed.fps} fps`);
+
+// The cleaned-up menu, advanced variants with locked settings, and motion trails.
+await js("document.getElementById('playback').value = '20'; document.getElementById('playback').dispatchEvent(new Event('change'))");
+const menu = await js("[...document.querySelectorAll('#algorithm optgroup')].map((g) => g.label)");
+check("the algorithm menu is in four groups", JSON.stringify(menu) === JSON.stringify(["Original simulator", "Sequential gathering", "Advanced gathering", "Other tasks"]), JSON.stringify(menu));
+await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'advanced'; s.dispatchEvent(new Event('change')); })()`);
+await sleep(600);
+const advanced = await js(`({ card: !document.querySelector('.algo-group').hidden, robots: lcm.settings.values.num_of_robots, frames: lcm.settings.values.frames,
+  locked: [...document.querySelectorAll('.field.frozen')].map((f) => f.dataset.key), reason: document.querySelector('.field[data-key=num_of_robots] .lock-note')?.textContent ?? '' })`);
+check("Advanced gathering shows its card and locks two robots with a compass, with the reason",
+  advanced.card && advanced.robots === 2 && advanced.frames === "compass" && advanced.locked.includes("num_of_robots") && /two robots/.test(advanced.reason), JSON.stringify(advanced));
+await js(`(() => { const s = document.getElementById('algorithm'); s.value = 'Gathering'; s.dispatchEvent(new Event('change')); })()`);
+await sleep(600);
+const plain = await js(`({ card: !document.querySelector('.algo-group').hidden, locked: document.querySelectorAll('.field.frozen').length, frames: lcm.settings.values.frames, robots: lcm.settings.values.num_of_robots })`);
+check("back on Center of Gravity: no card, nothing locked, the user's own values back", !plain.card && plain.locked === 0 && plain.frames === "global" && plain.robots !== 2, JSON.stringify(plain));
+await click("#trails");
+const trailsOff = await js("lcm.renderer.options.trails === false && document.getElementById('trails').getAttribute('aria-pressed') === 'false'");
+await click("#trails");
+check("the trails button turns motion trails off and on", trailsOff && (await js("lcm.renderer.options.trails")));
 
 check("no errors in the console", consoleErrors.length === 0, consoleErrors.join(" / "));
 

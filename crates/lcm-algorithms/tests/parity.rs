@@ -207,7 +207,15 @@ fn every_registered_algorithm_builds() {
             },
             ..SimConfig::default()
         };
-        let mut sim = lcm_algorithms::simulation(&config).unwrap();
+        // Two-robot algorithms refuse the default swarm: build them for two.
+        let mut sim = lcm_algorithms::simulation(&config)
+            .or_else(|_| {
+                lcm_algorithms::simulation(&SimConfig {
+                    num_of_robots: 2,
+                    ..config.clone()
+                })
+            })
+            .unwrap();
         for _ in 0..500 {
             sim.step();
         }

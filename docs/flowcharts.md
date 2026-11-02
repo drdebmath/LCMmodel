@@ -126,7 +126,7 @@ flowchart TD
 | Every live robot terminated? | Crashed and Byzantine robots don't count: the run ends once all the others have terminated. |
 | Ended | advance() returns Ended and the page shows that every robot terminated. |
 
-`advance` — [`crates/lcm-core/src/sim.rs:407`](../crates/lcm-core/src/sim.rs#L407)
+`advance` — [`crates/lcm-core/src/sim.rs:683`](../crates/lcm-core/src/sim.rs#L683)
 
 ```rust
 /// Handles events until the budget, a limit or the end is reached.
@@ -152,7 +152,7 @@ pub fn advance(&mut self, budget: Budget) -> StopReason {
 }
 ```
 
-`step` — [`crates/lcm-core/src/sim.rs:429`](../crates/lcm-core/src/sim.rs#L429)
+`step` — [`crates/lcm-core/src/sim.rs:705`](../crates/lcm-core/src/sim.rs#L705)
 
 ```rust
 /// Handles the next event.
@@ -163,7 +163,7 @@ pub fn step(&mut self) -> StepInfo {
         kind: None,
         outcome: StepOutcome::Ended,
     };
-    if self.ended || self.stalled || self.turn_limit {
+    if self.ended || self.stalled || self.turn_limit || self.round_limit || self.awaiting {
         return ended;
     }
     let Some(event) = self.queue.pop() else {
@@ -208,7 +208,9 @@ pub fn step(&mut self) -> StepInfo {
         self.schedule_activation(t, i);
         return info(StepOutcome::Ignored);
     }
-    if self.robots.terminated[i] {
+    // A round's member that terminated when it computed still has to
+    // finish its Look, which ends its part of the round.
+    if self.robots.terminated[i] && !self.rounds.as_ref().is_some_and(|r| r.decided[i]) {
         return info(StepOutcome::Ignored);
     }
 
@@ -217,7 +219,13 @@ pub fn step(&mut self) -> StepInfo {
             if let Some(turns) = self.turns.as_mut() {
                 turns.taken += 1;
             }
-            self.look(i, t)
+            if self.rounds.is_some() {
+                self.round_look(i, t)
+            } else if self.bounded.is_some() && !self.may_look(i, t) {
+                StepOutcome::Ignored
+            } else {
+                self.look(i, t)
+            }
         }
         EventKind::Wait => {
             self.wait(i, t);
@@ -236,6 +244,9 @@ pub fn step(&mut self) -> StepInfo {
         if let Some(turns) = self.turns.as_mut() {
             turns.progress = true;
         }
+        if let Some(rounds) = self.rounds.as_mut() {
+            rounds.progress = true;
+        }
     }
     if self.globally_terminated() {
         self.ended = true;
@@ -245,7 +256,7 @@ pub fn step(&mut self) -> StepInfo {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:714`](../crates/lcm-core/src/sim.rs#L714)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:1213`](../crates/lcm-core/src/sim.rs#L1213)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -255,6 +266,13 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
     if self.turns.is_some() {
         self.next_turn(previous);
         return;
+    }
+    if self.rounds.is_some() {
+        self.member_done(previous, i);
+        return;
+    }
+    if self.bounded.is_some() {
+        self.cycle_done(previous, i);
     }
     let delay = self.rng.exponential(1.0 / self.lambda);
     let time = previous + delay.max(1e-9);
@@ -273,97 +291,17 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`look` — [`crates/lcm-core/src/sim.rs:539`](../crates/lcm-core/src/sim.rs#L539)
+`look` — [`crates/lcm-core/src/sim.rs:973`](../crates/lcm-core/src/sim.rs#L973)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
 fn look(&mut self, i: usize, t: f64) -> StepOutcome {
-    let me_index = self.build_view(i, t);
-    let r = &mut self.robots;
-    r.state[i] = RobotState::Look;
-    r.set_light(i, Light::Blue, t);
-    let position = r.pos[i];
-
-    if r.fault[i] == FaultKind::Byzantine {
-        let reach = self
-            .view
-            .id
-            .iter()
-            .zip(&self.view.pos)
-            .filter(|(id, _)| **id as usize != i)
-            .map(|(_, p)| dist(position, *p))
-            .fold(None, |best: Option<f64>, d| {
-                Some(best.map_or(d, |b| if d > b { d } else { b }))
-            })
-            .map_or(10.0, |d| d * 0.5);
-        let angle = self.rng.uniform(0.0, 2.0 * std::f64::consts::PI);
-        r.target[i] = Some(Point::new(
-            position.x + reach * libm::cos(angle),
-            position.y + reach * libm::sin(angle),
-        ));
-        r.frozen[i] = false;
-        r.terminated[i] = false;
-    } else {
-        let active = (0..self.view.len())
-            .filter(|&k| !self.view.terminated[k] && self.view.state[k] != RobotState::Crash)
-            .count();
-        if active <= 1 {
-            r.frozen[i] = true;
-            r.terminated[i] = true;
-            self.wait(i, t);
-        } else {
-            let look = Look {
-                me: robot_id_u32(i),
-                me_index,
-                position,
-                view: &self.view,
-                model: &self.model,
-            };
-            let algorithm = &self.algorithms[usize::from(self.robots.algo[i])];
-            let decision = algorithm.compute(&look, &mut self.rng, &mut self.scratch);
-            let r = &mut self.robots;
-            r.target[i] = Some(decision.target);
-            match decision.overlay {
-                OverlayUpdate::Keep => {}
-                OverlayUpdate::Set(c) => r.overlay[i] = Some(c),
-                OverlayUpdate::Clear => r.overlay[i] = None,
-            }
-            if decision.terminate {
-                r.terminated[i] = true;
-            }
-            if r.terminated[i] {
-                self.wait(i, t);
-            } else {
-                let omit = r.fault[i] == FaultKind::Omission && self.rng.random() < 0.5;
-                if omit || dist(decision.target, position) < self.model.eps {
-                    self.robots.frozen[i] = true;
-                    self.wait(i, t);
-                } else {
-                    self.robots.frozen[i] = false;
-                }
-            }
-        }
-    }
-
-    let r = &self.robots;
-    if r.state[i] == RobotState::Crash {
-        return StepOutcome::Crashed;
-    }
-    if r.terminated[i] {
-        if self.turns.is_some() {
-            self.next_turn(t);
-        }
-        return StepOutcome::Terminated;
-    }
-    if r.frozen[i] {
-        self.schedule_activation(t, i);
-        return StepOutcome::Frozen;
-    }
-    self.begin_move(i, t)
+    self.decide(i, t);
+    self.finish_look(i, t)
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:690`](../crates/lcm-core/src/sim.rs#L690)
+`wait` — [`crates/lcm-core/src/sim.rs:1189`](../crates/lcm-core/src/sim.rs#L1189)
 
 ```rust
 /// `Robot.wait`.
@@ -391,7 +329,7 @@ fn wait(&mut self, i: usize, t: f64) {
 }
 ```
 
-`globally_terminated` — [`crates/lcm-core/src/sim.rs:838`](../crates/lcm-core/src/sim.rs#L838)
+`globally_terminated` — [`crates/lcm-core/src/sim.rs:1556`](../crates/lcm-core/src/sim.rs#L1556)
 
 ```rust
 /// `Scheduler._check_global_termination`: every robot that is neither
@@ -500,116 +438,72 @@ flowchart TD
 | Schedule WAIT at arrival | A WAIT event goes in the queue for the moment the robot reaches its target; other robots see it moving until then. |
 | Arrive | At the arrival time the robot is placed exactly on its target, its light turns green, and its next LOOK is scheduled. |
 
-`look` — [`crates/lcm-core/src/sim.rs:539`](../crates/lcm-core/src/sim.rs#L539)
+`look` — [`crates/lcm-core/src/sim.rs:973`](../crates/lcm-core/src/sim.rs#L973)
 
 ```rust
 /// `Robot.look` followed by the LOOK branch of `handle_event`.
 fn look(&mut self, i: usize, t: f64) -> StepOutcome {
-    let me_index = self.build_view(i, t);
-    let r = &mut self.robots;
-    r.state[i] = RobotState::Look;
-    r.set_light(i, Light::Blue, t);
-    let position = r.pos[i];
-
-    if r.fault[i] == FaultKind::Byzantine {
-        let reach = self
-            .view
-            .id
-            .iter()
-            .zip(&self.view.pos)
-            .filter(|(id, _)| **id as usize != i)
-            .map(|(_, p)| dist(position, *p))
-            .fold(None, |best: Option<f64>, d| {
-                Some(best.map_or(d, |b| if d > b { d } else { b }))
-            })
-            .map_or(10.0, |d| d * 0.5);
-        let angle = self.rng.uniform(0.0, 2.0 * std::f64::consts::PI);
-        r.target[i] = Some(Point::new(
-            position.x + reach * libm::cos(angle),
-            position.y + reach * libm::sin(angle),
-        ));
-        r.frozen[i] = false;
-        r.terminated[i] = false;
-    } else {
-        let active = (0..self.view.len())
-            .filter(|&k| !self.view.terminated[k] && self.view.state[k] != RobotState::Crash)
-            .count();
-        if active <= 1 {
-            r.frozen[i] = true;
-            r.terminated[i] = true;
-            self.wait(i, t);
-        } else {
-            let look = Look {
-                me: robot_id_u32(i),
-                me_index,
-                position,
-                view: &self.view,
-                model: &self.model,
-            };
-            let algorithm = &self.algorithms[usize::from(self.robots.algo[i])];
-            let decision = algorithm.compute(&look, &mut self.rng, &mut self.scratch);
-            let r = &mut self.robots;
-            r.target[i] = Some(decision.target);
-            match decision.overlay {
-                OverlayUpdate::Keep => {}
-                OverlayUpdate::Set(c) => r.overlay[i] = Some(c),
-                OverlayUpdate::Clear => r.overlay[i] = None,
-            }
-            if decision.terminate {
-                r.terminated[i] = true;
-            }
-            if r.terminated[i] {
-                self.wait(i, t);
-            } else {
-                let omit = r.fault[i] == FaultKind::Omission && self.rng.random() < 0.5;
-                if omit || dist(decision.target, position) < self.model.eps {
-                    self.robots.frozen[i] = true;
-                    self.wait(i, t);
-                } else {
-                    self.robots.frozen[i] = false;
-                }
-            }
-        }
-    }
-
-    let r = &self.robots;
-    if r.state[i] == RobotState::Crash {
-        return StepOutcome::Crashed;
-    }
-    if r.terminated[i] {
-        if self.turns.is_some() {
-            self.next_turn(t);
-        }
-        return StepOutcome::Terminated;
-    }
-    if r.frozen[i] {
-        self.schedule_activation(t, i);
-        return StepOutcome::Frozen;
-    }
-    self.begin_move(i, t)
+    self.decide(i, t);
+    self.finish_look(i, t)
 }
 ```
 
-`build_view` — [`crates/lcm-core/src/sim.rs:518`](../crates/lcm-core/src/sim.rs#L518)
+`build_view` — [`crates/lcm-core/src/sim.rs:805`](../crates/lcm-core/src/sim.rs#L805)
 
 ```rust
-/// The snapshot robot `i` takes at `t`, filtered by its visibility.
+/// The snapshot robot `i` takes at `t`, filtered by its visibility (and,
+/// with obstructed visibility, by the robots in the way). In a round,
+/// flags are those from the start of the round.
 fn build_view(&mut self, i: usize, t: f64) -> usize {
     let me = self.robots.pos[i];
     let visibility = self.model.visibility;
     let unlimited = visibility == f64::INFINITY;
+    let eps = self.model.eps;
+    if self.snapshot.is_none() && !self.obstructed {
+        // The common case (async and sequential runs): the original loop, kept tight.
+        self.view.clear();
+        let mut me_index = 0;
+        for j in 0..self.robots.len() {
+            let p = self.robots.position_at(j, t, eps);
+            if unlimited || dist(me, p) <= visibility {
+                if j == i {
+                    me_index = self.view.len();
+                }
+                let r = &self.robots;
+                self.view
+                    .push(robot_id_u32(j), p, r.state[j], r.terminated[j], r.frozen[j]);
+            }
+        }
+        return me_index;
+    }
+    if self.obstructed {
+        self.positions.clear();
+        for j in 0..self.robots.len() {
+            self.positions.push(self.robots.position_at(j, t, eps));
+        }
+    }
     self.view.clear();
     let mut me_index = 0;
     for j in 0..self.robots.len() {
-        let p = self.robots.position_at(j, t, self.model.eps);
-        if unlimited || dist(me, p) <= visibility {
-            if j == i {
-                me_index = self.view.len();
-            }
-            let r = &self.robots;
-            self.view
-                .push(robot_id_u32(j), p, r.state[j], r.terminated[j], r.frozen[j]);
+        let p = self.robots.position_at(j, t, eps);
+        if !(unlimited || dist(me, p) <= visibility) {
+            continue;
         }
+        if j != i && self.obstructed && self.hidden(i, me, j, p) {
+            continue;
+        }
+        if j == i {
+            me_index = self.view.len();
+        }
+        let (state, terminated, frozen) = match &self.snapshot {
+            Some(s) => (s.state[j], s.terminated[j], s.frozen[j]),
+            None => {
+                let r = &self.robots;
+                (r.state[j], r.terminated[j], r.frozen[j])
+            }
+        };
+        self.view
+            .push(robot_id_u32(j), p, state, terminated, frozen);
     }
     me_index
 }
@@ -643,7 +537,7 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> Decision {
 }
 ```
 
-`schedule_activation` — [`crates/lcm-core/src/sim.rs:714`](../crates/lcm-core/src/sim.rs#L714)
+`schedule_activation` — [`crates/lcm-core/src/sim.rs:1213`](../crates/lcm-core/src/sim.rs#L1213)
 
 ```rust
 /// `Scheduler.generate_event`: the random delay is drawn even when a
@@ -653,6 +547,13 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
     if self.turns.is_some() {
         self.next_turn(previous);
         return;
+    }
+    if self.rounds.is_some() {
+        self.member_done(previous, i);
+        return;
+    }
+    if self.bounded.is_some() {
+        self.cycle_done(previous, i);
     }
     let delay = self.rng.exponential(1.0 / self.lambda);
     let time = previous + delay.max(1e-9);
@@ -671,7 +572,7 @@ fn schedule_activation(&mut self, previous: f64, i: usize) {
 }
 ```
 
-`begin_move` — [`crates/lcm-core/src/sim.rs:625`](../crates/lcm-core/src/sim.rs#L625)
+`begin_move` — [`crates/lcm-core/src/sim.rs:1124`](../crates/lcm-core/src/sim.rs#L1124)
 
 ```rust
 /// `Robot.move` and the WAIT scheduling that follows it.
@@ -711,7 +612,7 @@ fn begin_move(&mut self, i: usize, t: f64) -> StepOutcome {
 }
 ```
 
-`wait` — [`crates/lcm-core/src/sim.rs:690`](../crates/lcm-core/src/sim.rs#L690)
+`wait` — [`crates/lcm-core/src/sim.rs:1189`](../crates/lcm-core/src/sim.rs#L1189)
 
 ```rust
 /// `Robot.wait`.
@@ -774,7 +675,7 @@ flowchart TD
 
 - The average includes crashed robots, but the termination test ignores them: the original's behaviour, kept on purpose (finding #4 in report.md).
 - The sum is a plain left-to-right loop, as in the Python, so results match to the last digits.
-- Only guaranteed to gather with unlimited visibility. With a limited radius the swarm can stop in several separate groups, all marked terminated: a robot that sees nobody terminates (the original's rule, chart 2), and moving to the average can break visibility links. Algorithms built for limited visibility, such as Go-To-Center (Ando et al.), limit the step length to keep them.
+- Only guaranteed to gather with unlimited visibility. With a limited radius the swarm can stop in several separate groups, all marked terminated: a robot that sees nobody terminates (the original's rule, chart 2), and moving to the average can break visibility links. Algorithms built for limited visibility, such as Go-To-Center, limit the step length to keep them.
 
 | Step | What happens |
 | --- | --- |
@@ -869,7 +770,7 @@ flowchart TD
 | Draw the swarm | Tiny robots are drawn as rectangles, larger ones as pre-drawn sprites per colour; at most one draw per screen frame. 10,000 robots take about 4–6 ms without a GPU. |
 | Update stats and legend | Time, events per second, terminated count and the legend counts, refreshed at most every 200 ms so the page stays light. |
 
-`startPulling` — [`web/client.js:95`](../web/client.js#L95)
+`startPulling` — [`web/client.js:102`](../web/client.js#L102)
 
 ```js
 startPulling() {
@@ -884,7 +785,7 @@ startPulling() {
 }
 ```
 
-`requestFrame` — [`web/client.js:86`](../web/client.js#L86)
+`requestFrame` — [`web/client.js:93`](../web/client.js#L93)
 
 ```js
 requestFrame() {
@@ -897,7 +798,7 @@ requestFrame() {
 }
 ```
 
-`slice` — [`web/worker.js:179`](../web/worker.js#L179)
+`slice` — [`web/worker.js:191`](../web/worker.js#L191)
 
 ```js
 function slice(gen) {
@@ -914,6 +815,7 @@ function slice(gen) {
     tracePoint();
     const took = performance.now() - t0;
     if (code === 1) { caughtUp = true; break; }          // reached the time the clock allows
+    if (code === AWAITING) { playing = false; break; }   // the adversary's turn to choose
     if (code !== 0) { stop = STOP[code]; playing = false; break; }
     if (took < 0.5) batch = Math.min(batch * 2, 1 << 20);
     else if (took > 2) batch = Math.max(batch >> 1, 1);
@@ -927,7 +829,7 @@ function slice(gen) {
 }
 ```
 
-`advance` — [`crates/lcm-wasm/src/lib.rs:97`](../crates/lcm-wasm/src/lib.rs#L97)
+`advance` — [`crates/lcm-wasm/src/lib.rs:116`](../crates/lcm-wasm/src/lib.rs#L116)
 
 ```rust
 /// Handles up to `max_events` events, stopping early before the first
@@ -943,7 +845,7 @@ pub fn advance(&mut self, max_events: u32, until_time: f64) -> Stop {
 }
 ```
 
-`postFrame` — [`web/worker.js:213`](../web/worker.js#L213)
+`postFrame` — [`web/worker.js:226`](../web/worker.js#L226)
 
 ```js
 function postFrame(extra = {}) {
@@ -962,8 +864,15 @@ function postFrame(extra = {}) {
     ticks: sim.tick_count?.() ?? 0,
     robots: n,
     terminated: sim.terminated_count(),
-    epochs: sim.sequential?.() ? sim.epochs_completed() : null,
-    turns: sim.sequential?.() ? sim.turn_count() : null,
+    epochs: sim.sequential() || sim.in_rounds() ? sim.epochs_completed() : null,
+    turns: sim.sequential() ? sim.turn_count() : sim.in_rounds() ? sim.round_count() : null,
+    unit: sim.in_rounds() ? "round" : "turn",
+    members: sim.in_rounds() ? Array.from(sim.round_members()) : null,
+    awaiting: sim.awaiting_schedule(),
+    compass: n <= 2000 && sim.compass ? Array.from(sim.compass()) : null,
+    deferred: sim.deferred_looks ? sim.deferred_looks() : 0,
+    // Mutual visibility, once the run is over: how many robots see all the others (a Look each, so only then).
+    seeing: mutualVisibility && stop !== "running" ? (seeing ??= sim.seeing_everyone()) : null,
     // While a turn is played one at a time: who is walking, in which beat, how far, and the settle time.
     walk: perTurn !== null && pace
       ? { robot: pace.robot, phase: pace.progress < 0 ? "decide" : "move", length: pace.length, cut: pace.cut,
@@ -982,7 +891,7 @@ function postFrame(extra = {}) {
 }
 ```
 
-`fill_frame` — [`crates/lcm-wasm/src/lib.rs:330`](../crates/lcm-wasm/src/lib.rs#L330)
+`fill_frame` — [`crates/lcm-wasm/src/lib.rs:439`](../crates/lcm-wasm/src/lib.rs#L439)
 
 ```rust
 /// Captures the current state straight into caller-owned arrays, so the
@@ -1011,7 +920,7 @@ pub fn fill_frame(
 }
 ```
 
-`draw` — [`web/renderer.js:462`](../web/renderer.js#L462)
+`draw` — [`web/renderer.js:595`](../web/renderer.js#L595)
 
 ```js
 draw(ctx = this.ctx, dpr = this.dpr) {
@@ -1022,6 +931,7 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   ctx.fillRect(0, 0, this.width, this.height);
 
   if (this.follow && frame) this.stepFollow();
+  else this.stepViewTarget();
   const s = this.scale;
   const ox = this.width / 2 + this.pan.x;
   const oy = this.height / 2 + this.pan.y;
@@ -1061,7 +971,8 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   }
   if (!frame) { this.lastDrawMs = performance.now() - t0; return; }
 
-  const { xy, flags, fault, task, light, target, circle } = frame;
+  const { flags, fault, task, light, target, circle } = frame;
+  const xy = this.drawnXY(frame);
   // The frame's numbers are offsets from its origin (see Frame in lcm-core): add the origin
   // here in f64, so a swarm far from (0, 0) and tiny next to that distance stays distinct.
   const fx = ox + ((frame.originX ?? 0) - this.anchor.x) * s, fy = oy - ((frame.originY ?? 0) - this.anchor.y) * s;
@@ -1164,6 +1075,37 @@ draw(ctx = this.ctx, dpr = this.dpr) {
     ctx.setLineDash([]);
   }
 
+  // Motion trails: each robot's recent path, fading out, in its own colour.
+  const trail = this.trail;
+  if (this.options.trails && trail && trail.n === n && trail.count > 1 && n <= TRAIL_MAX) {
+    ctx.save();
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(1.2, Math.min(3, r * 0.9));
+    const BANDS = 4, per = Math.ceil((trail.count - 1) / BANDS);
+    for (let c = 0; c < COLORS.length; c++) {
+      if (!counts[c]) continue;
+      ctx.strokeStyle = COLORS[c].fill;
+      for (let b = 0; b < BANDS; b++) {
+        // Band 0 is the oldest part of every trail, drawn faintest.
+        ctx.globalAlpha = 0.07 + 0.11 * b;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          if (colorOf[i] !== c) continue;
+          const from = b * per, to = Math.min(trail.count - 1, (b + 1) * per);
+          for (let k = from; k < to; k++) {
+            const s0 = (trail.head - trail.count + k + TRAIL_LEN) % TRAIL_LEN, s1 = (s0 + 1) % TRAIL_LEN;
+            const x0 = trail.buf[2 * n * s0 + 2 * i], y0 = trail.buf[2 * n * s0 + 2 * i + 1];
+            const x1 = trail.buf[2 * n * s1 + 2 * i], y1 = trail.buf[2 * n * s1 + 2 * i + 1];
+            if (x0 === x1 && y0 === y1) continue;
+            ctx.moveTo(WX(x0), WY(y0)); ctx.lineTo(WX(x1), WY(y1));
+          }
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   // Robot bodies, colour by colour: fillRect dots, or stamped sprites.
   const snap = (v) => Math.round(v * dpr) / dpr;
   const outline = n <= LOD.outlines ? this.theme.outline : null;
@@ -1180,6 +1122,52 @@ draw(ctx = this.ctx, dpr = this.dpr) {
       for (let i = 0; i < n; i++) {
         if (colorOf[i] === c) ctx.drawImage(sp.canvas, snap(X(xy[2 * i]) - sp.half), snap(Y(xy[2 * i + 1]) - sp.half), sp.size, sp.size);
       }
+    }
+  }
+
+  // Where each moving robot is heading: a small hollow marker in its colour.
+  if (n <= PULSE_MAX) {
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < n; i++) {
+      if ((flags[i] & 3) !== STATE_MOVE || !(target[2 * i] === target[2 * i])) continue;
+      ctx.strokeStyle = COLORS[colorOf[i]].fill; ctx.globalAlpha = 0.85;
+      ctx.beginPath(); ctx.arc(X(target[2 * i]), Y(target[2 * i + 1]), Math.max(2.5, r * 0.8), 0, 2 * Math.PI); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Decision pulses: a ring that grows and fades when a robot picks a new destination.
+  if (this.pulses.size && n <= PULSE_MAX) {
+    const now = performance.now();
+    ctx.save();
+    ctx.strokeStyle = this.theme.accent; ctx.lineWidth = 2;
+    for (const [i, t0] of this.pulses) {
+      const age = now - t0;
+      if (age > PULSE_MS || i >= n) { this.pulses.delete(i); continue; }
+      const k = age / PULSE_MS;
+      ctx.globalAlpha = 0.75 * (1 - k);
+      ctx.beginPath(); ctx.arc(X(xy[2 * i]), Y(xy[2 * i + 1]), Math.max(r, 2) + 3 + 14 * k, 0, 2 * Math.PI); ctx.stroke();
+    }
+    ctx.restore();
+    if (this.pulses.size) this.requestDraw();
+  }
+
+  // The swarm has gathered: a soft green halo around it, fading out.
+  if (this.halo) {
+    const age = performance.now() - this.halo;
+    if (age > HALO_MS) this.halo = 0;
+    else {
+      const k = age / HALO_MS, cx = X(0), cy = Y(0);
+      ctx.save();
+      ctx.strokeStyle = "#10b981"; ctx.lineWidth = 3;
+      for (const lag of [0, 0.22]) {
+        const kk = Math.max(0, k - lag);
+        ctx.globalAlpha = 0.6 * (1 - kk);
+        ctx.beginPath(); ctx.arc(cx, cy, 12 + 70 * kk, 0, 2 * Math.PI); ctx.stroke();
+      }
+      ctx.restore();
+      this.requestDraw();
     }
   }
 
@@ -1284,6 +1272,112 @@ draw(ctx = this.ctx, dpr = this.dpr) {
     ctx.restore();
   }
 
+  // Unreliable compasses: each robot's own north, a short needle (the true north is straight up).
+  const compass = frame.compass;
+  if (compass && compass.length === n && n <= 12) {
+    // A few robots: a small compass around each. The shaded wedge is where its north may point (true north
+    // ± the error), the grey tick is true north, the red needle the north this robot reads now.
+    const R = Math.max(r, 3) + 22, phi = ((this.options.compassError ?? 0) * Math.PI) / 180;
+    ctx.save();
+    ctx.font = "600 9px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (let i = 0; i < n; i++) {
+      const x = X(xy[2 * i]), y = Y(xy[2 * i + 1]), a = compass[i];
+      ctx.strokeStyle = "rgba(148,163,184,.35)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, R, 0, 2 * Math.PI); ctx.stroke();
+      if (phi > 0) {
+        ctx.fillStyle = "rgba(239,68,68,.13)";
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, R, -Math.PI / 2 - Math.min(phi, Math.PI), -Math.PI / 2 + Math.min(phi, Math.PI)); ctx.closePath(); ctx.fill();
+      }
+      ctx.strokeStyle = "rgba(148,163,184,.8)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, y - R + 5); ctx.lineTo(x, y - R - 3); ctx.stroke();
+      const tx = x - R * Math.sin(a), ty = y - R * Math.cos(a);
+      ctx.strokeStyle = "rgba(239,68,68,.95)"; ctx.fillStyle = "rgba(239,68,68,.95)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - (Math.max(r, 2) + 2) * Math.sin(a), y - (Math.max(r, 2) + 2) * Math.cos(a)); ctx.lineTo(tx, ty); ctx.stroke();
+      ctx.beginPath(); ctx.arc(tx, ty, 2.5, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillText("N", x - (R + 9) * Math.sin(a), y - (R + 9) * Math.cos(a));
+    }
+    ctx.restore();
+  } else if (compass && compass.length === n && n <= 300) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(220,60,60,.85)"; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const len = Math.max(r, 2) + 9;
+    for (let i = 0; i < n; i++) {
+      const x = X(xy[2 * i]), y = Y(xy[2 * i + 1]), a = compass[i];
+      ctx.moveTo(x, y); ctx.lineTo(x - len * Math.sin(a), y - len * Math.cos(a));
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // SSYNC/FSYNC: the robots of the round under way.
+  const members = frame.members;
+  if (members && members.length < n && n <= LOD.circles && !this.options.adversary) {
+    ctx.strokeStyle = this.theme.accent; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    for (const i of members) { const x = X(xy[2 * i]), y = Y(xy[2 * i + 1]); ctx.moveTo(x + Math.max(r, 2) + 4, y); ctx.arc(x, y, Math.max(r, 2) + 4, 0, 2 * Math.PI); }
+    ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1;
+  }
+
+  // Playing the adversary: the robots chosen, where the chosen one would go, and where a click would stop it.
+  const adv = this.options.adversary;
+  if (adv) {
+    const color = "#e11d48";
+    ctx.save();
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
+    for (const i of adv.chosen) {
+      if (i >= n) continue;
+      ctx.beginPath(); ctx.arc(X(xy[2 * i]), Y(xy[2 * i + 1]), Math.max(r, 2) + 7, 0, 2 * Math.PI); ctx.stroke();
+    }
+    const p = adv.preview;
+    if (p && p.robot < n) {
+      const ax = X(xy[2 * p.robot]), ay = Y(xy[2 * p.robot + 1]), bx = WX(p.target[0]), by = WY(p.target[1]);
+      ctx.lineWidth = 2.2; ctx.setLineDash([7, 5]);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
+      ctx.lineWidth = 3.2;
+      ctx.beginPath(); ctx.moveTo(bx - 8, by - 8); ctx.lineTo(bx + 8, by + 8); ctx.moveTo(bx + 8, by - 8); ctx.lineTo(bx - 8, by + 8); ctx.stroke();
+      const len = Math.hypot(p.target[0] - frame.x(p.robot), p.target[1] - frame.y(p.robot)), delta = adv.nonRigid;
+      if (delta && len > delta) {  // the earliest point the adversary may stop it at
+        const t = delta / len, dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1;
+        const mx = ax + t * dx, my = ay + t * dy, nx = -dy / l, ny = dx / l;
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(mx - nx * 8, my - ny * 8); ctx.lineTo(mx + nx * 8, my + ny * 8); ctx.stroke();
+      }
+      if (adv.hover) {
+        ctx.beginPath(); ctx.arc(WX(adv.hover[0]), WY(adv.hover[1]), 5, 0, 2 * Math.PI); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  // The scenario editor: the robot being dragged, where it will land.
+  const editor = this.options.editor;
+  if (editor?.drag?.to && editor.drag.i < n) {
+    const i = editor.drag.i, [tx, ty] = editor.drag.to;
+    ctx.save();
+    ctx.strokeStyle = this.theme.accent; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(X(xy[2 * i]), Y(xy[2 * i + 1])); ctx.lineTo(WX(tx), WY(ty)); ctx.stroke();
+    ctx.setLineDash([]); ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(WX(tx), WY(ty), Math.max(r, 3) + 2, 0, 2 * Math.PI); ctx.stroke();
+    ctx.restore();
+  }
+  if (editor && editor.hovered >= 0 && editor.hovered < n && !editor.drag) {
+    const i = editor.hovered;
+    ctx.strokeStyle = this.theme.accent; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(X(xy[2 * i]), Y(xy[2 * i + 1]), Math.max(r, 2) + 5, 0, 2 * Math.PI); ctx.stroke(); ctx.lineWidth = 1;
+  }
+
+  // Robot numbers, when the swarm is small enough to read them and they matter (choosing turns, editing).
+  if ((adv || editor) && n <= 40) {
+    ctx.save();
+    ctx.font = "600 12px system-ui, sans-serif"; ctx.lineJoin = "round"; ctx.textBaseline = "alphabetic";
+    for (let j = 0; j < n; j++) {
+      const label = `R${j}`, lx = X(xy[2 * j]) + Math.max(r, 2) + 5, ly = Y(xy[2 * j + 1]) - Math.max(r, 2) - 5;
+      ctx.lineWidth = 4; ctx.strokeStyle = this.theme.bg; ctx.strokeText(label, lx, ly);
+      ctx.fillStyle = adv?.chosen.includes(j) ? "#e11d48" : this.theme.text; ctx.fillText(label, lx, ly);
+    }
+    ctx.restore();
+  }
+
   // Hovered and selected robots, drawn in full at any swarm size.
   const mark = (i, ring, strong) => {
     if (i < 0 || i >= n) return;
@@ -1339,7 +1433,7 @@ draw(ctx = this.ctx, dpr = this.dpr) {
 
 ## 5. The sequential scheduler
 
-Under the sequential scheduler only one robot's Look is ever waiting in the queue. When its turn ends, next_turn() decides who goes next, and the others stay still until then. This is the sequential scheduler of Section 2.2 of "Universal pattern formation by oblivious robots under sequential schedulers" (arXiv:2412.10733); it is new in the Rust core, not in the Python original.
+Under the sequential scheduler only one robot's Look is ever waiting in the queue. When its turn ends, next_turn() decides who goes next, and the others stay still until then. Every robot gets exactly one turn per epoch, and a turn runs Look, Compute and Move to the end before anyone else acts. It is new in the Rust core, not in the Python original.
 
 ```mermaid
 flowchart TD
@@ -1394,11 +1488,11 @@ flowchart TD
     t_arr -- "next turn" --> t_end
 ```
 
-- Round-robin and the shuffle each epoch both give every robot that is still active exactly one turn per epoch. An explicit list of turns ends its epoch once every robot has had at least one, as in the paper.
-- Crashed and terminated robots are skipped. The paper has no crashes; this is the simulator's own rule.
-- Stalled is not in the paper either. Robots are deterministic and remember nothing, so if a whole epoch changes nothing, every later epoch is the same and the run can never end. It is not checked with faults, because an omission fault skips moves at random.
+- Round-robin and the shuffle each epoch both give every robot that is still active exactly one turn per epoch. An explicit list of turns ends its epoch once every robot has had at least one.
+- Crashed and terminated robots are skipped, so a crash never blocks the turns of the others; this is the simulator's own rule.
+- Stalled is the simulator's own stop too. Robots are deterministic and remember nothing, so if a whole epoch changes nothing, every later epoch is the same and the run can never end. It is not checked with faults, because an omission fault skips moves at random.
 - A run can also end at a turn limit (max_turns): the last turn's move still finishes. It says nothing about the algorithm, only that the budget ran out.
-- With non-rigid movement, a robot whose destination is within δ always arrives; otherwise the adversary stops it somewhere at least δ along its way. δ is not shown to the algorithms: in the paper, the robots do not know it.
+- With non-rigid movement, a robot whose destination is within δ always arrives; otherwise the adversary stops it somewhere at least δ along its way. δ is not shown to the algorithms: the robots do not know it.
 
 | Step | What happens |
 | --- | --- |
@@ -1415,7 +1509,7 @@ flowchart TD
 | Stop it on the way | The adversary picks the stopping point, never before δ along the way: just after δ, anywhere between δ and the destination at random, a set fraction of the way, or the fraction this turn of the schedule names. |
 | Arrive, and the turn ends | The robot stands at its destination, or at the point where it was stopped. It does not schedule its own next Look: control goes back to next_turn(). |
 
-`next_turn` — [`crates/lcm-core/src/sim.rs:738`](../crates/lcm-core/src/sim.rs#L738)
+`next_turn` — [`crates/lcm-core/src/sim.rs:1244`](../crates/lcm-core/src/sim.rs#L1244)
 
 ```rust
 /// Sequential scheduler: queues the Look of the next robot to take a turn:
@@ -1438,7 +1532,7 @@ fn next_turn(&mut self, previous: f64) {
             }
             if s.unseen == 0 {
                 turns.epochs_completed += 1;
-                if !turns.progress && self.fault_free {
+                if !turns.progress && self.stall_check {
                     self.stalled = true;
                     return;
                 }
@@ -1451,6 +1545,10 @@ fn next_turn(&mut self, previous: f64) {
         let mut skipped = 0;
         let picked = loop {
             let k = s.cursor;
+            if k >= len && s.end == ScheduleEnd::Await {
+                self.awaiting = true;
+                break None;
+            }
             s.cursor += 1;
             let (robot, stop) = if k < len {
                 (s.list[k].robot(), s.list[k].stop())
@@ -1488,7 +1586,7 @@ fn next_turn(&mut self, previous: f64) {
             }
             if !turns.epoch.is_empty() {
                 turns.epochs_completed += 1;
-                if !turns.progress && self.fault_free {
+                if !turns.progress && self.stall_check {
                     self.stalled = true;
                     return;
                 }
@@ -1519,7 +1617,7 @@ fn next_turn(&mut self, previous: f64) {
 }
 ```
 
-`limited_target` — [`crates/lcm-core/src/sim.rs:661`](../crates/lcm-core/src/sim.rs#L661)
+`limited_target` — [`crates/lcm-core/src/sim.rs:1160`](../crates/lcm-core/src/sim.rs#L1160)
 
 ```rust
 /// Non-rigid movement with a `delta`: where the adversary stops robot `i`
@@ -1556,7 +1654,7 @@ fn limited_target(&mut self, i: usize, destination: Point) -> Point {
 
 ## 6. SqGathering (Algorithm 8)
 
-Algorithm 8 of "Universal pattern formation by oblivious robots under sequential schedulers" (arXiv:2412.10733, Section 6). The active robot sees each occupied point only as single or multiplicity, counts the multiplicities κ, and follows one of three rules. It runs only under the sequential scheduler of chart 5: the registry refuses the async one.
+Gathering one robot at a time, for robots that can tell a stack (several robots on one spot) from a single robot, but cannot count it. The active robot sees each occupied point only as single or stacked, counts the stacks κ, and follows one of three rules. It is made for the sequential scheduler of chart 5: the asynchronous schedulers are refused, and the round-based ones can be chosen to watch what goes wrong.
 
 ```mermaid
 flowchart TD
@@ -1608,19 +1706,19 @@ flowchart TD
     q_km -- "yes" --> q_leave
 ```
 
-- Weak multiplicity detection: one bit per point, never a count. Two robots on a point and five robots on a point look the same.
-- Why the sequential scheduler: without multiplicity detection Gathering is unsolvable under any sequential scheduler (Theorem 4); with more than one robot active at once it is unsolvable even with detection (Lemma 8). So SqGathering refuses the async scheduler, limited visibility and faults.
-- In the paper robots never terminate. Here a robot that sees a single occupied point terminates: everyone is there, and every robot activated later would stay, so it changes nothing and lets the run end.
-- Points closer than ε (10^-precision) are one point. Equally close points are told apart by their coordinates; any fixed choice is allowed.
-- A move cut short after δ can stop on a single robot and make a second multiplicity; the κ > 1 rule then separates them again.
-- With several large multiplicities, each robot leaving one halves the distance of the robot that left before it. After enough of them it is closer than ε, cannot leave, and the run ends Stalled (chart 5): a precision limit, not a flaw of the algorithm.
+- Weak multiplicity detection: one bit per point, never a count. Two robots on a point and five robots on a point look exactly the same.
+- Why one robot at a time: robots that cannot see stacks can never be sure to gather, even one at a time, and when several robots act at once a stack can move as a whole instead of breaking up, so two stacks may never merge. SqGathering therefore refuses the asynchronous schedulers and faulty robots; under SSYNC or FSYNC, with no or local detection, or with limited or blocked sight, the page explains what to expect.
+- Robots in the original rule never stop. Here a robot that sees a single occupied point terminates: everyone is already there, and every robot activated later would stay put, so stopping changes nothing and lets the run end.
+- Points closer than ε (10^-precision) are one point. Equally close points are told apart by their coordinates; any fixed choice works.
+- A move cut short after δ can stop on a single robot and make a second stack; the rule for several stacks then separates them again.
+- With several large stacks, each robot leaving one lands halfway to the robot that left before it. After enough of them it is closer than ε, cannot leave, and the run ends Stalled (chart 5): a limit of the numbers, not a flaw of the rule.
 
 | Step | What happens |
 | --- | --- |
 | Compute | Called from the COMPUTE phase of chart 2 with the robot's snapshot, during its turn of the sequential scheduler (chart 5). |
 | See Q′(t) | Robots closer than ε are grouped into points. Each point keeps one bit: single, or multiplicity (two or more robots). The robot also knows which point is its own. |
 | One occupied point? | If the robot sees a single point, every robot is on it (visibility is unlimited): the swarm has gathered. Then κ = 1 and b = 1, so Algorithm 8 would keep it there anyway. |
-| Terminate | The robot stops for good and gets no more turns. Once every robot has had its turn and terminated, the run ends (chart 1). The paper's robots never stop; terminating here changes nothing, because every robot activated later would stay put. |
+| Terminate | The robot stops for good and gets no more turns. Once every robot has had its turn and terminated, the run ends (chart 1). The original rule's robots never stop; terminating here changes nothing, because every robot activated later would stay put. |
 | How many multiplicities κ? | Count the points marked multiplicity, and look at b, the bit of the robot's own point. Lines 1-3 of Algorithm 8. |
 | Move to the closest point | No multiplicity yet: go to the nearest occupied point to create one there. Nothing lies between the robot and that point, so on the way it never meets a third robot. The move goes on in chart 2; the adversary may stop it after δ (chart 5). |
 | On the multiplicity? | With exactly one multiplicity, it is the gathering point. b tells the robot whether its own point is that multiplicity. |
@@ -1630,14 +1728,19 @@ flowchart TD
 | Wait | A single robot waits while the multiplicities sort themselves out: its target is where it stands, so chart 2 freezes it and its turn ends. |
 | Move to the midpoint | Leave the multiplicity for the midpoint between its point q and the closest occupied point q′. Nothing occupied is within half that distance, so the robot lands on a free spot wherever it is stopped. Once only one multiplicity is left, κ = 1. |
 
-`compute` — [`crates/lcm-algorithms/src/sq_gathering.rs:356`](../crates/lcm-algorithms/src/sq_gathering.rs#L356)
+`compute` — [`crates/lcm-algorithms/src/sq_gathering.rs:284`](../crates/lcm-algorithms/src/sq_gathering.rs#L284)
 
 ```rust
 /// One robot's Compute: Q′(t) from its snapshot, then the rule. The
 /// robot terminates when it sees a single occupied point: everyone is
 /// gathered there, and every robot activated from now on would stay.
 fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision {
-    let obs = observe(&look.view.pos, look.me_index, look.model.eps);
+    let obs = observe_with(
+        &look.view.pos,
+        look.me_index,
+        look.model.eps,
+        look.model.multiplicity,
+    );
     let decision = decide(&obs);
     CoreDecision {
         target: decision.destination(&obs),
@@ -1647,7 +1750,7 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision
 }
 ```
 
-`observe` — [`crates/lcm-algorithms/src/sq_gathering.rs:91`](../crates/lcm-algorithms/src/sq_gathering.rs#L91)
+`observe` — [`crates/lcm-algorithms/src/sq_gathering.rs:54`](../crates/lcm-algorithms/src/sq_gathering.rs#L54)
 
 ```rust
 /// What robot `i` observes under weak multiplicity detection, in global
@@ -1655,22 +1758,11 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision
 /// same observation.
 #[must_use]
 pub fn observe(positions: &[Point], i: usize, tolerance: f64) -> Observation {
-    let (groups, counts, owner) = occupancy(positions, tolerance);
-    Observation {
-        points: groups
-            .iter()
-            .zip(&counts)
-            .map(|(&at, &c)| Observed {
-                at,
-                multiplicity: c >= 2,
-            })
-            .collect(),
-        me: owner[i],
-    }
+    observe_with(positions, i, tolerance, MultiplicityModel::Weak)
 }
 ```
 
-`decide` — [`crates/lcm-algorithms/src/sq_gathering.rs:243`](../crates/lcm-algorithms/src/sq_gathering.rs#L243)
+`decide` — [`crates/lcm-algorithms/src/sq_gathering.rs:218`](../crates/lcm-algorithms/src/sq_gathering.rs#L218)
 
 ```rust
 /// Algorithm 8 on one observation.
@@ -1708,7 +1800,7 @@ pub fn decide(obs: &Observation) -> Decision {
 }
 ```
 
-`closest` — [`crates/lcm-algorithms/src/sq_gathering.rs:215`](../crates/lcm-algorithms/src/sq_gathering.rs#L215)
+`closest` — [`crates/lcm-algorithms/src/sq_gathering.rs:190`](../crates/lcm-algorithms/src/sq_gathering.rs#L190)
 
 ```rust
 /// The occupied point closest to the robot's own. Equally close points are
@@ -1740,7 +1832,7 @@ fn closest(obs: &Observation) -> Option<usize> {
 }
 ```
 
-`destination` — [`crates/lcm-algorithms/src/sq_gathering.rs:200`](../crates/lcm-algorithms/src/sq_gathering.rs#L200)
+`destination` — [`crates/lcm-algorithms/src/sq_gathering.rs:175`](../crates/lcm-algorithms/src/sq_gathering.rs#L175)
 
 ```rust
 /// The destination in the coordinates of `obs`.

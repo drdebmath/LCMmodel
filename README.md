@@ -78,9 +78,15 @@ robots that gather end up very close together, so the page has tools to follow t
 - **Overview map** (`O`, on wide screens): the starting area with a rectangle for what the view shows; click it to move there.
 - **Measure** (`M`): click two points or two robots to read the distance (a ruler stuck to robots follows them as they move; `Esc` clears).
 
+**Extended models** (details: [`docs/extended-models.md`](docs/extended-models.md)): SSYNC and FSYNC schedulers; multiplicity detection none / weak / strong; private coordinate frames per robot; obstructed visibility; Spreading and TwoTask ported. On the page: **Adversary** (`A`) lets you choose who moves next and where it stops, the **scenario editor** (`D`) places, moves, stacks and removes robots by hand, and scenarios can be saved, opened and shared as links. The SqGathering examples play out Lemma 8 (SSYNC) and Theorem 4 (no multiplicity detection).
+
+**Extras** (details and open questions: [`docs/extras.md`](docs/extras.md)): unreliable compasses, the k-ASYNC scheduler, local multiplicity detection; algorithms for two robots with unreliable compasses (Izumi et al.), randomized gathering (Pattanayak et al.), gathering despite crash faults with weak multiplicity, mutual visibility under obstructed visibility, and gathering on a ring of nodes under round robin (`web/ring.html`, `lcm ring`).
+
+**What's new on the fork's branches**, and how to try each feature: [`docs/whats-new.md`](docs/whats-new.md). The full report on them, with how to merge them: [`docs/branch-report.md`](docs/branch-report.md).
+
 ## Sharing a case: links and embedding
 
-set a case up on the page, then in the export menu (the download button) choose *Copy link to this case*, or *Embed in a web page…* for the `<iframe>` code to paste into another page (you pick the buttons, the speed and the size). The page can also be set up from its link by hand, e.g. `?algorithm=SqGathering&robots=6&seed=7&speed=turn:1`. Any setting can be given by its key (see `web/settings.js`), plus `robots`, `seed`, `visibility` (a radius) and `points=x,y;x,y;…` (exact starting positions); `speed` is a playback speed (`1`, `5`, `20`, `100`, `max`, or `turn:0.25`, `turn:1`, `turn:3`), and `theme` is `light` or `dark`. Add `embed` to put it in another web page with an `<iframe>`: only play/pause, reset and the speed menu show (`controls=` picks others from `play,reset,step,speed`), it starts playing the first time it is scrolled into view (`autoplay=0` turns that off) and after that only the button plays it (`loop=1` starts it again after it ends); `grid=0` hides the grid, `links=1` draws who sees whom, `open=0` drops the link to the full page; the wheel and fingers scroll the page around it; the view keeps the swarm (and any circle its algorithm draws) in the middle of the box, zooming out if it spreads but never in; *Open in simulator ↗* opens the same case in the full page. The box is as big as the iframe: set its `width` and `height`. For example:
+Set a case up on the page, then in the export menu (the download button) choose *Copy link to this case*, or *Embed in a web page…* for the `<iframe>` code to paste into another page (you pick the buttons, the speed and the size). The page can also be set up from its link by hand, e.g. `?algorithm=SqGathering&robots=6&seed=7&speed=turn:1`. Any setting can be given by its key (see `web/settings.js`), plus `robots`, `seed`, `visibility` (a radius) and `points=x,y;x,y;…` (exact starting positions); `speed` is a playback speed (`1`, `5`, `20`, `100`, `max`, or `turn:0.25`, `turn:1`, `turn:3`), and `theme` is `light` or `dark`. Add `embed` to put it in another web page with an `<iframe>`: only play/pause, reset and the speed menu show (`controls=` picks others from `play,reset,step,speed`), it starts playing the first time it is scrolled into view (`autoplay=0` turns that off) and after that only the button plays it (`loop=1` starts it again after it ends); `grid=0` hides the grid, `links=1` draws who sees whom, `open=0` drops the link to the full page; the wheel and fingers scroll the page around it; the view keeps the swarm (and any circle its algorithm draws) in the middle of the box, zooming out if it spreads but never in; *Open in simulator ↗* opens the same case in the full page. The box is as big as the iframe: set its `width` and `height`. For example:
 
 ```html
 <iframe src="https://drdebmath.github.io/LCMmodel/?embed&algorithm=GoToCenter&points=-80,10;0,0;95,-5&visibility=100&scheduler=sequential&speed=turn:1"
@@ -167,12 +173,15 @@ cargo install wasm-bindgen-cli --version 0.2.129 --locked
 cargo test --workspace                        # Rust tests, including replays of the recorded runs in fixtures/
 cargo build --release -p lcm-cli && ./scripts/build-wasm.sh
 node scripts/check-wasm-parity.mjs            # browser build vs native, bit for bit
+node scripts/scheduler-matrix.mjs             # every algorithm × scheduler, rigid and not: no crash, wasm == native
 node scripts/check-seq-parity.mjs             # sequential-scheduler traces: browser build vs native
 node scripts/gen-flowcharts.mjs --check       # flowcharts match the code (omit --check to regenerate)
 node scripts/ui-check.mjs                     # the simulator page in headless Chrome
 node scripts/docs-check.mjs                   # the flowchart page in headless Chrome
 node scripts/responsive-check.mjs             # both pages at phone, tablet and desktop sizes
 node scripts/sqgathering-check.mjs            # the step-by-step page and the simulator
+node scripts/info-check.mjs                   # the settings' info cards: every option explained, open/close, phone
+node scripts/extras-check.mjs                 # ring page and the extras examples in headless Chrome
 node scripts/embed-check.mjs                  # set up from a link, and embedded in another page
 node scripts/serve.mjs                        # serve at http://localhost:8000/ with no caching
 ```

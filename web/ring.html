@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ring gathering · LCM Simulator</title>
+  <meta name="description" content="Robots on the nodes of a ring gather on one node, one robot at a time, seeing only which nodes are occupied.">
+  <script>
+    (() => {
+      let t = "system";
+      try { t = localStorage.getItem("lcm-theme") || "system"; } catch {}
+      if (t !== "system") document.documentElement.dataset.theme = t;
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="sqgathering.css">
+  <link rel="stylesheet" href="ring.css">
+</head>
+<body class="sqg">
+  <header class="sqg-bar">
+    <a class="btn" href="../" title="Back to the simulator"><span data-icon="logo" data-size="20"></span><span class="brand-name">LCM</span></a>
+    <!-- The simulator's Algorithm menu: another choice opens the simulator on it. -->
+    <select id="algorithm_switch" class="algo-switch" aria-label="Algorithm" title="Algorithm"><option value="ring">Gathering on a ring</option></select>
+    <span class="crumb-sub ring-sub">One robot at a time · robots see only which nodes are occupied</span>
+    <span class="spacer"></span>
+    <button id="theme" class="btn" title="Theme" aria-label="Theme"><span data-icon="moon"></span></button>
+  </header>
+
+  <p class="sqg-note ring-lead">
+    Robots stand on the nodes of a ring. Each one sees <strong>which nodes are occupied</strong>, but not how many robots
+    share a node, and has no sense of left or right. They take turns in a fixed order they do not know; on its turn a robot
+    stays or steps to a neighbouring node. Every start gathers on one node within n − 3 rounds, except the few starts no
+    algorithm can gather, which the page flags.
+  </p>
+
+  <div class="sqg-main ring-main">
+    <section class="sqg-stage panel-card" aria-label="The ring">
+      <div class="ring-toolbar">
+        <div class="ring-group" role="group" aria-label="Start">
+          <span class="ring-group-label">Start</span>
+          <label class="field compact"><span>Preset</span><select id="preset"></select></label>
+          <label class="field compact"><span>Nodes</span><input id="nodes" type="number" min="3" max="60" value="9"></label>
+          <label class="field compact" title="The order robots take turns in, e.g. 2, 0, 1 (empty: by number)"><span>Turn order</span><input id="order" type="text" placeholder="0, 1, 2, …" spellcheck="false"></label>
+          <label class="field compact" title="When both directions are equally good, which one the robot takes"><span>Ties</span>
+            <select id="ties"><option value="next">Clockwise</option><option value="random">At random</option></select>
+          </label>
+          <button id="clear" class="btn outline" title="Remove every robot">Clear</button>
+        </div>
+        <div class="ring-group" role="group" aria-label="Playback">
+          <span class="ring-group-label">Play</span>
+          <button id="reset" class="btn" title="Back to the start"><span data-icon="reset"></span><span class="label">Reset</span></button>
+          <button id="step" class="btn" title="One turn (→)"><span data-icon="stepEvent"></span><span class="label">Step</span></button>
+          <button id="play" class="btn primary" title="Play (Space)"><span data-icon="play"></span><span class="label">Play</span></button>
+          <label class="field compact ring-speed"><span>Speed <output id="speed_out">2 / s</output></span>
+            <input id="speed" type="range" min="0.5" max="30" step="0.5" value="2" aria-label="Turns per second"></label>
+          <button id="csv" class="btn outline" title="Download every turn so far as CSV"><span data-icon="download"></span><span class="label">CSV</span></button>
+        </div>
+      </div>
+      <svg id="ring" viewBox="-160 -160 320 320" role="img" aria-label="Ring of nodes with robots"></svg>
+      <div id="ring_status" class="ring-status" role="status" aria-live="polite"></div>
+      <ul class="ring-key" aria-label="Key">
+        <li><span class="key-dot robot"></span>Robot</li>
+        <li><span class="key-dot next"></span>Its turn next</li>
+        <li><span class="key-dot empty"></span>Empty node</li>
+        <li><span class="key-dot gap"></span>Biggest gap</li>
+        <li><span class="key-arrow"></span>Where it will step</li>
+        <li class="ring-help">Click a node to add a robot · right-click or long-press to remove one</li>
+      </ul>
+    </section>
+
+    <section class="panel-card ring-side" aria-label="What happens">
+      <div id="next_card" class="ring-next" aria-live="polite"></div>
+      <h3>Now</h3>
+      <div class="ring-progress" aria-hidden="true"><div id="ring_bar"></div></div>
+      <dl id="facts" class="ring-facts"></dl>
+      <div id="warning" class="ring-warning" hidden></div>
+      <details class="ring-how">
+        <summary><span class="chev" data-icon="chevron" data-size="12"></span>How the robots decide</summary>
+        <div class="ring-how-body">
+          <p>Every robot follows the same rules and remembers nothing from one turn to the next. On its turn it looks at the
+            ring and sees only which nodes are occupied: it cannot count the robots on a node, and it cannot tell clockwise from
+            anticlockwise, so it describes what it sees by the empty stretches between occupied nodes (the gaps) and by which
+            of its two neighbours are occupied.</p>
+          <p>The robots take turns in a fixed order that they do not know. A <strong>round</strong> ends once every robot has
+            had its turn. On its turn a robot either stays or steps to one of its two neighbouring nodes.</p>
+          <p>The rules are checked from the most finished situation down to the most spread out one, and the first that
+            matches decides the move. Gathered robots stay. When two or three neighbouring nodes are left, the robots at the
+            ends step onto the occupied neighbour. When two occupied nodes have one empty node between them, robots step into
+            it. With several gaps, only robots standing next to one of the biggest gaps move, which pulls the robots together a
+            little more every round.</p>
+          <p>From almost every start the robots end up on a single node within <strong>n − 3 rounds</strong>, where n is the
+            number of nodes. A few starts are symmetric in a way no rule can break, because the turn order can always undo
+            what one robot does; the page marks those starts so you can watch them fail.</p>
+        </div>
+      </details>
+      <h3>Turns <span class="ring-count" id="turns_count"></span></h3>
+      <div class="ring-table-wrap"><table id="trace" class="ring-trace"><thead><tr><th>#</th><th>Round</th><th>Robot</th><th>Move</th><th>Situation</th><th>Why</th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </div>
+
+  <script type="module" src="ring.js"></script>
+</body>
+</html>

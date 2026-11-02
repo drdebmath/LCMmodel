@@ -10,8 +10,12 @@ import { COLORS, LOD, Renderer, fmtDistance, ulpOf } from "./renderer.js";
 import { SimClient } from "./client.js";
 import { Inspector } from "./inspector.js";
 import { Overview } from "./overview.js";
-import { buildSettings, readConfig } from "./settings.js";
+import { SETTINGS, buildSettings, readConfig } from "./settings.js";
+import { EXPLAINED, explain } from "./explain.js";
+import { ADVANCED, MENU_NAMES, menuHtml } from "./menu.js";
 import { parseCoordinates, startOutline } from "./start.js";
+import { Adversary } from "./adversary.js";
+import { ScenarioEditor } from "./editor.js";
 import { buildEmbedDialog, copyText, linkQuery, pageAddress, readLink, setUpEmbed, whenFirstSeen } from "./embed.js";
 
 const $ = (id) => document.getElementById(id);
@@ -32,7 +36,14 @@ let frame = null;
 let restartTimer = 0; // a settings change waiting to rebuild the run (0 = none)
 let firstFrame = true;
 
-const settings = buildSettings($("settings_body"), onSettingChange);
+// Info cards under a setting: what the choice means, given the algorithm chosen now.
+const settings = buildSettings($("settings_body"), onSettingChange, {
+  explained: EXPLAINED,
+  explain: (key) => {
+    const k = algorithmKey(), a = algorithms.find((x) => x.key === k);
+    return explain(key, settings.values, a && { key: k, name: a.name, multiplicities: a.multiplicities, sequentialOnly: a.sequential_only });
+  },
+});
 if (Object.keys(link.settings).length) settings.apply(link.settings);
 renderIcons($("settings_body"));
 renderIcons($("coords"));
@@ -41,17 +52,207 @@ const inspector = new Inspector({
   onCenter: (x, y) => renderer.centerOn(x, y),
 });
 
+const adversary = new Adversary({
+  renderer, client, settings, panel: $("adversary_panel"), toast,
+  canAct: () => state === "ready" || state === "paused",
+  onPlay: () => setState("running"),
+});
+adversary.onLeave = () => setAdversary(false);
+const editor = new ScenarioEditor({
+  renderer, settings, panel: $("editor_panel"), toast,
+  rebuild: () => newRun({ quiet: true, keepView: true }),
+});
+editor.onAction = (action) => {
+  if (action === "done") setEditor(false);
+  else if (action === "save") exportScenario();
+  else if (action === "link") copyCaseLink();
+};
+
+/** The scenario editor edits the start: it rebuilds the run (paused at t = 0) on every edit. */
+function setEditor(on) {
+  if (on && adversary.on) setAdversary(false);
+  if (on && state !== "ready" && !newRun({ quiet: true, keepView: true })) return;
+  if (on && state === "running") { client.pause(); setState("paused"); }
+  if (!editor.setOn(on)) return;
+  $("edit").setAttribute("aria-pressed", String(on));
+  $("canvas").classList.toggle("editing", on);
+  if (on && measure.on) setMeasure(false);
+  if (on) toast("Scenario editor: click to add robots, drag to move them");
+}
+
+/** Playing the adversary needs the sequential or SSYNC scheduler; it starts a new run that waits for each choice. */
+function setAdversary(on) {
+  if (on && editor.on) setEditor(false);
+  if (on && !adversary.supported) {
+    settings.set("scheduler", "sequential", false);
+    toast("Playing the adversary chooses turns: Scheduler set to Sequential (SSYNC works too)");
+  }
+  adversary.setOn(on);
+  $("adversary").setAttribute("aria-pressed", String(on));
+  $("canvas").classList.toggle("adversary", on);
+  if (on && measure.on) setMeasure(false);
+  if (state !== "loading") newRun({ quiet: true, keepView: true });
+}
+
+/* --------------------------------------------------------- algorithm brief */
+// The box under the toolbar: what the chosen algorithm does, the robots and model this run uses (settings the
+// algorithm fixes carry a lock), and, from the core with the run's first frame, where the settings leave what
+// the algorithm was made for. It folds to one line while a run plays; a click opens it again.
+const brief = { notes: [], open: true, seen: new Set(), opening: false }; // seen: notes already on screen (only new ones animate)
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const SCHEDULER_WORDS = { async: "Async", sequential: "One at a time", ssync: "Some at once · SSYNC", fsync: "All at once · FSYNC", kasync: "k-ASYNC" };
+const MULTIPLICITY_WORDS = { none: "Can't see stacks", local: "Knows if its own spot is shared", weak: "Sees stacks", strong: "Counts stacks" };
+const NOTE_KINDS = [
+  [/^Outside the model:\s*/, "warn", "Outside what it was built for"],
+  [/^Experimental:\s*/, "caution", "Untested ground"],
+  [/^(Approximation|Simplification):\s*/, "info", "Simplified"],
+];
+/** The chips: [text, setting key or null]; a key the algorithm locks gets the lock. */
+function briefChips(v, key) {
+  const a = algorithms.find((x) => x.key === key);
+  const n = v.pattern === "custom" ? (settings.customPoints?.length ?? v.num_of_robots) : v.num_of_robots;
+  const chips = [[`${n} robot${n === 1 ? "" : "s"}`, "num_of_robots"], [SCHEDULER_WORDS[v.scheduler] ?? v.scheduler, "scheduler"]];
+  chips.push([v.unlimited_visibility ? "Sees everyone" : `Sight ${v.visibility_radius}`, "unlimited_visibility"]);
+  if (v.obstructed_visibility) chips.push(["Robots block the view", "obstructed_visibility"]);
+  if (a?.multiplicities || LOCKS[key]?.multiplicity) chips.push([MULTIPLICITY_WORDS[v.multiplicity], "multiplicity"]);
+  if (v.frames === "compass") chips.push([`Compass off by up to ${v.compass_error}° · ${v.compass_static ? "fixed" : "changes each look"}`, "frames"]);
+  else if (v.frames !== "global") chips.push([v.frames === "rotated" ? "Own frame per robot" : "Disoriented robots", "frames"]);
+  if (v.num_of_faults > 0) chips.push([`${v.num_of_faults} ${v.fault_type} fault${v.num_of_faults === 1 ? "" : "s"}`, "num_of_faults"]);
+  return chips;
+}
+function renderBrief() {
+  const el = $("model_notes");
+  const key = algorithmKey();
+  const a = algorithms.find((x) => x.key === key);
+  if (!a) { el.hidden = true; return; }
+  if (el.hidden) { el.hidden = false; requestAnimationFrame(updateInsets); } // its head now takes room above the view
+  const locks = LOCKS[key] ?? {};
+  const notes = brief.notes.map((text) => {
+    const [re, kind, tag] = NOTE_KINDS.find(([r]) => r.test(text)) ?? [null, "info", ""];
+    const body = re ? text.replace(re, "") : text;
+    return { kind, tag, text: body.charAt(0).toUpperCase() + body.slice(1) }; // "Tag. Sentence", not "Tag. sentence"
+  });
+  const warns = notes.filter((x) => x.kind !== "info").length;
+  el.classList.toggle("folded", !brief.open);
+  el.innerHTML = `<button class="brief-head" type="button" aria-expanded="${brief.open}">`
+    + `<span class="brief-name">${esc(MENU_NAMES[key] ?? a.name)}</span>`
+    + (notes.length ? `<span class="brief-count ${warns ? "warn" : ""}">${icon(warns ? "warn" : "info", 13)}${notes.length}</span>` : "")
+    + `<span class="chev" data-icon="chevron" data-size="14"></span></button>`
+    + `<div class="brief-body"${brief.open ? "" : " hidden"}>`
+    + `<p class="brief-rule">${esc(RULES[key] ?? "")}</p>`
+    + `<div class="brief-chips">${briefChips(settings.values, key).map(([text, k]) =>
+      `<span class="chip-tag${locks[k] ? " locked" : ""}"${locks[k] ? ` title="Fixed for this algorithm: ${esc(locks[k].reason)}"` : ""}>${locks[k] ? icon("lock", 11) : ""}${esc(text)}</span>`).join("")}</div>`
+    + (notes.length ? `<ul class="brief-notes">${notes.map((x, i) =>
+      `<li class="${x.kind}${brief.seen.has(x.text) ? "" : " fresh"}" style="--i:${i}">${icon(x.kind === "info" ? "info" : "warn", 13)}<span>${x.tag ? `<b>${x.tag}.</b> ` : ""}${esc(x.text)}</span></li>`).join("")}</ul>` : "")
+    + `</div>`;
+  if (brief.opening) { el.querySelector(".brief-body")?.classList.add("opening"); brief.opening = false; }
+  // Remember what is on screen, so only notes a change brings in animate. Folded, they still count as new when it
+  // opens; and the moment of no notes while a new run starts is not remembered, or every note would animate again.
+  if (brief.open && notes.length) brief.seen = new Set(notes.map((x) => x.text));
+  renderIcons(el);
+  el.querySelector(".brief-head").addEventListener("click", () => { brief.open = !brief.open; brief.opening = brief.open; renderBrief(); });
+}
+/** Notes from the core for the current run (empty while a new run starts). */
+function showNotes(notes) { brief.notes = notes; renderBrief(); }
+
+/* -------------------------------------------------------------- scenarios */
+// A scenario is the algorithm plus every setting, saved as a file. Links made by older versions (#scenario=…) still open.
+function scenario() {
+  return { format: "lcm-scenario", version: 1, algorithm: algorithmKey(), settings: { ...settings.values } };
+}
+function applyScenario(sc) {
+  if (!sc || typeof sc !== "object" || !sc.settings) { toast("That is not a scenario file", true); return; }
+  if (sc.algorithm && algorithms.some((a) => a.key === sc.algorithm)) { selectAlgorithm(sc.algorithm); updateExamples(); }
+  const settable = new Set(SETTINGS.map((x) => x.key));
+  const known = Object.fromEntries(Object.entries(sc.settings).filter(([k]) => settable.has(k)));
+  settings.apply(known);
+  newRun();
+  toast("Scenario loaded");
+}
+const fromBase64 = (code) => new TextDecoder().decode(Uint8Array.from(atob(code.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)));
+function exportScenario() {
+  download(new Blob([JSON.stringify(scenario(), null, 2)], { type: "application/json" }), `${fileStem()}.scenario.json`);
+  toast("Saved the scenario");
+}
+$("scenario_file").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  try { applyScenario(JSON.parse(await file.text())); } catch { toast("Could not read that scenario file", true); }
+});
+
 let resolveReady;
-window.lcm = { renderer, client, settings, parseCoordinates, stats: {}, ready: new Promise((r) => { resolveReady = r; }),
+window.lcm = { renderer, client, settings, parseCoordinates, adversary, editor, stats: {}, ready: new Promise((r) => { resolveReady = r; }),
   get state() { return state; } };
 
+/* -------------------------------------------------------- algorithm menu */
+/** The registry key of the algorithm that runs: the menu's choice, or the advanced variant. */
+function algorithmKey() {
+  const v = $("algorithm").value;
+  return v === "advanced" ? settings.values.variant : v;
+}
+/** Shows algorithm `key` in the menu (an advanced variant selects "Advanced gathering" and that variant). */
+function selectAlgorithm(key) {
+  if (ADVANCED.includes(key)) { $("algorithm").value = "advanced"; settings.set("variant", key, false); }
+  else $("algorithm").value = key;
+}
+function buildMenu(list) { $("algorithm").innerHTML = menuHtml(list); }
+
+// What each algorithm fixes, shown locked in the sidebar with the reason (instead of refusing the run).
+const LOCKS = {
+  CompassGathering: {
+    num_of_robots: { value: 2, reason: "this algorithm is for exactly two robots" },
+    frames: { value: "compass", reason: "each robot reads its own compass" },
+    num_of_faults: { value: 0, reason: "it assumes robots that never fail" },
+  },
+  RandomizedGathering: {
+    num_of_robots: { value: 2, reason: "this algorithm is for exactly two robots" },
+    num_of_faults: { value: 0, reason: "it assumes robots that never fail" },
+  },
+  CrashGathering: {
+    scheduler: { value: "ssync", reason: "it works in rounds, some robots at a time" },
+    multiplicity: { value: "weak", reason: "it needs weak multiplicity detection" },
+    fault_type: { value: "crash", reason: "it tolerates crash faults only" },
+  },
+  MutualVisibility: {
+    obstructed_visibility: { value: true, reason: "the task exists only when robots block the view" },
+    unlimited_visibility: { value: true, reason: "only other robots block the view" },
+    scheduler: { value: "sequential", reason: "the no-lights algorithm is for a sequential scheduler" },
+  },
+  SqGathering: {
+    num_of_faults: { value: 0, reason: "it assumes robots that never fail" },
+  },
+};
+LOCKS.RandomizedGatheringUniform = LOCKS.RandomizedGathering;
+
+/** Applies the chosen algorithm's locks and fills the algorithm card. */
+function applyAlgorithm() {
+  const key = algorithmKey();
+  settings.setContext({ family: $("algorithm").value === "advanced" ? "advanced" : "plain" });
+  settings.freeze(LOCKS[key] ?? {});
+  // The sidebar only says what is locked; what the algorithm does is in the brief under the toolbar.
+  const card = $("algo_card");
+  if (card) {
+    const locks = Object.values(LOCKS[key] ?? {});
+    card.hidden = !locks.length;
+    card.innerHTML = locks.length ? `${icon("lock", 12)}<span>${locks.length} setting${locks.length === 1 ? " is" : "s are"} fixed for this variant, marked with a lock below.</span>` : "";
+  }
+  renderBrief();
+}
+
 /* ------------------------------------------------------------ run control */
-function config() { return readConfig(settings.values, $("algorithm").value, settings.customPoints); }
+function config() {
+  const c = readConfig(settings.values, algorithmKey(), settings.customPoints);
+  // Playing the adversary: the run waits for each turn (or round) the user chooses.
+  if (adversary.on && c.scheduler === "sequential") { c.schedule = []; c.schedule_end = "await"; delete c.rounds; }
+  else if (adversary.on && c.scheduler === "ssync") { c.rounds = []; c.schedule_end = "await"; delete c.schedule; }
+  return c;
+}
 
 let fitPending = false; // fit the view to the new run's first frame
 
 /** Builds a new run from the settings; returns false if they can't make one. */
-function newRun({ quiet = false } = {}) {
+function newRun({ quiet = false, keepView = false } = {}) {
   clearTimeout(restartTimer);
   restartTimer = 0;
   const problem = settings.problem;
@@ -62,9 +263,12 @@ function newRun({ quiet = false } = {}) {
   const c = config();
   const v = settings.values;
   renderer.setOutline(v.open_world ? startOutline(v) : { kind: "rect", w: v.width_bound, h: v.height_bound, rotation: 0 });
-  fitPending = true;
+  fitPending = !keepView;
   inspector.leave(); // the robot under the pointer belonged to the old run
+  adversary.reset();
+  showNotes([]);
   renderer.options.visibility = c.visibility_radius;
+  renderer.options.compassError = c.frames === "compass" ? c.compass_error : 0;
   // "Who sees whom" means something only when robots see just a part of the swarm.
   const limitedSight = c.visibility_radius != null;
   $("links").hidden = !limitedSight;
@@ -76,6 +280,7 @@ function newRun({ quiet = false } = {}) {
   dirty = false;
   $("dirty").hidden = true;
   client.stop();
+  renderer.clearMotion();
   updatePlaybackOptions();
   client.speed(playbackSpeed());
   client.start(c);
@@ -134,10 +339,12 @@ function updatePlaybackOptions() {
   }
 }
 
-function onSettingChange() {
+function onSettingChange(key) {
   if (state === "loading") return;
   syncAddress();
+  if (key === "variant") { onAlgorithmChange(); return; }
   updatePlaybackOptions();
+  renderBrief();
   if (state === "ready") {
     clearTimeout(restartTimer);
     restartTimer = setTimeout(() => newRun({ quiet: true }), 120); // debounce slider drags and typing
@@ -148,8 +355,11 @@ function onSettingChange() {
 }
 
 function setState(next) {
+  const was = state;
   state = next;
   const running = next === "running";
+  // Playing: the brief folds to one line so the robots have the room; a click opens it again.
+  if (running && was !== "running" && brief.open) { brief.open = false; renderBrief(); }
   const canRun = next === "ready" || next === "paused" || running;
   $("play").disabled = !canRun;
   $("play").innerHTML = `${icon(running ? "pause" : "play")}<span class="label">${running ? "Pause" : "Play"}</span>`;
@@ -181,7 +391,67 @@ function step(unit) {
 const CHAIN = "-80, 10\n0, 0\n95, -5";
 const TWO_GROUPS = "-170, -10\n-150, 15\n-135, -20\n-160, 30\n150, -25\n165, 10\n135, 20\n170, -15";
 const GTC_SEQUENTIAL = { scheduler: "sequential", turn_gap: "none", rigid_movement: true, robot_speeds: 25 };
+// SqGathering: two multiplicities of two (robots 0, 1 and 2, 3), and two robots sharing a point with one alone.
+const TWO_PAIRS = "-64, 0\n-64, 0\n64, 0\n64, 0";
+const PAIR_AND_ONE = "-60, 0\n-60, 0\n60, 0";
+const SQ = { open_world: true, pattern: "custom", turn_gap: "none", robot_speeds: 20, unlimited_visibility: true, num_of_faults: 0, frames: "global", schedule_text: "" };
+const EXAMPLE_BASE = { max_turns: 0, max_rounds: 0, schedule_text: "", threshold_precision: 5 };
 const EXAMPLES = {
+  SqGathering: [
+    { label: "Rendezvous: two robots", note: "κ = 0: the active robot walks to the other one",
+      set: { ...SQ, custom: "-80, 0\n80, 0", scheduler: "sequential", multiplicity: "weak", rigid_movement: true } },
+    { label: "Rounds: never gathers", note: "A whole stack moves at once each time: two stacks get ever closer but never merge",
+      set: { ...SQ, custom: TWO_PAIRS, scheduler: "ssync", multiplicity: "weak", rigid_movement: true, schedule_text: "0 1 | 2 3", schedule_repeat: "repeat", max_rounds: 16 } },
+    { label: "The same start, sequential", note: "One robot at a time: it gathers",
+      set: { ...SQ, custom: TWO_PAIRS, scheduler: "sequential", multiplicity: "weak", rigid_movement: true } },
+    { label: "Can't see stacks: never gathers", note: "Every robot sees two points and goes to the other: the order 0, 2, 1 keeps them apart",
+      set: { ...SQ, custom: PAIR_AND_ONE, scheduler: "sequential", multiplicity: "none", rigid_movement: true, schedule_text: "0, 2, 1", schedule_repeat: "repeat", max_turns: 60 } },
+    { label: "Same order, robots see stacks", note: "Now the single robot knows the pair is a stack and joins it",
+      set: { ...SQ, custom: PAIR_AND_ONE, scheduler: "sequential", multiplicity: "weak", rigid_movement: true, schedule_text: "0, 2, 1", schedule_repeat: "repeat", max_turns: 60 } },
+    { label: "Limited visibility (untested ground)", note: "Experimental: 30 robots that see only 120 units around them; whether the rule always gathers like this is not known",
+      set: { open_world: true, pattern: "cloud", num_of_robots: 30, spread: 90, scheduler: "sequential", turn_gap: "none", multiplicity: "weak", unlimited_visibility: false, visibility_radius: 120, rigid_movement: true, schedule_text: "" } },
+  ],
+  Gathering: [
+    { label: "FSYNC: one round", note: "Everyone sees the same snapshot and walks to the same centroid",
+      set: { open_world: true, pattern: "cloud", num_of_robots: 20, spread: 120, scheduler: "fsync", turn_gap: "none", rigid_movement: true } },
+    { label: "SSYNC, a few robots per round", note: "Each robot is active with chance 0.3",
+      set: { open_world: true, pattern: "cloud", num_of_robots: 20, spread: 120, scheduler: "ssync", ssync_probability: 0.3, turn_gap: "none", rigid_movement: true, schedule_text: "" } },
+    { label: "Robots block the view", note: "Obstructed visibility, robot radius 4",
+      set: { open_world: true, pattern: "line", num_of_robots: 8, size: 300, scheduler: "sequential", turn_gap: "none", obstructed_visibility: true, robot_radius: 4, rigid_movement: true } },
+  ],
+  CompassGathering: [
+    { label: "Static compass, φ = 60°", note: "Always gathers while the error stays below 90°. Red needles show where each robot thinks north is",
+      set: { open_world: true, obstructed_visibility: false, unlimited_visibility: true, multiplicity: "weak", pattern: "custom", custom: "-120, 40\n110, -60", frames: "compass", compass_error: 60, compass_static: true, scheduler: "ssync", turn_gap: "none", robot_speeds: 20, rigid_movement: true, num_of_faults: 0, schedule_text: "" } },
+    { label: "Dynamic compass, SSYNC, φ = 40°", note: "Robots act in rounds: always gathers while the error stays below 45°",
+      set: { open_world: true, obstructed_visibility: false, unlimited_visibility: true, multiplicity: "weak", pattern: "custom", custom: "-120, 40\n110, -60", frames: "compass", compass_error: 40, compass_static: false, scheduler: "ssync", turn_gap: "none", robot_speeds: 20, rigid_movement: true, num_of_faults: 0, schedule_text: "" } },
+    { label: "Dynamic compass, async, φ = 25°", note: "Robots act on their own: gathers while the error stays below 30°. Once together they stay put but never stop, so pause when they meet",
+      set: { open_world: true, obstructed_visibility: false, unlimited_visibility: true, multiplicity: "weak", pattern: "custom", custom: "-120, 40\n110, -60", frames: "compass", compass_error: 25, compass_static: false, scheduler: "async", robot_speeds: 20, rigid_movement: true, num_of_faults: 0 } },
+  ],
+  RandomizedGathering: [
+    { label: "Mirror images, FSYNC", note: "Both robots see the same picture; only their coins tell them apart",
+      set: { open_world: true, obstructed_visibility: false, unlimited_visibility: true, frames: "global", pattern: "custom", custom: "-150, 0\n150, 0", scheduler: "fsync", turn_gap: "none", robot_speeds: 40, rigid_movement: true, num_of_faults: 0 } },
+    { label: "Async", note: "Each look tosses a coin: stay, go halfway or go all the way",
+      set: { open_world: true, obstructed_visibility: false, unlimited_visibility: true, frames: "global", pattern: "custom", custom: "-150, 0\n150, 0", scheduler: "async", robot_speeds: 40, rigid_movement: true, num_of_faults: 0 } },
+  ],
+  get RandomizedGatheringUniform() { return this.RandomizedGathering; },
+  MutualVisibility: [
+    { label: "Twelve robots in a line", note: "Each sees only its neighbours; after one epoch everyone sees everyone",
+      set: { open_world: true, frames: "global", unlimited_visibility: true, num_of_faults: 0, pattern: "line", num_of_robots: 12, size: 400, distribution: "even", scheduler: "sequential", turn_gap: "none", obstructed_visibility: true, robot_radius: 0, robot_speeds: 10, max_turns: 60 } },
+    { label: "A 5 × 5 grid", note: "Rows, columns and diagonals hide robots; after two epochs all 25 see each other. Precision 10⁻⁹: its moves get smaller than the default ε",
+      set: { open_world: true, frames: "global", unlimited_visibility: true, num_of_faults: 0, pattern: "custom", custom: Array.from({ length: 25 }, (_, k) => `${(k % 5) * 60 - 120}, ${Math.floor(k / 5) * 60 - 120}`).join("\n"), scheduler: "sequential", turn_gap: "none", obstructed_visibility: true, robot_radius: 0, robot_speeds: 10, max_turns: 50, threshold_precision: 9 } },
+  ],
+  CrashGathering: [
+    { label: "Ten robots, three crashed", note: "The others gather on one point; crashed robots stay where they are",
+      set: { open_world: true, frames: "global", obstructed_visibility: false, unlimited_visibility: true, pattern: "cloud", num_of_robots: 10, spread: 120, num_of_faults: 3, fault_type: "crash", scheduler: "ssync", turn_gap: "none", multiplicity: "weak", robot_speeds: 20, rigid_movement: true, schedule_text: "" } },
+    { label: "Robots in line behind each other", note: "A robot with another in its way curves around it",
+      set: { open_world: true, frames: "global", obstructed_visibility: false, unlimited_visibility: true, pattern: "custom", custom: "10, 0\n20, 0\n30, 0\n40, 0\n-40, 0\n0, 35", num_of_faults: 0, scheduler: "ssync", turn_gap: "none", multiplicity: "weak", robot_speeds: 20, rigid_movement: true, schedule_text: "" } },
+  ],
+  Spreading: [
+    { label: "Spreading in a box", note: "Robots start bunched and spread to cover the world",
+      set: { open_world: false, pattern: "cloud", num_of_robots: 30, spread: 40, width_bound: 400, height_bound: 400, frames: "global" } },
+    { label: "Disoriented robots", note: "Each robot samples a grid in its own frame: Spreading depends on the axes",
+      set: { open_world: true, pattern: "cloud", num_of_robots: 30, spread: 60, frames: "disoriented" } },
+  ],
   GoToCenter: [
     { label: "Three robots in a chain", note: "Limited sight: each robot sees only its neighbour", links: true,
       set: { open_world: true, pattern: "custom", custom: CHAIN, unlimited_visibility: false, visibility_radius: 100, ...GTC_SEQUENTIAL } },
@@ -200,7 +470,7 @@ function setLinks(on) {
   $("links").setAttribute("aria-pressed", String(on));
 }
 function renderExamplesMenu() {
-  const list = EXAMPLES[$("algorithm").value] ?? [];
+  const list = EXAMPLES[algorithmKey()] ?? [];
   const items = [{ label: "None", note: "Your own settings" }, ...list];
   $("examples_menu").innerHTML = items.map((e, k) => {
     const on = k - 1 === activeExample;
@@ -212,7 +482,7 @@ function renderExamplesMenu() {
   $("examples").setAttribute("aria-pressed", String(activeExample >= 0));
 }
 function updateExamples() {
-  const list = EXAMPLES[$("algorithm").value];
+  const list = EXAMPLES[algorithmKey()];
   activeExample = -1; // another algorithm: the old choice no longer means anything
   before = null;
   openExamples(false);
@@ -231,7 +501,7 @@ function openExamples(open) {
   (menu.querySelector("[aria-checked=true]") ?? menu.querySelector("[role=menuitemradio]"))?.focus();
 }
 function chooseExample(index) {
-  const list = EXAMPLES[$("algorithm").value] ?? [];
+  const list = EXAMPLES[algorithmKey()] ?? [];
   if (index < 0) {
     if (before) { setLinks(before.links); settings.apply(before.values); }
     before = null;
@@ -239,13 +509,17 @@ function chooseExample(index) {
     const example = list[index];
     before ??= {
       links: renderer.options.links,
-      values: Object.fromEntries([...new Set(list.flatMap((e) => Object.keys(e.set)))].map((key) => [key, settings.values[key]])),
+      values: Object.fromEntries([...new Set([...Object.keys(EXAMPLE_BASE), ...list.flatMap((e) => Object.keys(e.set))])].map((key) => [key, settings.values[key]])),
     };
     setLinks(example.links);
-    settings.apply(example.set);
+    // Limits and explicit schedules belong to the example that sets them: never carried into the next one.
+    settings.apply({ ...EXAMPLE_BASE, ...example.set });
+    settings.freeze(LOCKS[algorithmKey()] ?? {});
   } else return;
   activeExample = index;
   renderExamplesMenu();
+  // An example is a new experiment, like a new algorithm: start it now, even after a run has ended.
+  if (state !== "loading" && state !== "ready") newRun();
 }
 $("examples").addEventListener("click", (e) => { e.stopPropagation(); openExamples($("examples_menu").hidden); });
 $("examples_menu").addEventListener("click", (e) => {
@@ -267,17 +541,24 @@ $("examples_menu").addEventListener("keydown", (e) => {
 
 client.on("ready", (list) => {
   algorithms = list;
-  $("algorithm").innerHTML = list.map((a) => `<option value="${a.key}">${a.name}</option>`).join("");
-  const asked = list.find((a) => a.key === link.algorithm);
-  if (asked) {
-    $("algorithm").value = asked.key;
-    if (asked.sequential_only) settings.set("scheduler", "sequential", false);
+  buildMenu(list);
+  // ?algorithm=KEY (a case link, or the ring page's menu) opens the page on that algorithm; an advanced
+  // variant selects "Advanced gathering" and that variant.
+  const asked = link.algorithm;
+  if (asked && (asked === "advanced" || list.some((a) => a.key === asked))) {
+    selectAlgorithm(asked);
+    lastMenu = $("algorithm").value;
+    if (list.find((a) => a.key === algorithmKey())?.sequential_only) settings.set("scheduler", "sequential", false);
   }
+  applyAlgorithm();
   updateExamples();
   updatePlaybackOptions();
   const speed = link.speed === "max" ? "Infinity" : link.speed;
   if (speed && [...$("playback").options].some((o) => o.value === speed)) $("playback").value = speed;
   $("loading_text").textContent = "Building the swarm…";
+  if (location.hash.startsWith("#scenario=")) {
+    try { applyScenario(JSON.parse(fromBase64(location.hash.slice(10)))); return; } catch { toast("The scenario in this link could not be read", true); }
+  }
   newRun();
   if (link.links && !$("links").hidden) setLinks(true); // who sees whom, asked for by the link
   syncAddress(); // a link with values the page could not use shows what it did use
@@ -311,14 +592,23 @@ const fmtSize = (v) => (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v >= 1
 
 /* Playing a turn at a time: say, in plain words, whose turn it is and what the algorithm does. */
 const RULES = {
-  Gathering: "It goes to the average position of all the robots it sees (the centre of gravity).",
-  SEC: "It goes to the nearest point of the smallest circle around the robots it sees.",
-  GoToCenter: "It heads for the centre of the smallest circle around the robots it sees, but never so far that it could lose sight of a neighbour.",
+  Gathering: "Every time a robot looks, it walks to the average position of all the robots it can see, its centre of gravity. Because everybody aims at nearly the same middle point, the swarm keeps shrinking towards its centre, quickly at first and then more and more slowly; a robot terminates once every robot it sees is within ε of that middle.",
+  SEC: "Every time a robot looks, it finds the smallest circle that encloses all the robots it can see and walks to the nearest point on that circle. Robots inside the circle move out to its edge, robots already on it stay, and the run ends when every robot sits on the circle.",
+  GoToCenter: "Every time a robot looks, it heads for the centre of the smallest circle around the robots it can see, but it only goes as far as it can without losing sight of any of its neighbours. Groups that can see each other therefore stay connected while they shrink, and with limited sight the swarm closes in without falling apart.",
+  SqGathering: "One robot moves at a time, and robots can tell a stack (several robots on one spot) from a single robot. If there is exactly one stack, every robot walks to it and robots already on it stay. If there are several stacks, a robot on a stack steps halfway towards its nearest neighbour, breaking the tie, while robots on their own wait. If there is no stack yet, a robot walks onto its nearest neighbour to create the first one.",
+  Spreading: "Every time a robot looks, it walks to the centre of the area that is closer to it than to any other robot (its Voronoi cell). Crowded robots have small cells and move apart, lonely robots have large ones, so the swarm spreads out until the robots cover the space evenly.",
+  TwoTask: "The swarm is split into two teams that want different things. Red robots run the smallest-enclosing-circle rule and walk to the edge of the circle around the swarm; blue robots run the centre-of-gravity rule and walk to its middle. Watching them pull against each other shows how two algorithms interact in one swarm.",
+  CircleFormation: "A robot that is not on the circle around the swarm first steps onto it. A robot already on the circle slides along it to the point halfway between its two neighbours. Repeated over and over, these small corrections spread the robots out until they stand evenly spaced around the circle.",
+  CompassGathering: "Two robots whose compasses may point a little away from true north. Each robot looks at where the other one lies according to its own compass and, depending on that direction, walks straight onto it, steps west, swings around it, or waits. The rules are chosen so that the two robots meet as long as the compass errors stay below a known bound.",
+  RandomizedGathering: "Two robots that look exactly alike. Every time a robot looks it tosses a coin and either stays where it is, goes halfway towards the other robot, or goes all the way to it. Randomness is what breaks the symmetry: sooner or later one robot moves while the other stays, and they meet.",
+  RandomizedGatheringUniform: "Two robots that look exactly alike. Every time a robot looks it picks at random to go all the way to the other robot, halfway, or a random fraction of the way. Because the two robots almost never choose the same move, the distance between them keeps shrinking until they meet.",
+  MutualVisibility: "Robots that stand in line hide each other. Every time a robot looks, it makes a small sideways move chosen so that it never lands in line with two other robots, which gradually uncovers robots that were hidden. The goal is a position in which every robot can see every other robot.",
+  CrashGathering: "Robots gather on one spot even though some of them may stop working for good (crash). Each working robot heads for the stack where robots are already gathering or, before there is one, for the centre of the smallest circle around everyone, and curves around any robot standing in its way. Crashed robots simply stay where they are.",
 };
 const fmtNumber = (v) => (v === 0 ? "0" : v >= 1e-3 ? String(+v.toPrecision(3)) : v.toExponential(2));
 let endNote = null;   // "ended", "stalled" or null: which note is up
 let stepOfNumbers = 0; // the gap between neighbouring numbers where the swarm is, set from the frame
-function showEndNote(kind) {
+function showEndNote(kind, f = renderer.frame) {
   endNote = kind;
   const el = $("turn_caption");
   el.hidden = !kind;
@@ -326,8 +616,12 @@ function showEndNote(kind) {
   const points = trace.points, size = points.length ? points[points.length - 1] : 0;
   const zoomed = renderer.zoom > 20 ? ` This view is zoomed in ${fmtZoomWords(renderer.zoom)} times; the grid and the scale bar show the real size.` : "";
   let html;
-  if (kind === "ended") {
-    html = `<div class="cap-head">Finished: every robot has terminated</div><div class="cap-body">Grey robots have terminated. The swarm is ${fmtSize(size)} units across (from its centre to its farthest robot).${zoomed}</div>`;
+  if (kind === "stalled" && f?.seeing != null) {
+    const all = f.seeing === f.robots;
+    html = `<div class="cap-head">${all ? "Mutual visibility reached" : "Stopped before mutual visibility"}</div><div class="cap-body">${f.seeing} of ${f.robots} robots see every other robot. This algorithm never terminates: the run stops once a whole round passes in which every robot's next move is too small to make (shorter than ε).${all ? "" : " Some robots are still hidden behind others: a lower precision (larger ε) or a turn limit changes where it stops."}${zoomed}</div>`;
+  } else if (kind === "ended") {
+    const left = f ? f.robots - f.terminated : 0; // crashed and Byzantine robots never terminate
+    html = `<div class="cap-head">Finished: every ${left ? "working " : ""}robot has terminated</div><div class="cap-body">Grey robots have terminated.${left ? ` The other ${left} are faulty (crashed or Byzantine) and do not terminate.` : ""} The swarm is ${fmtSize(size)} units across (from its centre to its farthest robot).${zoomed}</div>`;
   } else {
     // Stalled: a whole round in which no robot could move or finish. Often the numbers have run out: a robot's
     // destination rounds to the spot where it already stands.
@@ -345,13 +639,13 @@ function updateCaption(f) {
     // A run that is over, in a view that is zoomed in on the swarm or played a turn at a time: say so, because
     // grey robots a long way apart on screen can look like a failure when they are a hair apart in fact.
     stepOfNumbers = ulpOf(Math.max(Math.abs(f.originX ?? 0), Math.abs(f.originY ?? 0)));
-    showEndNote(f.stop === "stalled" ? "stalled" : f.ended && (renderer.follow || typeof playbackSpeed() === "object") ? "ended" : null);
+    showEndNote(f.stop === "stalled" ? "stalled" : f.ended && (renderer.follow || typeof playbackSpeed() === "object") ? "ended" : null, f);
     return;
   }
   el.hidden = false;
   endNote = null;
-  const who = `<strong>Turn ${(f.turns ?? 0).toLocaleString()}</strong> · Robot ${w.robot}`;
-  const rule = RULES[$("algorithm").value] ?? "";
+  const who = `<strong>Turn ${(f.turns ?? 0).toLocaleString()}</strong> · Robot ${w.robot}`;  // turn pacing is sequential only
+  const rule = RULES[algorithmKey()] ?? "";
   el.innerHTML = w.phase === "decide"
     ? `<div class="cap-head">${who} looks and decides</div><div class="cap-body">${rule || "It looks at the others and picks its destination, the ✕."}</div>`
     : `<div class="cap-head">${who} moves</div><div class="cap-body">It walks ${fmtNumber(w.length)} units to the ✕.${w.cut ? " The adversary stops it short of its destination (non-rigid movement)." : ""}</div>`;
@@ -359,6 +653,9 @@ function updateCaption(f) {
 
 client.on("frame", (f) => {
   frame = f;
+  if (f.notes) showNotes(f.notes);
+  // The adversary's schedule ran out: the run waits, paused, for the next choice.
+  if (f.awaiting && !f.playing && state === "running") { client.stopPulling(); setState("paused"); }
   renderer.options.walk = f.walk ?? null;
   if (f.trace) trace.points = f.trace;
   updateCaption(f);
@@ -370,6 +667,7 @@ client.on("frame", (f) => {
     if (embedded) { renderer.resetView(); renderer.followCap = 1; renderer.setFollow(true); }
   }
   renderer.setFrame(f);
+  renderer.keepInView(f);
   if (firstFrame) { firstFrame = false; $("loading").hidden = true; resolveReady(); }
   if (f.lastEvent) showLastEvent(f.lastEvent);
   window.lcm.frames = (window.lcm.frames ?? 0) + 1;
@@ -467,12 +765,15 @@ function updateHud(force = false) {
   if (!force && now - hudAt < 200) return;
   hudAt = now;
   if (now - fpsAt >= 1000) { fps = (draws * 1000) / (now - fpsAt); draws = 0; fpsAt = now; }
-  const statusText = {
+  let statusText = {
     loading: "Loading…", ready: "Ready", running: "Running", paused: "Paused",
-    ended: frame?.ended ? "Ended · all terminated"
+    ended: frame?.ended ? (frame.terminated < frame.robots ? `Ended · ${frame.terminated} of ${frame.robots} terminated, the rest faulty` : "Ended · all terminated")
+      : frame?.seeing != null ? `Stopped · ${frame.seeing} of ${frame.robots} see everyone`
       : frame?.stop === "stalled" ? "Stalled · nothing can move any more"
-      : frame?.stop === "max-turns" ? "Stopped · turn limit reached" : `Stopped (${frame?.stop})`,
+      : frame?.stop === "max-turns" ? "Stopped · turn limit reached"
+      : frame?.stop === "max-rounds" ? "Stopped · round limit reached" : `Stopped (${frame?.stop})`,
   }[state];
+  if (state === "paused" && frame?.awaiting) statusText = adversary.mode === "ssync" ? "Your move · pick a round" : "Your move · pick a robot";
   $("hud_status").textContent = statusText;
   $("hud_status").className = `hud-status${state === "ended" ? " ended" : ""}`;
   if (!frame) return;
@@ -487,10 +788,12 @@ function updateHud(force = false) {
   drawTrace();
   $("hud_epochs_row").hidden = frame.epochs == null;
   if (frame.epochs != null) {
+    $("hud_epochs_row").querySelector(".k").textContent = frame.unit === "round" ? "Rounds · epochs" : "Turns · epochs";
     $("hud_epochs").textContent = frame.epochs.toLocaleString();
     $("hud_turns").textContent = (frame.turns ?? 0).toLocaleString();
   }
-  $("hud_events").textContent = (frame.events - frame.ticks).toLocaleString();
+  $("hud_events").textContent = (frame.events - frame.ticks).toLocaleString()
+    + (frame.deferred ? ` · ${frame.deferred.toLocaleString()} put off` : "");
   $("hud_ticks").textContent = frame.ticks.toLocaleString();
   $("hud_rate").textContent = state === "running" ? Math.round(rate).toLocaleString() : "—";
   const lod = frame.robots > LOD.outlines ? " · simplified drawing" : "";
@@ -525,21 +828,33 @@ $("play").addEventListener("click", play);
 $("step_event").addEventListener("click", () => step("event"));
 $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
+let lastMenu = "Gathering";
 $("algorithm").addEventListener("change", () => {
+  if ($("algorithm").value === "ring") {
+    $("algorithm").value = lastMenu; // back to the old choice if the user returns
+    location.href = "web/ring.html";
+    return;
+  }
+  lastMenu = $("algorithm").value;
+  onAlgorithmChange();
+});
+function onAlgorithmChange() {
+  brief.open = true; // a new algorithm: say what it does
+  applyAlgorithm();
   updateExamples();
   syncAddress();
   // An algorithm that only works under the sequential scheduler (SqGathering)
   // switches it on, rather than failing with the async default.
-  const a = algorithms.find((x) => x.key === $("algorithm").value);
-  if (a?.sequential_only && settings.values.scheduler !== "sequential") {
+  const a = algorithms.find((x) => x.key === algorithmKey());
+  if (a?.sequential_only && (settings.values.scheduler === "async" || settings.values.scheduler === "kasync")) {
     settings.set("scheduler", "sequential", false);
     toast(`${a.name} runs one robot at a time: Scheduler set to Sequential`);
   }
+  // Algorithms for exactly two robots open on their first example rather than refusing the swarm on screen.
   // A new algorithm is a new experiment: start it now, even mid-run.
   if (state === "loading") return;
-  if (state === "ready") onSettingChange();
-  else newRun();
-});
+  newRun({ quiet: true });
+}
 $("playback").addEventListener("change", () => {
   syncAddress();
   const speed = playbackSpeed();
@@ -571,7 +886,10 @@ function updateInsets() {
   root.setProperty("--top-h", `${Math.round(toolbar ? toolbar.bottom : 0)}px`);
   const hud = visible("hud");
   root.setProperty("--hud-bottom", `${Math.round(hud ? hud.bottom : 0)}px`);
-  const settingsRect = visible("settings"), tools = visible("tools"), legend = visible("legend");
+  // Where the view tools start: the brief, when it sits in the right-hand column, stops above them.
+  const toolsBox = visible("tools");
+  root.setProperty("--tools-top", `${Math.round(toolsBox ? toolsBox.top : innerHeight)}px`);
+  const settingsRect = visible("settings"), tools = visible("tools"), legend = visible("legend"), briefRect = visible("model_notes");
   // The overview map sits just left of the view tools, in the bottom right corner.
   if (tools && tools.height > tools.width) $("overview").style.right = `${Math.round(innerWidth - tools.left + 8)}px`;
   if (embedded) {
@@ -589,7 +907,8 @@ function updateInsets() {
   renderer.setInsets({
     left: settingsRect ? settingsRect.right : 0,
     right: Math.max(hud ? innerWidth - hud.left : 0, tools && tools.height > tools.width ? innerWidth - tools.left : 0),
-    top: toolbar ? toolbar.bottom : 0,
+    // The brief's one-line head stays clear of the view (opened, it may cover the top of the view for a while).
+    top: Math.max(toolbar ? toolbar.bottom : 0, briefRect ? briefRect.top + 42 : 0),
     bottom: tools && tools.width >= tools.height ? innerHeight - tools.top : 56,
   });
 }
@@ -601,6 +920,12 @@ $("hud_zoom_in").addEventListener("click", () => renderer.zoomAt(1.25));
 $("hud_zoom_out").addEventListener("click", () => renderer.zoomAt(0.8));
 $("fit").addEventListener("click", () => renderer.resetView());
 $("grid").addEventListener("click", toggleGrid);
+$("trails").addEventListener("click", toggleTrails);
+function toggleTrails() {
+  renderer.options.trails = !renderer.options.trails;
+  $("trails").setAttribute("aria-pressed", String(renderer.options.trails));
+  renderer.requestDraw();
+}
 function toggleOverview() {
   $("overview").hidden = !$("overview").hidden;
   updateInsets();
@@ -645,7 +970,7 @@ function toggleLinks() {
 $("export").addEventListener("click", (e) => { e.stopPropagation(); openExamples(false); $("export_menu").hidden = !$("export_menu").hidden; });
 document.addEventListener("click", () => { $("export_menu").hidden = true; openExamples(false); });
 // Links to the current case: the full page, or the iframe code for another web page (embed.js).
-const caseQuery = (speed = $("playback").value) => linkQuery({ values: settings.values, algorithm: $("algorithm").value, playback: speed, points: settings.customPoints });
+const caseQuery = (speed = $("playback").value) => linkQuery({ values: settings.values, algorithm: algorithmKey(), playback: speed, points: settings.customPoints });
 const embedDialog = buildEmbedDialog({
   query: caseQuery,
   speeds: () => [...$("playback").options].map((o) => [o.value, o.text]),
@@ -671,8 +996,11 @@ async function copyCaseLink() {
   if (await copyText(window.lcm.caseLink())) toast("Link copied: it opens the simulator with these settings");
   else toast("Could not copy: the browser did not allow it", true);
 }
-const EXPORTS = { png: () => exportPng(), csv: () => exportCsv(), link: copyCaseLink, embed: () => embedDialog.open() };
+const EXPORTS = { png: () => exportPng(), csv: () => exportCsv(), link: copyCaseLink, embed: () => embedDialog.open(),
+  scenario: () => exportScenario(), open: () => $("scenario_file").click() };
 for (const b of document.querySelectorAll("[data-export]")) b.addEventListener("click", EXPORTS[b.dataset.export]);
+$("edit").addEventListener("click", () => setEditor(!editor.on));
+$("adversary").addEventListener("click", () => setAdversary(!adversary.on));
 
 function fileStem() {
   const c = config();
@@ -687,7 +1015,7 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 async function exportPng() {
-  const name = algorithms.find((a) => a.key === $("algorithm").value)?.name ?? "";
+  const name = algorithms.find((a) => a.key === algorithmKey())?.name ?? "";
   const caption = `LCM simulator · ${name} · ${(frame?.robots ?? 0).toLocaleString()} robots · t = ${(frame?.time ?? 0).toFixed(2)} · seed ${settings.values.random_seed}`;
   download(await renderer.toPngBlob(caption), `${fileStem()}.png`);
   toast("Saved the view as PNG");
@@ -724,12 +1052,23 @@ applyTheme(link.theme ?? currentTheme(), !link.theme);
 /* ---------------------------------------------- canvas: pan, zoom, pick */
 const canvas = $("canvas");
 let drag = null;
+let editDrag = false; // the scenario editor is dragging a robot
 canvas.addEventListener("pointerdown", (e) => {
-  drag = { x: e.clientX, y: e.clientY, moved: false };
+  const rect = canvas.getBoundingClientRect();
   canvas.setPointerCapture(e.pointerId);
+  if (editor.down(e.clientX - rect.left, e.clientY - rect.top, e)) { editDrag = true; return; }
+  drag = { x: e.clientX, y: e.clientY, moved: false };
+});
+canvas.addEventListener("contextmenu", (e) => {
+  if (!editor.on) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  editor.remove(renderer.pick(e.clientX - rect.left, e.clientY - rect.top, 10));
 });
 canvas.addEventListener("pointermove", (e) => {
   const rect = canvas.getBoundingClientRect();
+  if (editor.move(e.clientX - rect.left, e.clientY - rect.top)) return;
+  if (adversary.on && !drag) adversary.move(e.clientX - rect.left, e.clientY - rect.top);
   if (measure.on && !drag) {  // the ruler follows the pointer until its second point is placed
     measureHover(e.clientX - rect.left, e.clientY - rect.top);
     return;
@@ -749,8 +1088,12 @@ canvas.addEventListener("pointermove", (e) => {
 });
 canvas.addEventListener("pointerup", (e) => {
   const rect = canvas.getBoundingClientRect();
+  if (editDrag) { editDrag = false; editor.up(); return; }
   if (drag && !drag.moved) {
-    if (measure.on) measureClick(e.clientX - rect.left, e.clientY - rect.top);
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    if (editor.on) editor.click(sx, sy, e);
+    else if (adversary.on) adversary.click(sx, sy);
+    else if (measure.on) measureClick(e.clientX - rect.left, e.clientY - rect.top);
     else inspector.select(renderer.pick(e.clientX - rect.left, e.clientY - rect.top));
   }
   drag = null;
@@ -799,6 +1142,8 @@ canvas.addEventListener("wheel", (e) => {
   renderer.zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
 }, { passive: false });
 new ResizeObserver(() => { renderer.resize(); updateInsets(); }).observe($("stage"));
+// The stats card grows as a run fills it in: whatever sits under it moves down with it.
+new ResizeObserver(() => updateInsets()).observe($("hud"));
 if (embedded) new ResizeObserver(updateInsets).observe($("turn_caption")); // the caption comes and goes
 updateInsets();
 renderer.resetView();
@@ -813,6 +1158,8 @@ window.addEventListener("keydown", (e) => {
     if (!$("shortcuts").hidden) openShortcuts(false);
     else if (!$("export_menu").hidden) $("export_menu").hidden = true;
     else if (!$("examples_menu").hidden) { openExamples(false); $("examples").focus(); }
+    else if (adversary.on && adversary.chosen.length) adversary.action("clear");
+    else if (editor.on) setEditor(false);
     else if (measure.on) { if (measure.a) { measure.a = measure.b = measure.hover = null; renderer.requestDraw(); } else setMeasure(false); }
     else inspector.select(-1);
     return;
@@ -820,7 +1167,10 @@ window.addEventListener("keydown", (e) => {
   if (embedded && e.key !== " ") return; // embedded: Space plays and pauses, nothing else
   if (!$("embed_dialog").hidden) return; // the embed window is open: keys are for it
   const typing = e.target.closest?.("input, select, textarea");
+  if (editor.on && !typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); editor.undo(); return; }
   if (settings.editor.isOpen || typing || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (editor.on && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); editor.remove(editor.hovered); return; }
+  if (adversary.on && e.key === "Enter" && !e.target.closest?.("button, a, summary")) { e.preventDefault(); adversary.action("play"); return; }
   // Space/Enter on a focused button already clicks it; don't toggle twice.
   if ((e.key === " " || e.key === "Enter") && e.target.closest?.("button, a, summary")) return;
   const actions = {
@@ -830,8 +1180,11 @@ window.addEventListener("keydown", (e) => {
     f: () => renderer.resetView(), F: toggleFullscreen,
     z: toggleFollow, Z: toggleFollow,
     g: toggleGrid, G: toggleGrid,
+    p: toggleTrails, P: toggleTrails,
     o: toggleOverview, O: toggleOverview,
     m: toggleMeasure, M: toggleMeasure,
+    d: () => setEditor(!editor.on), D: () => setEditor(!editor.on),
+    a: () => setAdversary(!adversary.on), A: () => setAdversary(!adversary.on),
     "+": () => renderer.zoomAt(1.25), "=": () => renderer.zoomAt(1.25), "-": () => renderer.zoomAt(0.8),
     v: toggleLinks, V: toggleLinks,
     s: toggleSettings, S: toggleSettings,
