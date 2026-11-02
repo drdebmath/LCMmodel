@@ -271,7 +271,7 @@ self.onmessage = async ({ data }) => {
     await ready;
     switch (data.type) {
       case "hello":
-        self.postMessage({ type: "ready", version, algorithms: JSON.parse(wasm.algorithms()) });
+        self.postMessage({ type: "ready", version, algorithms: JSON.parse(wasm.algorithms()), patterns: JSON.parse(wasm.patterns()) });
         break;
       case "start":
         sim?.free();

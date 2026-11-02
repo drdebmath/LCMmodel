@@ -49,7 +49,7 @@ export class SimClient {
 
   receive(data) {
     switch (data.type) {
-      case "ready": this.loadedVersion = data.version; this.emit("ready", data.algorithms); break;
+      case "ready": this.loadedVersion = data.version; this.emit("ready", { algorithms: data.algorithms, patterns: data.patterns }); break;
       case "frame": {
         // A frame of an earlier run (in flight when a new run started) must not
         // overwrite the new one, or mark it ended.

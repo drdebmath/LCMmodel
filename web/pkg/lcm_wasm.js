@@ -453,6 +453,24 @@ export function algorithms() {
 }
 
 /**
+ * The predefined Pattern Formation shapes, as JSON `[{"key": …, "name": …}, …]`.
+ * The `key` is what the UI sends back in the config's `target_pattern`.
+ * @returns {string}
+ */
+export function patterns() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.patterns();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
  * Runs a SqGathering `SimConfig` to the end: `{"report": …, "trace": [turn,
  * …]}` (`trace` empty unless `with_trace`). Same output as
  * `lcm seq --format json --trace FILE`.

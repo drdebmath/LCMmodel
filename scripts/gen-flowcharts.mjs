@@ -30,6 +30,7 @@ const WORKER = "web/worker.js";
 const CLIENT = "web/client.js";
 const RENDERER = "web/renderer.js";
 const SQ = "crates/lcm-algorithms/src/sq_gathering.rs";
+const PATTERN = "crates/lcm-algorithms/src/pattern_formation.rs";
 
 // ------------------------------------------------------------- helpers ----
 
@@ -591,6 +592,99 @@ const CHARTS = [
             edge("g_g", "g_i", "yes"),
             edge("g_i", "g_j"),
             edge("g_h", "g_j", null, "elbow"),
+        ],
+    },
+    {
+        "id": "pattern-formation",
+        "title": "Pattern Formation",
+        "short": "Robots agree on a shape and each walks to its point",
+        "blurb": (
+            "Every robot builds the same chosen shape from the snapshot — centred on the " +
+            "swarm's average position, sized by its spread — spreads n target marks along it, " +
+            "works out which mark is its own, and walks there. Repeated by all robots, the swarm " +
+            "settles into the shape. This is Robot._pattern_formation and Robot._pattern_terminal in " +
+            "robot.py (Suzuki & Yamashita 1999), generalised from the fixed star to any predefined " +
+            "shape; that any pattern is formable this way is Universal Pattern Formation (Flocchini, " +
+            "Navarra, Pattanayak, Piselli & Santoro, arXiv:2412.10733). The default shape is a " +
+            "5-pointed star; the selector in the toolbar offers circle, square, triangle and more."
+        ),
+        "notes": [
+            "Every robot computes the same centre, size and marks from the same snapshot, so they " +
+            "agree on the shape without communicating or any leader.",
+            "The size is the root-mean-square distance from the centre, not the farthest robot, so " +
+            "the frame does not jump around the way an SEC-based one can.",
+            "Which robot takes which mark is decided by sorting both robots and marks by angle and " +
+            "then picking the rotation with the least total travel; that keeps the matching stable " +
+            "so the swarm settles instead of oscillating.",
+            "It finishes when every robot is within 3% of the size R of its mark. Exact placement " +
+            "is never required, because the shape drifts a little as robots move.",
+            "Only the template changes between shapes; the frame, matching and termination are " +
+            "identical, so every predefined shape shares this one pipeline on either scheduler.",
+            "Each activation costs about n² work: it tries all n rotations, each summing n distances.",
+        ],
+        "lanes": ["rows", [["The crowd", 0, 2], ["Agree on a frame", 3, 5],
+                           ["Draw the shape", 6, 6], ["Match and move", 7, 10]]],
+        "nodes": [
+            node("comp", "Compute my target", 1, 0, "entry", [PATTERN, "compute"],
+                 "PatternFormation::compute()",
+                 "Called from the COMPUTE phase of chart 2 with the robot's snapshot. Robots are " +
+                 "oblivious, so it starts from scratch every time."),
+            node("live", "List the robots in view", 1, 1, "step", null, "crashed ones dropped · n robots",
+                 "Take everyone that has not crashed, and call how many there are n. These are the " +
+                 "robots the shape must be shared out among."),
+            node("few", "Fewer than two robots?", 1, 2, "decision", null, null,
+                 "With no one else to form a shape with, there is nothing to do."),
+            node("stay1", "Stay put, done", 0, 2, "end", null, "nothing to form",
+                 "The robot keeps its place and marks itself finished."),
+            node("center", "Find the centre", 1, 3, "step", null, "average of all positions",
+                 "Average everyone's positions. Because every robot sees the same dots and averages " +
+                 "them the same way, they all agree on this centre without talking."),
+            node("size", "Find the size R", 1, 4, "step", null, "spread from the centre (RMS)",
+                 "Measure how spread out the robots are around that centre (a root-mean-square " +
+                 "distance). This single number, R, says how big the shape should be."),
+            node("flat", "All piled on one spot?", 1, 5, "decision", null, "R ≈ 0",
+                 "If the spread is essentially zero there is no room for a shape."),
+            node("stay2", "Stay put, done", 0, 5, "end", null, "no size to work with",
+                 "Nothing meaningful to form; the robot stays where it is and finishes."),
+            node("tmpl", "Place n marks on the chosen shape", 1, 6, "step", [PATTERN, "pattern_unit_points"],
+                 "pattern_unit_points() · scaled to centre, R",
+                 "Draw the chosen shape's outline around the centre at size R and spread n evenly " +
+                 "spaced target marks along its edges — one mark per robot. The star keeps its " +
+                 "original sampling; every other shape is sampled by arc length the same way."),
+            node("sort", "Sort robots and marks by angle", 1, 7, "step", null, "two rings round the centre",
+                 "List the robots in the order a clock hand sweeps past them around the centre, and " +
+                 "list the marks the same way. Now both are rings in angle order."),
+            node("rot", "Pick the best line-up", 1, 8, "step", null, "least total travel · tries all n",
+                 "The two rings can be lined up n ways (rotations). Try them all and keep the one " +
+                 "with the smallest total travel. This is what stops the matching from flip-flopping " +
+                 "between turns and oscillating forever."),
+            node("mine", "Read off my mark", 1, 9, "step", null, "my place in the ring",
+                 "Find my own spot in the robot ring, apply the winning line-up, and that says which " +
+                 "mark is mine."),
+            node("done", "Everyone within 3% of R of their mark?", 1, 10, "decision", null, null,
+                 "Look at the worst-placed robot. If every robot is within about 3% of R of its " +
+                 "mark, the shape is already formed."),
+            node("term", "Terminate", 0, 10, "end", null, "shape formed",
+                 "The robot stops for good; the formation is complete."),
+            node("move", "Walk to my mark", 2, 10, "out", null, "target = my mark",
+                 "The mark becomes the robot's target; chart 2 takes over (freeze check, then the " +
+                 "move). Next time it wakes, it does all of this again."),
+        ],
+        "edges": [
+            edge("comp", "live"),
+            edge("live", "few"),
+            edge("few", "stay1", "yes"),
+            edge("few", "center", "no"),
+            edge("center", "size"),
+            edge("size", "flat"),
+            edge("flat", "stay2", "yes"),
+            edge("flat", "tmpl", "no"),
+            edge("tmpl", "sort"),
+            edge("sort", "rot"),
+            edge("rot", "mine"),
+            edge("mine", "done"),
+            edge("done", "term", "yes"),
+            edge("done", "move", "no"),
         ],
     },
 ]

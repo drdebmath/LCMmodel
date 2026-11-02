@@ -360,7 +360,7 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
 @media (max-width: 760px) {
   #toolbar { top: 8px; left: 8px; right: 8px; flex-wrap: wrap; justify-content: space-between; row-gap: 6px; }
   #toolbar .brand, #toolbar .divider { display: none; }
-  #algorithm { flex: 1 1 150px; min-width: 0; }
+  #algorithm, #target-pattern { flex: 1 1 150px; min-width: 0; }
   #examples_menu { left: 8px !important; right: 8px; max-width: none; }
   #hud { top: calc(var(--top-h, 96px) + 6px); left: 8px; right: 8px; width: auto; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 12px; }
   #hud .hud-row:first-child { grid-column: 3; grid-row: 1; }

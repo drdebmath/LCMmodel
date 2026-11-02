@@ -62,6 +62,18 @@ pub fn algorithms() -> String {
     serde_json::Value::Array(list).to_string()
 }
 
+/// The predefined Pattern Formation shapes, as JSON `[{"key": …, "name": …}, …]`.
+/// The `key` is what the UI sends back in the config's `target_pattern`.
+#[wasm_bindgen]
+#[must_use]
+pub fn patterns() -> String {
+    let list: Vec<_> = lcm_algorithms::PATTERNS
+        .iter()
+        .map(|(key, name)| serde_json::json!({ "key": key, "name": name }))
+        .collect();
+    serde_json::Value::Array(list).to_string()
+}
+
 #[wasm_bindgen]
 pub struct WasmSimulation {
     sim: Simulation,

@@ -9,13 +9,14 @@
 //! work with by returning [`ConfigError::Unsupported`].
 //!
 //! Gathering and SEC are ported; they drive the core's parity tests. Uniform
-//! Circle Formation and Go-To-Center are ported too. SqGathering (Algorithm 8 of the
-//! sequential-schedulers paper) is new: it refuses any scheduler but the
-//! sequential one.
+//! Circle Formation, Pattern Formation and Go-To-Center are ported too. SqGathering
+//! (Algorithm 8 of the sequential-schedulers paper) is new: it refuses any scheduler
+//! but the sequential one.
 
 mod circle_formation;
 mod gathering;
 mod go_to_center;
+mod pattern_formation;
 mod sec;
 pub mod sq_gathering;
 pub mod sq_trace;
@@ -23,6 +24,7 @@ pub mod sq_trace;
 pub use circle_formation::CircleFormation;
 pub use gathering::Gathering;
 pub use go_to_center::GoToCenter;
+pub use pattern_formation::PatternFormation;
 pub use sec::Sec;
 pub use sq_gathering::SqGathering;
 
@@ -39,6 +41,29 @@ fn one<A: Algorithm + Default + 'static>(_: &SimConfig) -> Result<Plan, ConfigEr
     Ok(Plan::single(Box::new(A::default())))
 }
 
+/// Pattern Formation reads which predefined shape to form from the config, so
+/// one algorithm entry covers every shape in [`PATTERNS`].
+fn pattern_formation(config: &SimConfig) -> Result<Plan, ConfigError> {
+    Ok(Plan::single(Box::new(PatternFormation {
+        shape: config.target_pattern,
+    })))
+}
+
+/// The predefined Pattern Formation shapes offered to the UI, as
+/// `(key, display name)`. The key is the lowercase `PatternShape` name the
+/// frontend sends back in `target_pattern`.
+pub const PATTERNS: &[(&str, &str)] = &[
+    ("star", "Star"),
+    ("circle", "Circle"),
+    ("square", "Square"),
+    ("triangle", "Triangle"),
+    ("pentagon", "Pentagon"),
+    ("hexagon", "Hexagon"),
+    ("line", "Line"),
+    ("cross", "Cross"),
+    ("heart", "Heart"),
+];
+
 pub const REGISTRY: &[Entry] = &[
     Entry {
         key: "Gathering",
@@ -54,6 +79,11 @@ pub const REGISTRY: &[Entry] = &[
         key: "CircleFormation",
         name: "Uniform Circle Formation",
         build: one::<CircleFormation>,
+    },
+    Entry {
+        key: "PatternFormation",
+        name: "Pattern Formation",
+        build: pattern_formation,
     },
     Entry {
         key: "GoToCenter",

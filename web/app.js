@@ -46,7 +46,16 @@ window.lcm = { renderer, client, settings, parseCoordinates, stats: {}, ready: n
   get state() { return state; } };
 
 /* ------------------------------------------------------------ run control */
-function config() { return readConfig(settings.values, $("algorithm").value, settings.customPoints); }
+function config() {
+  const c = readConfig(settings.values, $("algorithm").value, settings.customPoints);
+  c.target_pattern = $("target-pattern")?.value || "star"; // Pattern Formation only; others ignore it
+  return c;
+}
+
+/** The pattern list applies only to Pattern Formation; hide it otherwise. */
+function syncPatternVisibility() {
+  $("target-pattern").hidden = $("algorithm").value !== "PatternFormation";
+}
 
 let fitPending = false; // fit the view to the new run's first frame
 
@@ -159,6 +168,7 @@ function setState(next) {
   $("step_time").disabled = !canRun;
   $("reset").disabled = next === "loading";
   $("algorithm").disabled = next === "loading";
+  $("target-pattern").disabled = next === "loading";
   updateHud(true);
 }
 
@@ -265,7 +275,7 @@ $("examples_menu").addEventListener("keydown", (e) => {
   items[(to + items.length) % items.length].focus();
 });
 
-client.on("ready", (list) => {
+client.on("ready", ({ algorithms: list, patterns }) => {
   algorithms = list;
   $("algorithm").innerHTML = list.map((a) => `<option value="${a.key}">${a.name}</option>`).join("");
   const asked = list.find((a) => a.key === link.algorithm);
@@ -277,6 +287,9 @@ client.on("ready", (list) => {
   updatePlaybackOptions();
   const speed = link.speed === "max" ? "Infinity" : link.speed;
   if (speed && [...$("playback").options].some((o) => o.value === speed)) $("playback").value = speed;
+  // Pattern Formation's shape list (default star); shown only while it is the chosen algorithm.
+  $("target-pattern").innerHTML = (patterns ?? []).map((p) => `<option value="${p.key}">${p.name}</option>`).join("");
+  syncPatternVisibility();
   $("loading_text").textContent = "Building the swarm…";
   newRun();
   if (link.links && !$("links").hidden) setLinks(true); // who sees whom, asked for by the link
@@ -526,6 +539,7 @@ $("step_event").addEventListener("click", () => step("event"));
 $("step_time").addEventListener("click", () => step("time"));
 $("reset").addEventListener("click", () => newRun());
 $("algorithm").addEventListener("change", () => {
+  syncPatternVisibility(); // show/hide the Pattern Formation shape list
   updateExamples();
   syncAddress();
   // An algorithm that only works under the sequential scheduler (SqGathering)
@@ -540,6 +554,7 @@ $("algorithm").addEventListener("change", () => {
   if (state === "ready") onSettingChange();
   else newRun();
 });
+$("target-pattern").addEventListener("change", onSettingChange);
 $("playback").addEventListener("change", () => {
   syncAddress();
   const speed = playbackSpeed();
