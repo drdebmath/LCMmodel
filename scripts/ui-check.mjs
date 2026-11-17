@@ -455,16 +455,16 @@ await key("L", "KeyL", 76);
 check("there is no lights button, and L does nothing", await js("!document.getElementById('lights') && lcm.renderer.options.showLights === false"));
 const toolsNow = await js(`(() => { const t = document.getElementById('tools'); const shown = [...t.querySelectorAll('button')].filter((b) => getComputedStyle(b).display !== 'none').map((b) => b.id);
   return { shown, columns: getComputedStyle(t).gridTemplateColumns.split(' ').length, linksHidden: document.getElementById('links').hidden }; })()`);
-check("the view tools are in pairs, two columns, without + and − (those are in the status panel): follow, fit, grid, measure, export, full screen, theme, help",
-  toolsNow.columns === 2 && JSON.stringify(toolsNow.shown) === JSON.stringify(["follow", "fit", "grid", "measure", "export", "fullscreen", "theme", "help"]), JSON.stringify(toolsNow));
+check("the view tools are in pairs, two columns: zoom in, zoom out, follow, turn left, turn right, fit, grid, measure, export, full screen, theme, help",
+  toolsNow.columns === 2 && JSON.stringify(toolsNow.shown) === JSON.stringify(["zoom_in", "zoom_out", "follow", "rotate_left", "rotate_right", "fit", "grid", "measure", "export", "fullscreen", "theme", "help"]), JSON.stringify(toolsNow));
 check("with unlimited sight the who-sees-whom button is hidden, and V does nothing", toolsNow.linksHidden && (await (async () => { await key("V", "KeyV", 86); return js("lcm.renderer.options.links === false"); })()));
 const zoomBefore = await js("(() => { lcm.renderer.resetView(); return lcm.renderer.zoom; })()");
-await click("#hud_zoom_in");
+await click("#zoom_in");
 const zoomIn = await js("lcm.renderer.zoom");
-await click("#hud_zoom_out");
+await click("#zoom_out");
 const zoomOut = await js("lcm.renderer.zoom");
-check("the + and − in the status panel's Zoom row zoom the view", Math.abs(zoomIn / zoomBefore - 1.25) < 1e-9 && Math.abs(zoomOut / zoomIn - 0.8) < 1e-9, `${zoomBefore} -> ${zoomIn} -> ${zoomOut}`);
-check("the zoom buttons in the tools panel are not shown on a screen with room for the status panel", await js("getComputedStyle(document.getElementById('zoom_in')).display === 'none' && getComputedStyle(document.getElementById('hud_zoom_in')).display !== 'none'"));
+check("the + and − in the view tools zoom the view", Math.abs(zoomIn / zoomBefore - 1.25) < 1e-9 && Math.abs(zoomOut / zoomIn - 0.8) < 1e-9, `${zoomBefore} -> ${zoomIn} -> ${zoomOut}`);
+check("zoom + and − are in the view tools only, not also in the status panel", await js("getComputedStyle(document.getElementById('zoom_in')).display !== 'none' && getComputedStyle(document.getElementById('hud_zoom_in')).display === 'none'"));
 await js("lcm.settings.set('unlimited_visibility', false); lcm.settings.set('visibility_radius', 150)");
 await click("#reset");
 await until("lcm.state === 'ready' && lcm.renderer.options.visibility === 150", 4000);

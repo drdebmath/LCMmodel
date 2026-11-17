@@ -62,6 +62,43 @@ pub fn algorithms() -> String {
     serde_json::Value::Array(list).to_string()
 }
 
+/// The predefined Pattern Formation shapes, as JSON `[{"key": …, "name": …}, …]`.
+/// The `key` is what the UI sends back in the config's `target_pattern`.
+#[wasm_bindgen]
+#[must_use]
+pub fn patterns() -> String {
+    let list: Vec<_> = lcm_algorithms::PATTERNS
+        .iter()
+        .map(|(key, name)| serde_json::json!({ "key": key, "name": name }))
+        .collect();
+    serde_json::Value::Array(list).to_string()
+}
+
+/// Pattern Formation's normalised template for `n` robots under `config_json`,
+/// as `[m, x0, y0, x1, y1, …]`: the first `m` points are the pattern (in
+/// drawing order), the rest the slots of robots it leaves out. The page embeds
+/// it in the swarm's frame (centroid, RMS radius) to draw the pattern.
+///
+/// # Errors
+/// Malformed JSON.
+#[wasm_bindgen]
+#[allow(clippy::cast_precision_loss)]
+pub fn pattern_template(config_json: &str, n: u32) -> Result<Vec<f64>, JsError> {
+    let config: SimConfig = serde_json::from_str(config_json)?;
+    let custom: Option<Vec<lcm_core::Point>> = config
+        .target_points
+        .as_ref()
+        .map(|pts| pts.iter().map(|p| lcm_core::Point::new(p[0], p[1])).collect());
+    let (pts, m) = lcm_algorithms::pattern_template(config.target_pattern, custom.as_deref(), n as usize);
+    let mut out = Vec::with_capacity(1 + 2 * pts.len());
+    out.push(m as f64);
+    for p in pts {
+        out.push(p.x);
+        out.push(p.y);
+    }
+    Ok(out)
+}
+
 #[wasm_bindgen]
 pub struct WasmSimulation {
     sim: Simulation,

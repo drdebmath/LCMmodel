@@ -43,6 +43,12 @@ export const COLORS = [
   { key: "task-blue", label: "Gathering task", fill: "#2563eb" },
 ];
 const C = Object.fromEntries(COLORS.map((c, i) => [c.key, i]));
+// Pattern Formation overlay (shown in the legend while it is drawn).
+export const PATTERN_COLORS = {
+  line: "#b8860b",     // dark yellow: the pattern, its points joined in order
+  reached: "#ffd400",  // bright yellow halo: a robot sitting on a pattern point
+  omitted: "#ec4899",  // pink: robots the pattern leaves out (more robots than points), and their parking spots
+};
 export const LIGHTS = [null, "#3b82f6", "#ef4444", "#22c55e"];
 
 // Level of detail: draw these only up to this many robots.
@@ -81,6 +87,7 @@ export class Renderer {
     this.outline = null;
     this.zoom = 1;
     this.pan = { x: 0, y: 0 };
+    this.rotation = 0; // degrees, anticlockwise: the view turns about the middle of the free area
     // The world point drawn at screen (width/2 + pan.x, height/2 + pan.y). It is (0, 0) normally and
     // the swarm's centre while following it, so a tiny swarm far from (0, 0) is positioned as
     // (its centre - anchor) * scale and stays exact however far in the view has zoomed.
@@ -264,13 +271,39 @@ export class Renderer {
     return Math.min(w / this.world.w, h / this.world.h) * 0.92 * this.zoom;
   }
 
+  /** The canvas angle (radians) that turns the view by `rotation` degrees anticlockwise. */
+  get turn() { return (-this.rotation * Math.PI) / 180; }
+
+  /** The point the view turns about: the middle of the area the panels leave free (CSS px). */
+  get pivot() {
+    const { left, right, top, bottom } = this.insets;
+    return [(this.width + left - right) / 2, (this.height + top - bottom) / 2];
+  }
+
+  /** Screen point (sx, sy) turned by `a` radians about the pivot, as the canvas turns it. */
+  turnPoint(sx, sy, a) {
+    if (!a) return [sx, sy];
+    const [px, py] = this.pivot, c = Math.cos(a), sn = Math.sin(a), dx = sx - px, dy = sy - py;
+    return [px + dx * c - dy * sn, py + dx * sn + dy * c];
+  }
+
+  /** Turn the view by `deg` degrees anticlockwise (negative: clockwise), keeping the middle where it is. */
+  rotateBy(deg) {
+    this.rotation = ((((this.rotation + deg) % 360) + 540) % 360) - 180;
+    if (Math.abs(this.rotation) < 1e-9) this.rotation = 0;
+    this.requestDraw();
+  }
+
+  setRotation(deg) { this.rotation = 0; this.rotateBy(deg); }
+
   toScreen(x, y) {
     const s = this.scale;
-    return [this.width / 2 + this.pan.x + (x - this.anchor.x) * s, this.height / 2 + this.pan.y - (y - this.anchor.y) * s];
+    return this.turnPoint(this.width / 2 + this.pan.x + (x - this.anchor.x) * s, this.height / 2 + this.pan.y - (y - this.anchor.y) * s, this.turn);
   }
 
   toWorld(sx, sy) {
     const s = this.scale;
+    [sx, sy] = this.turnPoint(sx, sy, -this.turn);
     return [this.anchor.x + (sx - this.width / 2 - this.pan.x) / s, this.anchor.y - (sy - this.height / 2 - this.pan.y) / s];
   }
 
@@ -278,6 +311,7 @@ export class Renderer {
   zoomAt(factor, mx = this.width / 2, my = this.height / 2) {
     this.setFollow(false); // zooming by hand takes over from following
     const [wx, wy] = this.toWorld(mx, my);
+    [mx, my] = this.turnPoint(mx, my, -this.turn); // the pan below is in unturned screen space
     this.zoom = Math.min(MAX_ZOOM, Math.max(0.05, this.zoom * factor));
     const s = this.scale;
     this.pan.x = mx - this.width / 2 - (wx - this.anchor.x) * s;
@@ -320,7 +354,13 @@ export class Renderer {
     };
   }
 
-  panBy(dx, dy) { this.setFollow(false); this.pan.x += dx; this.pan.y += dy; this.requestDraw(); }
+  panBy(dx, dy) {
+    this.setFollow(false);
+    // A drag is in screen space; the pan is in the unturned view, so turn the drag back first.
+    const a = -this.turn, c = Math.cos(a), sn = Math.sin(a);
+    this.pan.x += dx * c - dy * sn; this.pan.y += dx * sn + dy * c;
+    this.requestDraw();
+  }
 
   centerOn(x, y) {
     this.setFollow(false);
@@ -338,9 +378,14 @@ export class Renderer {
    * coordinates, along the top and left edges of the free area.
    */
   drawGrid(ctx, s, ox, oy) {
-    const W = this.width, H = this.height, { left, right, top } = this.insets;
-    const xMin = this.anchor.x - ox / s, xMax = this.anchor.x + (W - ox) / s;
-    const yMax = this.anchor.y + oy / s, yMin = this.anchor.y - (H - oy) / s;  // y points up
+    const { left, right, top } = this.insets;
+    // Turned, the corners of the screen show world outside the unturned rectangle: draw lines over a
+    // square one diagonal bigger on every side (G), and leave the edge labels out (they would sit askew).
+    const turned = this.rotation !== 0, G = turned ? Math.hypot(this.width, this.height) : 0;
+    const W = this.width + G, H = this.height + G;
+    ox += G; oy += G; const W0 = W + G, H0 = H + G;
+    const xMin = this.anchor.x - ox / s, xMax = this.anchor.x + (W0 - ox) / s;
+    const yMax = this.anchor.y + oy / s, yMin = this.anchor.y - (H0 - oy) / s;  // y points up
     const span = Math.max(xMax - xMin, yMax - yMin);
     if (!(span > 0) || !isFinite(span)) { this.gridState = null; return; }
     // Lines closer than 16 steps of the numbers cannot be told apart (or labelled truthfully): leave them out.
@@ -350,6 +395,7 @@ export class Renderer {
     const rgb = this.theme.grid;
     const sx = (x) => ox + (x - this.anchor.x) * s, sy = (y) => oy - (y - this.anchor.y) * s;
     ctx.save();
+    ctx.translate(-G, -G);
     ctx.lineWidth = 1;
     // Faint layers: one per power of ten, each fading in as its lines drift apart.
     for (let e = eMax; e >= eMin; e--) {
@@ -361,8 +407,8 @@ export class Renderer {
       if (k1 - k0 > 600 || j1 - j0 > 600) continue;
       ctx.strokeStyle = `rgba(${rgb},${(0.12 * fade).toFixed(3)})`;
       ctx.beginPath();
-      for (let k = k0; k <= k1; k++) { const x = Math.round(sx(k * step)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-      for (let j = j0; j <= j1; j++) { const y = Math.round(sy(j * step)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
+      for (let k = k0; k <= k1; k++) { const x = Math.round(sx(k * step)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H0); }
+      for (let j = j0; j <= j1; j++) { const y = Math.round(sy(j * step)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W0, y); }
       ctx.stroke();
     }
     // The labelled lines: 1, 2 or 5 times a power of ten, whichever puts them 90 to 225 px apart. They
@@ -375,15 +421,15 @@ export class Renderer {
     if (labelled) {
       ctx.strokeStyle = `rgba(${rgb},0.26)`;
       ctx.beginPath();
-      for (let k = kx0; k <= kx1; k++) { const x = Math.round(sx(k * step)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-      for (let j = ky0; j <= ky1; j++) { const y = Math.round(sy(j * step)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
+      for (let k = kx0; k <= kx1; k++) { const x = Math.round(sx(k * step)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H0); }
+      for (let j = ky0; j <= ky1; j++) { const y = Math.round(sy(j * step)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W0, y); }
       ctx.stroke();
     }
     // The axes through (0, 0), when in view, a little stronger still.
     ctx.strokeStyle = `rgba(${rgb},0.4)`;
     ctx.beginPath();
-    if (xMin <= 0 && xMax >= 0) { const x = Math.round(sx(0)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-    if (yMin <= 0 && yMax >= 0) { const y = Math.round(sy(0)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
+    if (xMin <= 0 && xMax >= 0) { const x = Math.round(sx(0)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H0); }
+    if (yMin <= 0 && yMax >= 0) { const y = Math.round(sy(0)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W0, y); }
     ctx.stroke();
     const decade = Math.floor(Math.log10(step) + 1e-9);
     const text = (v) => {
@@ -392,18 +438,20 @@ export class Renderer {
       return v.toFixed(Math.max(0, -decade));
     };
     ctx.font = "11px system-ui, sans-serif";
+    const sxL = (x) => sx(x) - G, syL = (y) => sy(y) - G;
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = `rgba(${rgb},0.9)`;
     ctx.lineJoin = "round"; ctx.lineWidth = 3; ctx.strokeStyle = this.theme.bg;
     const label = (str, x, y) => { ctx.strokeText(str, x, y); ctx.fillText(str, x, y); };
-    if (labelled) {
+    if (labelled && !turned) {
+      ctx.translate(G, G);
       for (let k = kx0; k <= kx1; k++) {
-        const x = sx(k * step), str = text(k * step), w = ctx.measureText(str).width;
+        const x = sxL(k * step), str = text(k * step), w = ctx.measureText(str).width;
         if (x - w / 2 < left + 4 || x + w / 2 > W - right - 4) continue;
         label(str, x - w / 2, top + 16);
       }
       for (let j = ky0; j <= ky1; j++) {
-        const y = sy(j * step);
+        const y = syL(j * step);
         if (y < top + 30 || y > H - 20) continue;
         label(text(j * step), left + 6, y - 3);
       }
@@ -416,6 +464,55 @@ export class Renderer {
   robotRadius(n) {
     const base = n <= 200 ? 5 : n <= 2000 ? 3 : 1.6;
     return Math.min(9, base * Math.sqrt(this.zoom));
+  }
+
+  /**
+   * Pattern Formation's template placed in the frame's coordinates (centroid and RMS radius of the robots
+   * that have not crashed, the frame the algorithm uses), and for each robot the slot it sits on: within
+   * 3% of the radius, the algorithm's own termination tolerance; -1 while it is on none.
+   */
+  patternOverlay(frame) {
+    const { xy, flags } = frame, { unit, m } = frame.pattern, n = flags.length;
+    let cx = 0, cy = 0, live = 0;
+    for (let i = 0; i < n; i++) if ((flags[i] & 3) !== STATE_CRASH) { cx += xy[2 * i]; cy += xy[2 * i + 1]; live++; }
+    if (!live || unit.length / 2 !== live) return null;
+    cx /= live; cy /= live;
+    let ss = 0;
+    for (let i = 0; i < n; i++) if ((flags[i] & 3) !== STATE_CRASH) { const dx = xy[2 * i] - cx, dy = xy[2 * i + 1] - cy; ss += dx * dx + dy * dy; }
+    const rad = Math.sqrt(ss / live);
+    if (!(rad > 0)) return null;
+    const pts = new Float64Array(unit.length);
+    for (let k = 0; k < unit.length; k += 2) { pts[k] = cx + rad * unit[k]; pts[k + 1] = cy + rad * unit[k + 1]; }
+    // Which slot each robot sits on. Slots go into a grid of cells one tolerance wide, so each robot
+    // only checks the 3 × 3 cells around it: linear in the robots, at any swarm size.
+    const slots = unit.length / 2, tol = 0.03 * rad;
+    const slot = new Int32Array(n).fill(-1), taken = new Uint8Array(slots);
+    const cellOf = (x, y) => `${Math.floor((x - cx) / tol)},${Math.floor((y - cy) / tol)}`;
+    const grid = new Map();
+    for (let k = 0; k < slots; k++) {
+      const key = cellOf(pts[2 * k], pts[2 * k + 1]);
+      const list = grid.get(key);
+      if (list) list.push(k); else grid.set(key, [k]);
+    }
+    let reached = 0, omitted = 0;
+    for (let i = 0; i < n; i++) {
+      if ((flags[i] & 3) === STATE_CRASH) continue;
+      const x = xy[2 * i], y = xy[2 * i + 1];
+      const gx = Math.floor((x - cx) / tol), gy = Math.floor((y - cy) / tol);
+      let best = -1, bd = tol;
+      for (let ax = gx - 1; ax <= gx + 1; ax++) {
+        for (let ay = gy - 1; ay <= gy + 1; ay++) {
+          for (const k of grid.get(`${ax},${ay}`) ?? []) {
+            const d = Math.hypot(x - pts[2 * k], y - pts[2 * k + 1]);
+            if (d <= bd && !taken[k]) { bd = d; best = k; }
+          }
+        }
+      }
+      if (best < 0) continue;
+      taken[best] = 1; slot[i] = best;
+      if (best < m) reached++; else omitted++;
+    }
+    return { pts, m, slot, reached, omitted };
   }
 
   /** A pre-drawn disc (or ring) of radius r CSS px at pixel density dpr. */
@@ -446,6 +543,7 @@ export class Renderer {
   pick(sx, sy, reach = 8) {
     const f = this.frame;
     if (!f) return -1;
+    [sx, sy] = this.turnPoint(sx, sy, -this.turn);
     const s = this.scale, ox = this.width / 2 + this.pan.x, oy = this.height / 2 + this.pan.y;
     const r = Math.max(reach, this.robotRadius(f.flags.length) + 3);
     let best = -1, bestD = r * r;
@@ -465,6 +563,11 @@ export class Renderer {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = this.theme.bg;
     ctx.fillRect(0, 0, this.width, this.height);
+    // A turned view: everything below is drawn turned about the pivot (the next draw resets this).
+    if (this.rotation) {
+      const [px, py] = this.pivot;
+      ctx.translate(px, py); ctx.rotate(this.turn); ctx.translate(-px, -py);
+    }
 
     if (this.follow && frame) this.stepFollow();
     const s = this.scale;
@@ -591,6 +694,37 @@ export class Renderer {
       ctx.lineWidth = 1;
     }
 
+    // Pattern Formation: the pattern embedded in the swarm's own frame (centroid, RMS radius), as the
+    // robots compute it, and which robots sit on its points or on a parking spot for left-over robots.
+    const pat = frame.pattern ? this.patternOverlay(frame) : null;
+    this.patternStats = pat ? { reached: pat.reached, omitted: pat.omitted, points: pat.m } : null;
+    if (pat) {
+      const { pts, m } = pat;
+      ctx.save();
+      ctx.strokeStyle = PATTERN_COLORS.line; ctx.lineWidth = 2.5; ctx.lineJoin = "round";
+      ctx.beginPath();
+      for (let k = 0; k < m; k++) {
+        const x = X(pts[2 * k]), y = Y(pts[2 * k + 1]);
+        if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      if (frame.pattern.closed && m > 2) ctx.closePath();
+      ctx.stroke();
+      // Pattern points: hollow dark-yellow squares; parking spots: hollow pink diamonds (one path each).
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = PATTERN_COLORS.line;
+      ctx.beginPath();
+      for (let k = 0; k < m; k++) { const x = X(pts[2 * k]), y = Y(pts[2 * k + 1]); ctx.rect(x - 4, y - 4, 8, 8); }
+      ctx.stroke();
+      ctx.strokeStyle = PATTERN_COLORS.omitted;
+      ctx.beginPath();
+      for (let k = m; k < pts.length / 2; k++) {
+        const x = X(pts[2 * k]), y = Y(pts[2 * k + 1]);
+        ctx.moveTo(x, y - 6); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 6); ctx.lineTo(x - 6, y); ctx.closePath();
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Dashed line from each moving robot to its target, in the robot's colour.
     if (n <= LOD.targets) {
       ctx.setLineDash([2, 3]);
@@ -626,6 +760,25 @@ export class Renderer {
           if (colorOf[i] === c) ctx.drawImage(sp.canvas, snap(X(xy[2 * i]) - sp.half), snap(Y(xy[2 * i + 1]) - sp.half), sp.size, sp.size);
         }
       }
+    }
+
+    // Pattern Formation: a yellow halo on robots that reached a pattern point, a pink ring on the left-over ones.
+    if (pat) {
+      ctx.save();
+      ctx.lineWidth = 3;
+      const ringR = Math.max(r, 3) + 4;
+      for (const [color, onPattern] of [[PATTERN_COLORS.reached, true], [PATTERN_COLORS.omitted, false]]) {
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const k = pat.slot[i];
+          if (k < 0 || (k < pat.m) !== onPattern) continue;
+          const x = X(xy[2 * i]), y = Y(xy[2 * i + 1]);
+          ctx.moveTo(x + ringR, y); ctx.arc(x, y, ringR, 0, 2 * Math.PI);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
     // Luminous-robot lights: a ring in the light's colour.

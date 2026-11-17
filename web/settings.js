@@ -23,8 +23,8 @@ const SIZE_LABEL = { square: "Side length", rectangle: "Width", circle: "Diamete
 // does not apply; `enabledBy` greys it out; `more` puts it under "More options"
 // (a function of the values, or true).
 export const SETTINGS = [
-  { key: "num_of_robots", group: "swarm", label: "Robots", kind: "log", min: 1, max: 10000, value: 500,
-    enabledBy: (v) => v.pattern !== "custom",
+  { key: "num_of_robots", group: "swarm", label: "Robots", kind: "range", min: 1, max: 10000, step: 1, value: 500,
+    enabledBy: (v) => v.pattern !== "custom" && robotLock === null,
     hint: "Number of robots. With your own positions it is the number of positions." },
   { key: "random_seed", group: "swarm", label: "Random seed", kind: "number", min: 0, max: 4294967295, value: 12345, dice: true,
     hint: "Same seed and settings give the same run, every time, on every machine." },
@@ -336,6 +336,12 @@ export function buildSettings(root, onChange) {
     get problem() { return values.pattern === "custom" && customResult.errors.length ? customResult.errors : null; },
     get customPoints() { return customResult.points; },
     /** Sets several settings at once (in the order given) and restarts the run once. */
+    /** Fix the robot count at `n` and grey the slider out (null: free it again). */
+    lockRobots(n) {
+      robotLock = n ?? null;
+      if (robotLock !== null && values.num_of_robots !== robotLock) set("num_of_robots", robotLock, false);
+      else refresh();
+    },
     apply(entries) { for (const [key, value] of Object.entries(entries)) set(key, value, false); onChange(null, values); },
     reset() { for (const s of SETTINGS) values[s.key] = s.value; refresh(); for (const s of SETTINGS) show(s.key); refresh(); onChange(null, values); },
   };
@@ -371,6 +377,9 @@ function buildCoordinateEditor(onInput) {
 }
 
 /** SimConfig for the core from the panel's values plus the chosen algorithm. */
+/** A robot count fixed from outside the panel (a custom Pattern Formation pattern: one robot per point), or null. */
+let robotLock = null;
+
 export function readConfig(values, algorithm, customPoints = []) {
   const config = { algorithm };
   for (const s of SETTINGS) if (!s.local) config[s.key] = values[s.key];

@@ -9,6 +9,8 @@ const PATHS = {
   stepTime: '<circle cx="11" cy="13" r="7"/><path d="M11 9.5V13l2.5 1.5M17.5 3.5v5M15 6h5"/>',
   reset: '<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/>',
   sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  rotl: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4v4.5H9"/>',
+  rotr: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4v4.5H15"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
   fit: '<rect x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 2.5"/><circle cx="12" cy="12" r="2.4"/>',

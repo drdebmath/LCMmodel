@@ -68,6 +68,7 @@ let lastPace = 0;               // wall time of the previous paced slice
 let batch = 64;      // events per advance() call, tuned so one call takes ~1 ms
 let busyMs = 0;      // compute time since the last frame was sent
 let sinceMs = 0;     // wall time the last frame was sent
+let patternConfig = null, patternCache = null, patternClosed = true; // Pattern Formation drawing
 let spare = null;    // buffers the page returned, refilled for the next frame
 let run = 0;         // id of the current simulation, from the page
 
@@ -216,6 +217,17 @@ function postFrame(extra = {}) {
   spare = null;
   sim.fill_frame(b.xy, b.flags, b.light, b.fault, b.task, b.target, b.circle);
   const now = performance.now();
+  // Pattern Formation: the template for the robots still running, so the page can draw the pattern.
+  let pattern = null;
+  if (patternConfig) {
+    let live = 0;
+    for (let i = 0; i < n; i++) if ((b.flags[i] & 3) !== 3) live++;
+    if (!patternCache || patternCache.live !== live) {
+      const t = wasm.pattern_template(patternConfig, live);
+      patternCache = { live, m: t[0], unit: Array.from(t.subarray(1)), closed: patternClosed };
+    }
+    pattern = patternCache;
+  }
   self.postMessage({
     type: "frame",
     run,
@@ -238,6 +250,7 @@ function postFrame(extra = {}) {
     stop,
     playing,
     busy: sinceMs ? Math.min(1, busyMs / (now - sinceMs)) : 0,
+    pattern,
     ...extra,
     ...b,
   }, Object.values(b).map((a) => a.buffer));
@@ -271,11 +284,14 @@ self.onmessage = async ({ data }) => {
     await ready;
     switch (data.type) {
       case "hello":
-        self.postMessage({ type: "ready", version, algorithms: JSON.parse(wasm.algorithms()) });
+        self.postMessage({ type: "ready", version, algorithms: JSON.parse(wasm.algorithms()), patterns: JSON.parse(wasm.patterns()) });
         break;
       case "start":
         sim?.free();
         sim = new wasm.WasmSimulation(JSON.stringify(data.config));
+        patternConfig = data.config.algorithm === "PatternFormation" ? JSON.stringify(data.config) : null;
+        patternClosed = data.config.target_pattern !== "line";
+        patternCache = null;
         run = data.run ?? run + 1;
         playing = false;
         stop = "running";

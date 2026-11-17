@@ -453,6 +453,48 @@ export function algorithms() {
 }
 
 /**
+ * Pattern Formation's normalised template for `n` robots under `config_json`,
+ * as `[m, x0, y0, x1, y1, …]`: the first `m` points are the pattern (in
+ * drawing order), the rest the slots of robots it leaves out. The page embeds
+ * it in the swarm's frame (centroid, RMS radius) to draw the pattern.
+ *
+ * # Errors
+ * Malformed JSON.
+ * @param {string} config_json
+ * @param {number} n
+ * @returns {Float64Array}
+ */
+export function pattern_template(config_json, n) {
+    const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.pattern_template(ptr0, len0, n);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v2;
+}
+
+/**
+ * The predefined Pattern Formation shapes, as JSON `[{"key": …, "name": …}, …]`.
+ * The `key` is what the UI sends back in the config's `target_pattern`.
+ * @returns {string}
+ */
+export function patterns() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.patterns();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
  * Runs a SqGathering `SimConfig` to the end: `{"report": …, "trace": [turn,
  * …]}` (`trace` empty unless `with_trace`). Same output as
  * `lcm seq --format json --trace FILE`.
