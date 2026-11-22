@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 lcm-core = { workspace = true, features = ["serde"] }
 lcm-algorithms.workspace = true
+lcm-ring = { workspace = true, features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true
 

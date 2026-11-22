@@ -132,6 +132,52 @@ body.clean .panel:not(.keep) { display: none !important; }
 .field-top label.has-hint { flex: 0 1 auto; margin-right: auto; cursor: help; text-decoration: underline dotted var(--text-3); text-underline-offset: 3px; }
 .field.disabled { opacity: 0.45; }
 .field .sub { color: var(--text-3); font-size: 11.5px; }
+/* A setting that exists because of the one above it (δ under non-rigid movement, k under k-ASYNC, …):
+   drawn nested under its parent, and faded in when a choice makes it appear. */
+.field.sub-option { margin-left: 4px; padding-left: 10px; border-left: 2px solid var(--border-strong); }
+.field.sub-option:has(.info-card) { border-left-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.field.appear { animation: field-in .28s cubic-bezier(.2, .8, .25, 1) both; }
+@keyframes field-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+/* The sentence under a group saying what its settings give (the start, the scheduler). */
+#timing-summary { border-left: 3px solid var(--accent); }
+/* Info cards (web/explain.js): a round ⓘ next to the label, and the card that unfolds under the setting. */
+.field-top label:has(+ .info-btn) { flex: 0 1 auto; margin-right: 0; }
+.info-btn {
+  flex: none; margin-right: auto; width: 17px; height: 17px; padding: 0; border-radius: 50%; display: inline-grid; place-items: center;
+  border: 1px solid var(--border-strong); background: transparent; color: var(--text-3); cursor: pointer;
+  font: 600 10.5px/1 Georgia, "Times New Roman", serif; font-style: italic; transition: background .15s, color .15s, border-color .15s, transform .15s;
+}
+.info-btn:hover, .info-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.info-btn:hover { transform: scale(1.12); }
+.info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.info-card {
+  margin-top: 6px; padding: 10px 12px 9px; border-radius: var(--radius-sm); background: var(--accent-weak);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); border-left: 3px solid var(--accent);
+  font-size: 12px; line-height: 1.5; color: var(--text-2); display: grid; gap: 6px; transform-origin: top center;
+  animation: info-in .32s cubic-bezier(.2, .8, .25, 1) both;
+}
+.info-card.leaving { animation: info-out .2s ease-in both; pointer-events: none; }
+.info-card p { margin: 0; }
+.info-card .info-head { display: flex; align-items: flex-start; gap: 7px; color: var(--text); font-weight: 650; font-size: 12.5px; line-height: 1.35; }
+.info-card .info-mark {
+  flex: none; width: 17px; height: 17px; margin-top: 1px; border-radius: 50%; display: inline-grid; place-items: center;
+  background: var(--accent); color: var(--accent-text); font: italic 600 10.5px/1 Georgia, "Times New Roman", serif;
+}
+.info-card .info-title { flex: 1; }
+.info-card .info-close { all: unset; cursor: pointer; width: 20px; height: 20px; margin: -3px -4px 0 0; display: grid; place-items: center;
+  border-radius: 6px; color: var(--text-3); font-size: 16px; line-height: 1; }
+.info-card .info-close:hover { background: var(--surface-2); color: var(--text); }
+.info-card .info-close:focus-visible { outline: 2px solid var(--accent); }
+.info-card .info-tip { padding: 6px 8px; border-radius: 6px; background: var(--surface-2); color: var(--text); }
+.info-card .info-tip::before { content: "Good to know: "; font-weight: 650; }
+.info-card .info-auto { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); cursor: pointer; margin-top: 1px; }
+.info-card .info-auto input { margin: 0; accent-color: var(--accent); }
+@keyframes info-in {
+  from { opacity: 0; transform: translateY(-6px) scaleY(.96); max-height: 0; }
+  60% { max-height: 1000px; }
+  to { opacity: 1; transform: none; max-height: 1000px; }
+}
+@keyframes info-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px) scaleY(.97); } }
 
 input[type="number"], select {
   height: 28px; border-radius: 7px; border: 1px solid var(--border-strong);
@@ -224,6 +270,8 @@ a.btn { text-decoration: none; }
 #inspector dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 4px 0 0; }
 #inspector dt { color: var(--text-2); }
 #inspector dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+#inspector .why { margin: 4px 0 0; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.45; max-height: 180px; overflow-y: auto; }
+#inspector .why-head { display: block; color: var(--text-2); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
 
@@ -270,6 +318,62 @@ a.btn { text-decoration: none; }
 #settings:not([hidden]) ~ #turn_caption { left: 324px; width: min(500px, calc(100vw - 440px)); }
 #turn_caption .cap-head { font-weight: 650; }
 #turn_caption .cap-body { color: var(--text-2); line-height: 1.4; }
+/* Adversary and scenario-editor panels: where the turn caption sits, above it when both show. */
+.side-panel { left: 12px; bottom: 56px; width: min(520px, calc(100vw - 100px)); padding: 10px 14px; display: grid; gap: 6px; z-index: 6; }
+#settings:not([hidden]) ~ .side-panel { left: 324px; width: min(520px, calc(100vw - 440px)); }
+.side-panel .cap-head { font-weight: 650; }
+.side-panel .cap-body { color: var(--text-2); line-height: 1.4; }
+.side-panel code { font-size: 12px; overflow-wrap: anywhere; }
+.adv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+#adversary_panel { border-left: 3px solid #e11d48; }
+#adversary_panel:not([hidden]) ~ #turn_caption, #editor_panel:not([hidden]) ~ #turn_caption { display: none; }
+/* algorithm brief, under the toolbar: what it does, the model in chips, the notes; folds to one line while playing */
+#model_notes { top: calc(var(--top-h, 56px) + 8px); left: 50%; transform: translateX(-50%); width: min(600px, calc(100vw - 32px)); padding: 0; z-index: 5; font-size: 12.5px; line-height: 1.45; overflow: hidden; transition: width .2s ease; }
+#model_notes.folded { width: min(380px, calc(100vw - 32px)); }
+#model_notes .brief-head { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; font-weight: 650; font-size: 13px; color: var(--text); }
+#model_notes .brief-head:hover { background: var(--surface-2); }
+#model_notes .brief-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#model_notes .brief-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#model_notes .brief-head .chev { color: var(--text-3); transition: transform .15s; transform: rotate(90deg); }
+#model_notes.folded .brief-head .chev { transform: none; }
+#model_notes .brief-count { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; font-weight: 600; color: var(--text-3); }
+#model_notes .brief-count.warn { color: var(--warn-text); }
+#model_notes .brief-body { display: grid; gap: 9px; padding: 0 12px 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+#model_notes .brief-rule { margin: 0; color: var(--text-2); }
+#model_notes .brief-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size: 11.5px; white-space: nowrap; }
+.chip-tag.locked { color: var(--accent); border-color: transparent; background: var(--accent-weak); }
+#model_notes .brief-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#model_notes .brief-notes li { display: flex; gap: 7px; align-items: flex-start; font-size: 12px; color: var(--text-2); }
+#model_notes .brief-notes li svg { flex: none; margin-top: 2px; color: var(--text-3); }
+#model_notes .brief-notes li.warn, #model_notes .brief-notes li.caution { color: var(--text); }
+#model_notes .brief-notes li.warn svg { color: var(--warn-text); }
+#model_notes .brief-notes li.caution svg { color: var(--accent); }
+#model_notes .brief-notes b { font-weight: 650; }
+
+/* settings tabs */
+.tabs { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 2px 2px 6px; padding: 3px; border-radius: 9px; background: var(--surface-2); }
+.tab { all: unset; box-sizing: border-box; position: relative; text-align: center; padding: 6px 4px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-2); cursor: pointer; transition: background .12s, color .12s; }
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { background: var(--surface-solid); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tab-lock { position: absolute; top: 5px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.tab-pane { display: grid; gap: 2px; }
+#canvas.editing { cursor: copy; }
+
+/* Settings the algorithm fixes: visible, locked, with the reason. */
+.field.frozen { opacity: 1; }
+.field.frozen input, .field.frozen select { opacity: .6; cursor: not-allowed; }
+.field .lock-note { display: flex; align-items: center; gap: 5px; color: var(--accent); font-size: 11.5px; }
+.field .lock-note .lock { flex: none; }
+/* The "Advanced gathering" card at the top of the settings. */
+.algo-group > summary { color: var(--accent); }
+.algo-card { display: flex; gap: 7px; align-items: flex-start; padding: 7px 10px; border-radius: 8px; background: var(--accent-weak); color: var(--accent); font-size: 12px; line-height: 1.4; }
+.algo-card svg { flex: none; margin-top: 2px; }
+.algo-card[hidden] { display: none; }
+#algorithm optgroup { font-style: normal; color: var(--text-3); }
+#algorithm option { color: var(--text); }
+#canvas.adversary { cursor: pointer; }
 
 /* scale bar in the status panel */
 #hud .scale { display: inline-flex; align-items: center; gap: 8px; }
@@ -322,6 +426,20 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
 
 #toast { position: fixed; z-index: 50; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 8px 14px; border-radius: 999px; background: var(--surface-solid); border: 1px solid var(--border); box-shadow: var(--shadow); max-width: calc(100vw - 32px); }
 #toast.error { color: var(--danger); border-color: var(--danger); }
+/* Things that come and go: the toast pops up, captions and side panels rise in, the brief unfolds, a note that
+   a change of settings brings in slides in with a brief highlight. (Reduced motion turns all of it off.) */
+#toast:not([hidden]) { animation: toast-in .26s cubic-bezier(.2, .8, .25, 1) both; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px) scale(.97); } to { opacity: 1; transform: translate(-50%, 0); } }
+#turn_caption:not([hidden]), .side-panel:not([hidden]) { animation: rise-in .3s cubic-bezier(.2, .8, .25, 1) both; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+#model_notes .brief-body.opening { animation: unfold .28s cubic-bezier(.2, .8, .25, 1) both; transform-origin: top; }
+@keyframes unfold { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+#model_notes .brief-notes li.fresh { animation: note-in .45s cubic-bezier(.2, .8, .25, 1) both; animation-delay: calc(var(--i) * 70ms); border-radius: 6px; }
+@keyframes note-in {
+  0% { opacity: 0; transform: translateX(-8px); background: transparent; }
+  45% { opacity: 1; transform: none; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  100% { opacity: 1; transform: none; background: transparent; }
+}
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
@@ -330,6 +448,16 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
  * --hud-bottom the stats card's, both set by app.js, so panels stack under
  * whatever height the toolbar wraps to. */
 .sheet-close { display: none; }
+
+/* Desktop: the toolbar stops short of the stats card in the top right corner (236 px wide, 12 px
+ * margins); if fonts run wide, the algorithm menu gives up the room. */
+@media (min-width: 1220px) {
+  #toolbar { max-width: calc(100vw - 284px); }
+  #algorithm { flex: 0 1 auto; min-width: 120px; }
+}
+@media (min-width: 1220px) and (max-width: 1439px) {
+  #docs_link .label { display: none; }
+}
 
 /* Tablet and small laptops: icon-only toolbar, stats under it on the right. */
 @media (max-width: 1219px) {
@@ -376,6 +504,20 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
   #turn_caption, #settings:not([hidden]) ~ #turn_caption { left: 8px; right: 8px; bottom: 112px; width: auto; }
   #inspector { top: calc(var(--hud-bottom, 150px) + 6px); left: 8px; right: 8px; width: auto; }
   .menu { right: 8px; bottom: 64px; }
+  /* The adversary and editor panels and the model notes: full width, above the tools. */
+  .side-panel, #settings:not([hidden]) ~ .side-panel { left: 8px; right: 8px; bottom: 64px; width: auto; max-height: 42vh; overflow: auto; }
+  .adv-actions .btn { flex: 1 1 auto; }
+  /* While the adversary or editor panel is open, it takes the legend's place. */
+  body:has(.side-panel:not([hidden])) #legend { display: none; }
+  #model_notes, #model_notes.folded { left: 8px; right: 8px; transform: none; width: auto; max-width: none; top: calc(var(--hud-bottom, 150px) + 6px); max-height: calc(var(--tools-top, 100vh) - var(--hud-bottom, 150px) - 18px); overflow-y: auto; }
+}
+
+/* Tablets and small laptops: the side panels never run under the settings panel. */
+@media (min-width: 761px) and (max-width: 1219px) {
+  /* Mode panels stop short of the view tools in the bottom right. */
+  .side-panel, #settings:not([hidden]) ~ .side-panel { width: auto; right: 104px; }
+  /* Model notes: under the stats card, in the right-hand column. */
+  #model_notes, #model_notes.folded { left: auto; right: 12px; transform: none; width: 280px; max-width: none; top: calc(var(--hud-bottom, 500px) + 8px); max-height: calc(var(--tools-top, 100vh) - var(--hud-bottom, 500px) - 20px); overflow-y: auto; }
 }
 
 /* Touch screens: finger-sized targets. */
@@ -388,8 +530,8 @@ kbd { color: var(--text); font-family: var(--mono); font-size: 11.5px; padding: 
 }
 
 /* Embedded in another page (?embed, see embed.js): the robots and the chosen buttons only. */
-body.embed :is(#settings, #hud, #inspector, #legend, #tools, #overview, #examples_menu, #export_menu, #dirty) { display: none !important; }
-body.embed #toolbar > :is(.brand, #algorithm, #examples, .divider, #toggle_settings, #docs_link, #play, #step_event, #step_time, #reset, #playback) { display: none; }
+body.embed :is(#settings, #hud, #inspector, #legend, #tools, #overview, #examples_menu, #export_menu, #dirty, #model_notes, .side-panel) { display: none !important; }
+body.embed #toolbar > :is(.brand, #algorithm, #examples, .divider, #toggle_settings, #docs_link, #play, #step_event, #step_time, #reset, #playback, #edit, #adversary) { display: none; }
 body.embed.embed-play #toolbar > #play,
 body.embed.embed-step #toolbar > :is(#step_event, #step_time),
 body.embed.embed-reset #toolbar > #reset,

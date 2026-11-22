@@ -1,0 +1,19 @@
+[package]
+name = "lcm-ring"
+description = "Look-Compute-Move robots on a ring of nodes, under round robin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+serde = ["dep:serde"]
+
+[dependencies]
+lcm-core.workspace = true
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+lcm-core.workspace = true
+
+[lints]
+workspace = true

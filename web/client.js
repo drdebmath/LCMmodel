@@ -67,6 +67,7 @@ export class SimClient {
         if (data.seq === this.inspectSeq) this.emit("robot", data);
         break;
       case "csv": this.csvWaiters.shift()?.(data); break;
+      case "preview": if (data.seq === this.previewSeq) this.emit("preview", data); break;
       case "error": this.pending = false; this.emit("error", data.message); break;
     }
   }
@@ -82,6 +83,12 @@ export class SimClient {
   inspect(id) { this.post({ type: "inspect", id, seq: ++this.inspectSeq }); }
   stop() { this.stopPulling(); this.post({ type: "stop" }); }
   csv() { return new Promise((resolve) => { this.csvWaiters.push(resolve); this.post({ type: "csv" }); }); }
+  /** Adversary mode: play a turn for `robot` (stopped after `stop` of the way, if given). */
+  turn(robot, stop = null) { this.post({ type: "turn", robot, stop }); this.startPulling(); }
+  /** Adversary mode (SSYNC): play a round in which `robots` act together. */
+  round(robots) { this.post({ type: "round", robots }); this.startPulling(); }
+  /** Asks where `robot` would go if it looked now; answered with a "preview" event. */
+  preview(robot) { this.post({ type: "preview", robot, seq: (this.previewSeq = (this.previewSeq ?? 0) + 1) }); }
 
   requestFrame() {
     if (this.pending) return;

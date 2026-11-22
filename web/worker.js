@@ -31,13 +31,21 @@
  *   {type: "frame", buffers?}        reply with the current frame (refilling `buffers`)
  *   {type: "step", unit, amount}     paused stepping: unit "event" (amount events)
  *                                    or "time" (amount time units); reply with a frame
- *   {type: "inspect", id, seq}       reply {type: "robot", id, seq, info}
+ *   {type: "inspect", id, seq}       reply {type: "robot", id, seq, info}; info.why: what the robot
+ *                                    would see and the rule it would apply if it looked now (≤ 2,000 robots)
  *   {type: "csv"}                    reply {type: "csv", text}
+ *   {type: "turn", robot, stop?}     adversary (sequential, schedule_end "await"): add a turn for
+ *                                    `robot`, stopped after `stop` of the way, and play it
+ *   {type: "round", robots}          adversary (SSYNC, schedule_end "await"): add a round and play it
+ *   {type: "preview", robot, seq}    reply {type: "preview", robot, seq, target: [x, y] | null}:
+ *                                    where the robot would go if it looked now
  *   {type: "stop"}                   drop the simulation
  * Worker -> page
  *   {type: "frame", ...stats, lastEvent?, xy, flags, light, fault, task, target, circle}
  *       arrays are transferred; `stop` is "running" while the simulation can
- *       continue, otherwise why it stopped
+ *       continue, otherwise why it stopped; `awaiting` while an adversary's
+ *       schedule has run out (the run waits, it has not stopped); `notes` (first
+ *       frame of a run): where the settings leave the algorithm's model
  *   {type: "error", message}
  */
 // The page passes the package's build id (web/pkg/build.json) as ?v=…, and the
@@ -47,7 +55,8 @@ const version = new URL(self.location.href).searchParams.get("v");
 const suffix = version ? `?v=${encodeURIComponent(version)}` : "";
 let wasm = null;
 
-const STOP = ["budget", "until-time", "ended", "max-events", "max-time", "stalled", "max-turns"];
+const STOP = ["budget", "until-time", "ended", "max-events", "max-time", "stalled", "max-turns", "moved", "max-rounds", "awaiting"];
+const AWAITING = 9;
 const SLICE_MS = 6;
 const IDLE_MS = 4;
 const ready = (async () => {
@@ -58,6 +67,8 @@ const ready = (async () => {
 let sim = null;
 let playing = false;
 let stop = "running";
+let mutualVisibility = false; // the run is MutualVisibility: count who sees everyone once it is over
+let seeing = null;            // that count, worked out once per run
 let speed = Infinity;           // simulated time units per wall second
 let anchor = { wall: 0, sim: 0 };
 let perTurn = null;             // seconds each walk takes, in turn-paced playback; null otherwise
@@ -168,7 +179,8 @@ function pacedSlice(gen) {
     } else if (code === 1) {  // reached `until`, and no walk began there
       if (pace.progress >= 1) pace = null;
       else { sim.set_view_time(until); waiting = true; break; }
-    } else if (code !== 0) { stop = STOP[code]; playing = false; break; }
+    } else if (code === AWAITING) { playing = false; break; }
+    else if (code !== 0) { stop = STOP[code]; playing = false; break; }
   }
   busyMs += performance.now() - start;
   if (!playing) { pace = null; sim.set_view_time(NaN); tracePoint(true); postFrame(); }
@@ -190,6 +202,7 @@ function slice(gen) {
     tracePoint();
     const took = performance.now() - t0;
     if (code === 1) { caughtUp = true; break; }          // reached the time the clock allows
+    if (code === AWAITING) { playing = false; break; }   // the adversary's turn to choose
     if (code !== 0) { stop = STOP[code]; playing = false; break; }
     if (took < 0.5) batch = Math.min(batch * 2, 1 << 20);
     else if (took > 2) batch = Math.max(batch >> 1, 1);
@@ -226,8 +239,15 @@ function postFrame(extra = {}) {
     ticks: sim.tick_count?.() ?? 0,
     robots: n,
     terminated: sim.terminated_count(),
-    epochs: sim.sequential?.() ? sim.epochs_completed() : null,
-    turns: sim.sequential?.() ? sim.turn_count() : null,
+    epochs: sim.sequential() || sim.in_rounds() ? sim.epochs_completed() : null,
+    turns: sim.sequential() ? sim.turn_count() : sim.in_rounds() ? sim.round_count() : null,
+    unit: sim.in_rounds() ? "round" : "turn",
+    members: sim.in_rounds() ? Array.from(sim.round_members()) : null,
+    awaiting: sim.awaiting_schedule(),
+    compass: n <= 2000 && sim.compass ? Array.from(sim.compass()) : null,
+    deferred: sim.deferred_looks ? sim.deferred_looks() : 0,
+    // Mutual visibility, once the run is over: how many robots see all the others (a Look each, so only then).
+    seeing: mutualVisibility && stop !== "running" ? (seeing ??= sim.seeing_everyone()) : null,
     // While a turn is played one at a time: who is walking, in which beat, how far, and the settle time.
     walk: perTurn !== null && pace
       ? { robot: pace.robot, phase: pace.progress < 0 ? "decide" : "move", length: pace.length, cut: pace.cut,
@@ -259,7 +279,7 @@ function step(unit, amount) {
     }
   } else {
     const code = sim.advance(0xffffffff, sim.time() + amount);
-    if (code >= 2) stop = STOP[code];
+    if (code >= 2 && code !== AWAITING) stop = STOP[code];
   }
   if (sim.ended()) stop = "ended";
   tracePoint(true);
@@ -276,6 +296,8 @@ self.onmessage = async ({ data }) => {
       case "start":
         sim?.free();
         sim = new wasm.WasmSimulation(JSON.stringify(data.config));
+        mutualVisibility = data.config.algorithm === "MutualVisibility";
+        seeing = null;
         run = data.run ?? run + 1;
         playing = false;
         stop = "running";
@@ -285,7 +307,7 @@ self.onmessage = async ({ data }) => {
         tracePoint(true);
         busyMs = 0;
         sinceMs = 0;
-        postFrame();
+        postFrame({ notes: JSON.parse(wasm.notes(JSON.stringify(data.config))) });
         break;
       case "play":
         if (sim && stop === "running" && !playing) { playing = true; generation++; reanchor(); yieldThenSlice(); }
@@ -304,8 +326,26 @@ self.onmessage = async ({ data }) => {
         if (sim && stop === "running") step(data.unit, data.amount ?? 1);
         break;
       case "inspect":
-        if (sim) self.postMessage({ type: "robot", id: data.id, seq: data.seq, info: JSON.parse(sim.robot_info(data.id)) });
+        if (sim) {
+          const info = JSON.parse(sim.robot_info(data.id));
+          // A Look costs a pass over the swarm (more for some algorithms): only for small swarms.
+          if (info && sim.robot_count() <= 2000) info.why = sim.explain(data.id) ?? null;
+          self.postMessage({ type: "robot", id: data.id, seq: data.seq, info });
+        }
         break;
+      case "turn":
+      case "round":
+        if (!sim || stop !== "running") break;
+        if (data.type === "turn") sim.push_turn(data.robot, data.stop ?? NaN);
+        else sim.push_round(Uint32Array.from(data.robots));
+        playing = true; generation++; reanchor(); yieldThenSlice();
+        break;
+      case "preview": {
+        if (!sim) break;
+        const p = sim.preview_target(data.robot);
+        self.postMessage({ type: "preview", robot: data.robot, seq: data.seq, target: p.length ? [p[0], p[1]] : null });
+        break;
+      }
       case "csv":
         if (sim) self.postMessage({ type: "csv", text: sim.export_csv(), time: sim.time() });
         break;

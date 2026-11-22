@@ -71,6 +71,7 @@ version = "0.1.0"
 dependencies = [
  "lcm-algorithms",
  "lcm-core",
+ "lcm-ring",
  "serde",
  "serde_json",
 ]
@@ -84,12 +85,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "lcm-ring"
+version = "0.1.0"
+dependencies = [
+ "lcm-core",
+ "serde",
+]
+
+[[package]]
 name = "lcm-wasm"
 version = "0.1.0"
 dependencies = [
  "js-sys",
  "lcm-algorithms",
  "lcm-core",
+ "lcm-ring",
  "serde_json",
  "wasm-bindgen",
 ]

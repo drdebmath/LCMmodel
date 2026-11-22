@@ -21,6 +21,7 @@ fn main() {
         Some("run") => run(&args[1..]),
         Some("bench") => bench(&args[1..]),
         Some("seq") => seq::run(&args[1..]).map(|code| if code != 0 { std::process::exit(code) }),
+        Some("ring") => ring(&args[1..]),
         _ => Err("usage: lcm run <config.json> [--trace <file>] [--ticks] | lcm seq [config.json] [flags] | lcm bench [--algorithm A] [--robots N] [--seconds S] [--visibility V]".to_owned()),
     };
     if let Err(message) = result {
@@ -314,4 +315,39 @@ mod erased {
             serde_json::to_string(self).expect("plain data")
         }
     }
+}
+
+/// `lcm ring <config.json> [--trace]`: GatheRRing on a ring (`lcm_ring`).
+/// Prints a JSON summary; `--trace` prints every activation first.
+fn ring(args: &[String]) -> Result<(), String> {
+    let path = args
+        .first()
+        .filter(|a| !a.starts_with("--"))
+        .ok_or("usage: lcm ring <config.json> [--trace]")?;
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    let config: lcm_ring::RingConfig =
+        serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
+    let unsolvable = lcm_ring::unsolvable(&config);
+    let mut sim = lcm_ring::RingSim::new(&config)?;
+    let turns = sim.run();
+    if args.iter().any(|a| a == "--trace") {
+        for t in &turns {
+            println!(
+                "turn {:>4} epoch {:>3} robot {:>2}: {:>3} -> {:<3} {:?} {}",
+                t.turn, t.epoch, t.robot, t.from, t.to, t.task, t.rule
+            );
+        }
+    }
+    println!(
+        "{}",
+        serde_json::json!({
+            "status": sim.status,
+            "epochs": sim.epochs,
+            "turns": sim.turns,
+            "positions": sim.positions,
+            "bound_epochs": config.nodes.saturating_sub(3),
+            "unsolvable": unsolvable,
+        })
+    );
+    Ok(())
 }

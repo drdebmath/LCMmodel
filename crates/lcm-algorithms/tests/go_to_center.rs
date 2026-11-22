@@ -20,6 +20,7 @@ fn model(visibility: f64, precision: u8) -> Model {
         visibility,
         width_bound: None,
         height_bound: None,
+        multiplicity: lcm_core::MultiplicityModel::Weak,
     }
 }
 

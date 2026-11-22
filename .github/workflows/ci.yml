@@ -69,6 +69,8 @@ jobs:
           ./scripts/build-wasm.sh
           bash scripts/ci-check.sh "Wasm parity (rebuilt web/pkg)" node scripts/check-wasm-parity.mjs
           bash scripts/ci-check.sh "SqGathering trace parity (rebuilt web/pkg)" node scripts/check-seq-parity.mjs
+      - name: Every algorithm under every scheduler
+        run: bash scripts/ci-check.sh "Algorithm × scheduler matrix" node scripts/scheduler-matrix.mjs
 
       - name: Flowcharts match the code
         run: bash scripts/ci-check.sh "Flowcharts match the code" node scripts/gen-flowcharts.mjs --check
@@ -84,6 +86,12 @@ jobs:
       - name: SqGathering on both pages (headless Chrome)
         if: ${{ !cancelled() }}
         run: bash scripts/ci-check.sh "SqGathering pages" node scripts/sqgathering-check.mjs "$RUNNER_TEMP/shots/sqgathering"
+      - name: Ring page and extras examples (headless Chrome)
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci-check.sh "Ring page and examples" node scripts/extras-check.mjs "$RUNNER_TEMP/shots/extras"
+      - name: Info cards in the settings panel (headless Chrome)
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci-check.sh "Info cards" node scripts/info-check.mjs "$RUNNER_TEMP/shots/info"
       - name: Set up from a link, and embedded in another page (headless Chrome)
         if: ${{ !cancelled() }}
         run: bash scripts/ci-check.sh "Links and embedding" node scripts/embed-check.mjs "$RUNNER_TEMP/shots/embed"

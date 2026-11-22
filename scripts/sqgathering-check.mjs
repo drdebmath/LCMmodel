@@ -129,13 +129,20 @@ await shot("sim-sqgathering-stacked");
 await js("document.getElementById('play').click()");
 check("simulator: the stacked start gathers too", await until("window.lcm.state === 'ended' && window.lcm.stats.terminated === window.lcm.stats.robots", 90000));
 
-// Refusals come back as a message, not a broken page.
+// Outside Theorem 5's model the run goes on with a note saying so; refusals come back as a message.
 await js(`window.lcm.settings.set("unlimited_visibility", false)`);
 await js("document.getElementById('reset').click()");
 await sleep(400);
-check("simulator: limited visibility is refused with the reason",
-  await js("/unlimited visibility/.test(document.getElementById('toast').textContent)"), await js("document.getElementById('toast').textContent"));
-await js(`window.lcm.settings.set("unlimited_visibility", true); window.lcm.settings.set("multiplicities", 0)`);
+check("simulator: limited visibility runs, with a note that it is untested ground",
+  await js("!document.getElementById('model_notes').hidden && /Untested ground/.test(document.getElementById('model_notes').textContent) && /nobody knows whether it always gathers/.test(document.getElementById('model_notes').textContent)"),
+  await js("document.getElementById('model_notes').textContent"));
+await js(`window.lcm.settings.set("unlimited_visibility", true); window.lcm.settings.set("num_of_faults", 1)`);
+await sleep(300);
+// SqGathering assumes robots that never fail: the setting is locked at 0, with the reason beside it.
+check("simulator: faulty robots are locked at 0 with the reason",
+  await js("window.lcm.settings.values.num_of_faults === 0 && /never fail/.test(document.querySelector('.field[data-key=num_of_faults] .lock-note')?.textContent ?? '')"),
+  await js("document.querySelector('.field[data-key=num_of_faults]')?.textContent"));
+await js(`window.lcm.settings.set("multiplicities", 0)`);
 
 // A new algorithm picked while a run is playing starts at once.
 await js("document.getElementById('reset').click()");

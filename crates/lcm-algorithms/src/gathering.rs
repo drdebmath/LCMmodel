@@ -34,4 +34,20 @@ impl Algorithm for Gathering {
             overlay: OverlayUpdate::Keep,
         }
     }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn explain(&self, look: &Look<'_>, _: &mut Scratch) -> Option<String> {
+        let view = look.view;
+        let n = view.len();
+        let (x, y) = view
+            .pos
+            .iter()
+            .fold((0.0, 0.0), |(x, y), p| (x + p.x, y + p.y));
+        let target = Point::new(x / n as f64, y / n as f64);
+        Some(format!(
+            "It sees {n} robot{} (itself included) and heads for their centre of gravity, {} units away.",
+            if n == 1 { "" } else { "s" },
+            crate::num(dist(look.position, target))
+        ))
+    }
 }

@@ -22,7 +22,7 @@ const SIZES = [
   ["laptop-tall", 1366, 820, 1, false],
   ["desktop", 1920, 1080, 1, false],
 ];
-const PANELS = ["toolbar", "settings", "hud", "legend", "tools", "inspector", "turn_caption", "overview"];
+const PANELS = ["toolbar", "settings", "hud", "legend", "tools", "inspector", "turn_caption", "overview", "model_notes", "adversary_panel", "editor_panel"];
 
 async function size(w, h, dpr, touch) {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: dpr, mobile: touch });

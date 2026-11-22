@@ -5,7 +5,7 @@
 //! The rest are properties over many seeded random runs, and the settings
 //! the algorithm must refuse.
 
-use lcm_algorithms::sq_gathering::{decide, decide_in_frame, observe, LocalFrame, Rule};
+use lcm_algorithms::sq_gathering::{self, decide, decide_in_frame, observe, LocalFrame, Rule};
 use lcm_algorithms::sq_trace::{Report, Round, Status, Tracer};
 use lcm_core::geom::dist;
 use lcm_core::{
@@ -435,11 +435,22 @@ fn settings_outside_the_model_are_refused() {
         ..base.clone()
     };
     assert!(message(asynchronous).contains("sequential scheduler"));
+    // Outside Theorem 5 but allowed, with a note saying what the paper says.
     let limited = SimConfig {
         visibility_radius: Some(50.0),
         ..base.clone()
     };
-    assert!(message(limited).contains("unlimited visibility"));
+    assert!(lcm_algorithms::simulation(&limited).is_ok());
+    assert!(sq_gathering::notes(&limited)[0].starts_with("Experimental:"));
+    let ssync = SimConfig {
+        scheduler: SchedulerKind::Ssync,
+        schedule: None,
+        max_turns: None,
+        ..base.clone()
+    };
+    assert!(lcm_algorithms::simulation(&ssync).is_ok());
+    assert!(sq_gathering::notes(&ssync)[0].contains("without ever merging"));
+    assert!(sq_gathering::notes(&base).is_empty());
     let faulty = SimConfig {
         num_of_faults: 1,
         ..base.clone()
