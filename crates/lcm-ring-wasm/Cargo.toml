@@ -1,0 +1,17 @@
+[package]
+name = "lcm-ring-wasm"
+description = "Browser bindings for lcm-ring, built into web/ring-pkg/ so only the ring page loads them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lcm-ring = { workspace = true, features = ["serde"] }
+serde_json.workspace = true
+wasm-bindgen.workspace = true
+
+[lints]
+workspace = true

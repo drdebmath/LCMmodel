@@ -31,6 +31,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Tests (core, algorithms, recorded-run parity fixtures, CLI)
         run: cargo test --workspace
+      - name: Ring gathering, exhaustive up to n^(k-1) = 3,000,000 (release build)
+        run: cargo test --release -p lcm-ring --test gathering -- --ignored
       - name: Lints (reported, not enforced)
         run: |
           rustup component add clippy
@@ -60,15 +62,17 @@ jobs:
       - name: Native CLI
         run: cargo build --release -p lcm-cli
 
-      - name: Committed web/pkg matches the native build
+      - name: Committed web/pkg and web/ring-pkg match the native build
         run: |
           bash scripts/ci-check.sh "Wasm parity (committed web/pkg)" node scripts/check-wasm-parity.mjs
           bash scripts/ci-check.sh "SqGathering trace parity (committed web/pkg)" node scripts/check-seq-parity.mjs
-      - name: Rebuild web/pkg from source and compare again
+          bash scripts/ci-check.sh "Ring parity (committed web/ring-pkg)" node scripts/check-ring-parity.mjs
+      - name: Rebuild web/pkg and web/ring-pkg from source and compare again
         run: |
           ./scripts/build-wasm.sh
           bash scripts/ci-check.sh "Wasm parity (rebuilt web/pkg)" node scripts/check-wasm-parity.mjs
           bash scripts/ci-check.sh "SqGathering trace parity (rebuilt web/pkg)" node scripts/check-seq-parity.mjs
+          bash scripts/ci-check.sh "Ring parity (rebuilt web/ring-pkg)" node scripts/check-ring-parity.mjs
 
       - name: Flowcharts match the code
         run: bash scripts/ci-check.sh "Flowcharts match the code" node scripts/gen-flowcharts.mjs --check
@@ -84,6 +88,9 @@ jobs:
       - name: SqGathering on both pages (headless Chrome)
         if: ${{ !cancelled() }}
         run: bash scripts/ci-check.sh "SqGathering pages" node scripts/sqgathering-check.mjs "$RUNNER_TEMP/shots/sqgathering"
+      - name: Ring page (headless Chrome)
+        if: ${{ !cancelled() }}
+        run: bash scripts/ci-check.sh "Ring page" node scripts/extras-check.mjs "$RUNNER_TEMP/shots/extras"
       - name: Set up from a link, and embedded in another page (headless Chrome)
         if: ${{ !cancelled() }}
         run: bash scripts/ci-check.sh "Links and embedding" node scripts/embed-check.mjs "$RUNNER_TEMP/shots/embed"
