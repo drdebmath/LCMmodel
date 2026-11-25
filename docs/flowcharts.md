@@ -828,7 +828,7 @@ function slice(gen) {
 }
 ```
 
-`advance` — [`crates/lcm-wasm/src/lib.rs:102`](../crates/lcm-wasm/src/lib.rs#L102)
+`advance` — [`crates/lcm-wasm/src/lib.rs:116`](../crates/lcm-wasm/src/lib.rs#L116)
 
 ```rust
 /// Handles up to `max_events` events, stopping early before the first
@@ -883,7 +883,7 @@ function postFrame(extra = {}) {
 }
 ```
 
-`fill_frame` — [`crates/lcm-wasm/src/lib.rs:425`](../crates/lcm-wasm/src/lib.rs#L425)
+`fill_frame` — [`crates/lcm-wasm/src/lib.rs:439`](../crates/lcm-wasm/src/lib.rs#L439)
 
 ```rust
 /// Captures the current state straight into caller-owned arrays, so the
@@ -1535,14 +1535,19 @@ flowchart TD
 | Wait | A single robot waits while the multiplicities sort themselves out: its target is where it stands, so chart 2 freezes it and its turn ends. |
 | Move to the midpoint | Leave the multiplicity for the midpoint between its point q and the closest occupied point q′. Nothing occupied is within half that distance, so the robot lands on a free spot wherever it is stopped. Once only one multiplicity is left, κ = 1. |
 
-`compute` — [`crates/lcm-algorithms/src/sq_gathering.rs:356`](../crates/lcm-algorithms/src/sq_gathering.rs#L356)
+`compute` — [`crates/lcm-algorithms/src/sq_gathering.rs:284`](../crates/lcm-algorithms/src/sq_gathering.rs#L284)
 
 ```rust
 /// One robot's Compute: Q′(t) from its snapshot, then the rule. The
 /// robot terminates when it sees a single occupied point: everyone is
 /// gathered there, and every robot activated from now on would stay.
 fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision {
-    let obs = observe(&look.view.pos, look.me_index, look.model.eps);
+    let obs = observe_with(
+        &look.view.pos,
+        look.me_index,
+        look.model.eps,
+        look.model.multiplicity,
+    );
     let decision = decide(&obs);
     CoreDecision {
         target: decision.destination(&obs),
@@ -1552,7 +1557,7 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision
 }
 ```
 
-`observe` — [`crates/lcm-algorithms/src/sq_gathering.rs:91`](../crates/lcm-algorithms/src/sq_gathering.rs#L91)
+`observe` — [`crates/lcm-algorithms/src/sq_gathering.rs:54`](../crates/lcm-algorithms/src/sq_gathering.rs#L54)
 
 ```rust
 /// What robot `i` observes under weak multiplicity detection, in global
@@ -1560,22 +1565,11 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision
 /// same observation.
 #[must_use]
 pub fn observe(positions: &[Point], i: usize, tolerance: f64) -> Observation {
-    let (groups, counts, owner) = occupancy(positions, tolerance);
-    Observation {
-        points: groups
-            .iter()
-            .zip(&counts)
-            .map(|(&at, &c)| Observed {
-                at,
-                multiplicity: c >= 2,
-            })
-            .collect(),
-        me: owner[i],
-    }
+    observe_with(positions, i, tolerance, MultiplicityModel::Weak)
 }
 ```
 
-`decide` — [`crates/lcm-algorithms/src/sq_gathering.rs:243`](../crates/lcm-algorithms/src/sq_gathering.rs#L243)
+`decide` — [`crates/lcm-algorithms/src/sq_gathering.rs:218`](../crates/lcm-algorithms/src/sq_gathering.rs#L218)
 
 ```rust
 /// Algorithm 8 on one observation.
@@ -1613,7 +1607,7 @@ pub fn decide(obs: &Observation) -> Decision {
 }
 ```
 
-`closest` — [`crates/lcm-algorithms/src/sq_gathering.rs:215`](../crates/lcm-algorithms/src/sq_gathering.rs#L215)
+`closest` — [`crates/lcm-algorithms/src/sq_gathering.rs:190`](../crates/lcm-algorithms/src/sq_gathering.rs#L190)
 
 ```rust
 /// The occupied point closest to the robot's own. Equally close points are
@@ -1645,7 +1639,7 @@ fn closest(obs: &Observation) -> Option<usize> {
 }
 ```
 
-`destination` — [`crates/lcm-algorithms/src/sq_gathering.rs:200`](../crates/lcm-algorithms/src/sq_gathering.rs#L200)
+`destination` — [`crates/lcm-algorithms/src/sq_gathering.rs:175`](../crates/lcm-algorithms/src/sq_gathering.rs#L175)
 
 ```rust
 /// The destination in the coordinates of `obs`.

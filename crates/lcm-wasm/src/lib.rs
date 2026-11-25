@@ -67,6 +67,20 @@ pub fn algorithms() -> String {
     serde_json::Value::Array(list).to_string()
 }
 
+/// Where `config_json`'s settings leave the model its algorithm was designed
+/// or proved for, as a JSON list of sentences (empty inside the model).
+///
+/// # Errors
+/// Malformed JSON.
+#[wasm_bindgen]
+pub fn notes(config_json: &str) -> Result<String, JsError> {
+    let config: SimConfig = serde_json::from_str(config_json)?;
+    Ok(serde_json::to_string(&lcm_algorithms::notes(
+        &config.algorithm,
+        &config,
+    ))?)
+}
+
 #[wasm_bindgen]
 pub struct WasmSimulation {
     sim: Simulation,

@@ -198,6 +198,9 @@ a.btn { text-decoration: none; }
 #toolbar select { height: 32px; border-radius: var(--radius-sm); background: var(--surface-solid); }
 /* The menu is as wide as its longest entry: with the "per turn" entries (sequential scheduler) hold it to a width the toolbar can afford. */
 #playback.has-turns { width: 100px; padding: 0 20px 0 6px; text-overflow: clip; }
+/* Likewise the algorithm menu: the longest names (two-robot and crash-tolerant gathering) would push the
+   toolbar into the HUD on a laptop. The open list still shows every name in full. */
+#algorithm { max-width: 230px; text-overflow: ellipsis; }
 
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
 .badge.warn { background: var(--warn-weak); color: var(--warn-text); }

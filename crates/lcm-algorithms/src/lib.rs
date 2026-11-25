@@ -9,14 +9,20 @@
 //! work with by returning [`ConfigError::Unsupported`].
 //!
 //! Gathering and SEC are ported; they drive the core's parity tests. Uniform
-//! Circle Formation and Go-To-Center are ported too. SqGathering (Algorithm 8 of the
-//! sequential-schedulers paper) is new: it refuses any scheduler but the
-//! sequential one.
+//! Circle Formation, Go-To-Center, Spreading and TwoTask are ported too.
+//! SqGathering (Algorithm 8 of the sequential-schedulers paper) is new: it
+//! refuses any scheduler but the sequential one. The other algorithms are new
+//! too; each module names its paper and section.
 
 mod circle_formation;
+pub mod compass_gathering;
+pub mod crash_gathering;
 mod gathering;
 mod go_to_center;
+pub mod mutual_visibility;
+pub mod randomized_gathering;
 mod sec;
+mod spreading;
 pub mod sq_gathering;
 pub mod sq_trace;
 
@@ -24,9 +30,12 @@ pub use circle_formation::CircleFormation;
 pub use gathering::Gathering;
 pub use go_to_center::GoToCenter;
 pub use sec::Sec;
+pub use spreading::Spreading;
 pub use sq_gathering::SqGathering;
 
-use lcm_core::{Algorithm, ConfigError, Plan, SimConfig, Simulation};
+use lcm_core::{
+    Algorithm, Assignment, ConfigError, Plan, SchedulerKind, SimConfig, Simulation, TaskColor,
+};
 
 /// A distance or angle for an explanation: four significant digits, or
 /// scientific notation when tiny.
@@ -57,6 +66,19 @@ fn one<A: Algorithm + Default + 'static>(_: &SimConfig) -> Result<Plan, ConfigEr
     Ok(Plan::single(Box::new(A::default())))
 }
 
+/// TwoTask (the original Python scheduler's draw): each robot draws `u` in ID order; `u < 0.5`
+/// runs SEC and shows red, the others run Gathering and show blue.
+#[allow(clippy::unnecessary_wraps)]
+fn two_task(_: &SimConfig) -> Result<Plan, ConfigError> {
+    Ok(Plan {
+        algorithms: vec![Box::new(Sec), Box::new(Gathering)],
+        assignment: Assignment::Random(vec![
+            (0.5, 0, Some(TaskColor::Red)),
+            (1.0, 1, Some(TaskColor::Blue)),
+        ]),
+    })
+}
+
 pub const REGISTRY: &[Entry] = &[
     Entry {
         key: "Gathering",
@@ -79,6 +101,41 @@ pub const REGISTRY: &[Entry] = &[
         build: one::<GoToCenter>,
     },
     Entry {
+        key: "Spreading",
+        name: "Spreading",
+        build: one::<Spreading>,
+    },
+    Entry {
+        key: "TwoTask",
+        name: "Two Tasks (SEC + Gathering)",
+        build: two_task,
+    },
+    Entry {
+        key: "CompassGathering",
+        name: "Two robots, unreliable compasses",
+        build: compass_gathering::plan,
+    },
+    Entry {
+        key: "RandomizedGathering",
+        name: "Randomized gathering (two robots)",
+        build: randomized_gathering::plan,
+    },
+    Entry {
+        key: "RandomizedGatheringUniform",
+        name: "Randomized gathering, λ ∈ {1, ½, uniform} (two robots)",
+        build: randomized_gathering::plan_uniform,
+    },
+    Entry {
+        key: "MutualVisibility",
+        name: "Mutual visibility",
+        build: mutual_visibility::plan,
+    },
+    Entry {
+        key: "CrashGathering",
+        name: "Gathering despite crashes (weak multiplicity)",
+        build: crash_gathering::plan,
+    },
+    Entry {
         key: "SqGathering",
         name: "SqGathering",
         build: sq_gathering::plan,
@@ -90,8 +147,28 @@ pub const REGISTRY: &[Entry] = &[
 #[must_use]
 pub fn requirements(key: &str) -> (bool, bool) {
     match key {
-        "SqGathering" => (true, true),
+        "SqGathering" | "CrashGathering" => (true, true),
         _ => (false, false),
+    }
+}
+
+/// Where a run's settings leave the model algorithm `key` was designed or
+/// proved for, as sentences the page can show. Empty inside the model.
+#[must_use]
+pub fn notes(key: &str, config: &SimConfig) -> Vec<String> {
+    match key {
+        "SqGathering" => sq_gathering::notes(config),
+        "CompassGathering" => compass_gathering::notes(config),
+        "CrashGathering" => crash_gathering::notes(config),
+        "MutualVisibility" => mutual_visibility::notes(config),
+        "RandomizedGathering" | "RandomizedGatheringUniform" => randomized_gathering::notes(config),
+        "TwoTask" => vec![
+            "This run never ends by itself: the red robots run SEC and head for the edge of the swarm's circle while the blue ones run Gathering and head for its middle, as in the original simulator.".to_owned(),
+        ],
+        "CircleFormation" if config.scheduler == SchedulerKind::Fsync => vec![
+            "Under FSYNC the circle each robot aims for moves with the robots, so some starts never settle (4 of 12 starts with 10 or 30 robots in testing).".to_owned(),
+        ],
+        _ => Vec::new(),
     }
 }
 

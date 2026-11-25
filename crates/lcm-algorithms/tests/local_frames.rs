@@ -124,10 +124,25 @@ fn frame_invariance_of_every_algorithm() {
     // Every registered algorithm uses only distances and angles between
     // robots, so it gives the same point in any frame. An algorithm that
     // reads the axes on purpose must be listed here, with the reason.
-    const FRAME_DEPENDENT: &[&str] = &[];
+    const FRAME_DEPENDENT: &[&str] = &[
+        // Spreading samples an axis-aligned grid over an axis-aligned box: a
+        // disoriented robot computes a different Voronoi centroid.
+        "Spreading",
+        // Compass gathering reads directions off the robot's own compass: that
+        // is the point of the algorithm, so a rotated frame changes its decision.
+        "CompassGathering",
+        // Mutual visibility moves into the widest gap between the directions
+        // to the others and their opposites; that set is symmetric under a
+        // half turn, so the widest gap has a twin and the robot takes the
+        // first in its own angular order. Either is a legal move in the paper.
+        "MutualVisibility",
+    ];
     for (key, rotated, mirrored) in table {
         if FRAME_DEPENDENT.contains(&key) {
-            assert!(rotated < 1.0, "{key} is listed as frame-dependent");
+            assert!(
+                rotated < 1.0 || mirrored < 1.0,
+                "{key} is listed as frame-dependent"
+            );
         } else {
             assert!(
                 rotated == 1.0 && mirrored == 1.0,
