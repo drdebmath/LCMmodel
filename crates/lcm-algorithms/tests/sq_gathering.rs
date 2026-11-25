@@ -5,7 +5,7 @@
 //! The rest are properties over many seeded random runs, and the settings
 //! the algorithm must refuse.
 
-use lcm_algorithms::sq_gathering::{decide, decide_in_frame, observe, LocalFrame, Rule};
+use lcm_algorithms::sq_gathering::{self, decide, decide_in_frame, observe, LocalFrame, Rule};
 use lcm_algorithms::sq_trace::{Report, Round, Status, Tracer};
 use lcm_core::geom::dist;
 use lcm_core::{
@@ -440,6 +440,24 @@ fn settings_outside_the_model_are_refused() {
         ..base.clone()
     };
     assert!(message(limited).contains("unlimited visibility"));
+    // Robots acting in rounds: Lemma 8 (review of #17, fix B3).
+    for scheduler in [SchedulerKind::Ssync, SchedulerKind::Fsync] {
+        let rounds = SimConfig {
+            scheduler,
+            schedule: None,
+            max_turns: None,
+            ..base.clone()
+        };
+        assert!(message(rounds).contains("Lemma 8"), "{scheduler:?}");
+    }
+    // Weaker multiplicity detection runs, with a note.
+    assert!(sq_gathering::notes(&base).is_empty());
+    let blind = SimConfig {
+        multiplicity: lcm_core::MultiplicityModel::None,
+        ..base.clone()
+    };
+    assert!(lcm_algorithms::simulation(&blind).is_ok());
+    assert!(sq_gathering::notes(&blind)[0].contains("Theorem 4"));
     let faulty = SimConfig {
         num_of_faults: 1,
         ..base.clone()

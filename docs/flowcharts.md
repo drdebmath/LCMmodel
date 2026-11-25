@@ -770,7 +770,7 @@ flowchart TD
 | Draw the swarm | Tiny robots are drawn as rectangles, larger ones as pre-drawn sprites per colour; at most one draw per screen frame. 10,000 robots take about 4–6 ms without a GPU. |
 | Update stats and legend | Time, events per second, terminated count and the legend counts, refreshed at most every 200 ms so the page stays light. |
 
-`startPulling` — [`web/client.js:95`](../web/client.js#L95)
+`startPulling` — [`web/client.js:102`](../web/client.js#L102)
 
 ```js
 startPulling() {
@@ -785,7 +785,7 @@ startPulling() {
 }
 ```
 
-`requestFrame` — [`web/client.js:86`](../web/client.js#L86)
+`requestFrame` — [`web/client.js:93`](../web/client.js#L93)
 
 ```js
 requestFrame() {
@@ -798,7 +798,7 @@ requestFrame() {
 }
 ```
 
-`slice` — [`web/worker.js:180`](../web/worker.js#L180)
+`slice` — [`web/worker.js:192`](../web/worker.js#L192)
 
 ```js
 function slice(gen) {
@@ -815,6 +815,7 @@ function slice(gen) {
     tracePoint();
     const took = performance.now() - t0;
     if (code === 1) { caughtUp = true; break; }          // reached the time the clock allows
+    if (code === AWAITING) { playing = false; break; }   // the adversary's turn to choose
     if (code !== 0) { stop = STOP[code]; playing = false; break; }
     if (took < 0.5) batch = Math.min(batch * 2, 1 << 20);
     else if (took > 2) batch = Math.max(batch >> 1, 1);
@@ -828,7 +829,7 @@ function slice(gen) {
 }
 ```
 
-`advance` — [`crates/lcm-wasm/src/lib.rs:102`](../crates/lcm-wasm/src/lib.rs#L102)
+`advance` — [`crates/lcm-wasm/src/lib.rs:116`](../crates/lcm-wasm/src/lib.rs#L116)
 
 ```rust
 /// Handles up to `max_events` events, stopping early before the first
@@ -844,7 +845,7 @@ pub fn advance(&mut self, max_events: u32, until_time: f64) -> Stop {
 }
 ```
 
-`postFrame` — [`web/worker.js:214`](../web/worker.js#L214)
+`postFrame` — [`web/worker.js:227`](../web/worker.js#L227)
 
 ```js
 function postFrame(extra = {}) {
@@ -863,8 +864,15 @@ function postFrame(extra = {}) {
     ticks: sim.tick_count?.() ?? 0,
     robots: n,
     terminated: sim.terminated_count(),
-    epochs: sim.sequential?.() ? sim.epochs_completed() : null,
-    turns: sim.sequential?.() ? sim.turn_count() : null,
+    epochs: sim.sequential() || sim.in_rounds() ? sim.epochs_completed() : null,
+    turns: sim.sequential() ? sim.turn_count() : sim.in_rounds() ? sim.round_count() : null,
+    unit: sim.in_rounds() ? "round" : "turn",
+    members: sim.in_rounds() ? Array.from(sim.round_members()) : null,
+    awaiting: sim.awaiting_schedule(),
+    compass: n <= 2000 && sim.compass ? Array.from(sim.compass()) : null,
+    deferred: sim.deferred_looks ? sim.deferred_looks() : 0,
+    // Mutual visibility, once the run is over: how many robots see all the others (a Look each, so only then).
+    seeing: mutualVisibility && stop !== "running" ? (seeing ??= sim.seeing_everyone()) : null,
     // While a turn is played one at a time: who is walking, in which beat, how far, and the settle time.
     walk: perTurn !== null && pace
       ? { robot: pace.robot, phase: pace.progress < 0 ? "decide" : "move", length: pace.length, cut: pace.cut,
@@ -883,7 +891,7 @@ function postFrame(extra = {}) {
 }
 ```
 
-`fill_frame` — [`crates/lcm-wasm/src/lib.rs:425`](../crates/lcm-wasm/src/lib.rs#L425)
+`fill_frame` — [`crates/lcm-wasm/src/lib.rs:439`](../crates/lcm-wasm/src/lib.rs#L439)
 
 ```rust
 /// Captures the current state straight into caller-owned arrays, so the
@@ -912,7 +920,7 @@ pub fn fill_frame(
 }
 ```
 
-`draw` — [`web/renderer.js:462`](../web/renderer.js#L462)
+`draw` — [`web/renderer.js:595`](../web/renderer.js#L595)
 
 ```js
 draw(ctx = this.ctx, dpr = this.dpr) {
@@ -923,6 +931,7 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   ctx.fillRect(0, 0, this.width, this.height);
 
   if (this.follow && frame) this.stepFollow();
+  else this.stepViewTarget();
   const s = this.scale;
   const ox = this.width / 2 + this.pan.x;
   const oy = this.height / 2 + this.pan.y;
@@ -962,7 +971,8 @@ draw(ctx = this.ctx, dpr = this.dpr) {
   }
   if (!frame) { this.lastDrawMs = performance.now() - t0; return; }
 
-  const { xy, flags, fault, task, light, target, circle } = frame;
+  const { flags, fault, task, light, target, circle } = frame;
+  const xy = this.drawnXY(frame);
   // The frame's numbers are offsets from its origin (see Frame in lcm-core): add the origin
   // here in f64, so a swarm far from (0, 0) and tiny next to that distance stays distinct.
   const fx = ox + ((frame.originX ?? 0) - this.anchor.x) * s, fy = oy - ((frame.originY ?? 0) - this.anchor.y) * s;
@@ -1065,6 +1075,37 @@ draw(ctx = this.ctx, dpr = this.dpr) {
     ctx.setLineDash([]);
   }
 
+  // Motion trails: each robot's recent path, fading out, in its own colour.
+  const trail = this.trail;
+  if (this.options.trails && trail && trail.n === n && trail.count > 1 && n <= TRAIL_MAX) {
+    ctx.save();
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(1.2, Math.min(3, r * 0.9));
+    const BANDS = 4, per = Math.ceil((trail.count - 1) / BANDS);
+    for (let c = 0; c < COLORS.length; c++) {
+      if (!counts[c]) continue;
+      ctx.strokeStyle = COLORS[c].fill;
+      for (let b = 0; b < BANDS; b++) {
+        // Band 0 is the oldest part of every trail, drawn faintest.
+        ctx.globalAlpha = 0.07 + 0.11 * b;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          if (colorOf[i] !== c) continue;
+          const from = b * per, to = Math.min(trail.count - 1, (b + 1) * per);
+          for (let k = from; k < to; k++) {
+            const s0 = (trail.head - trail.count + k + TRAIL_LEN) % TRAIL_LEN, s1 = (s0 + 1) % TRAIL_LEN;
+            const x0 = trail.buf[2 * n * s0 + 2 * i], y0 = trail.buf[2 * n * s0 + 2 * i + 1];
+            const x1 = trail.buf[2 * n * s1 + 2 * i], y1 = trail.buf[2 * n * s1 + 2 * i + 1];
+            if (x0 === x1 && y0 === y1) continue;
+            ctx.moveTo(WX(x0), WY(y0)); ctx.lineTo(WX(x1), WY(y1));
+          }
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   // Robot bodies, colour by colour: fillRect dots, or stamped sprites.
   const snap = (v) => Math.round(v * dpr) / dpr;
   const outline = n <= LOD.outlines ? this.theme.outline : null;
@@ -1081,6 +1122,52 @@ draw(ctx = this.ctx, dpr = this.dpr) {
       for (let i = 0; i < n; i++) {
         if (colorOf[i] === c) ctx.drawImage(sp.canvas, snap(X(xy[2 * i]) - sp.half), snap(Y(xy[2 * i + 1]) - sp.half), sp.size, sp.size);
       }
+    }
+  }
+
+  // Where each moving robot is heading: a small hollow marker in its colour.
+  if (n <= PULSE_MAX) {
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < n; i++) {
+      if ((flags[i] & 3) !== STATE_MOVE || !(target[2 * i] === target[2 * i])) continue;
+      ctx.strokeStyle = COLORS[colorOf[i]].fill; ctx.globalAlpha = 0.85;
+      ctx.beginPath(); ctx.arc(X(target[2 * i]), Y(target[2 * i + 1]), Math.max(2.5, r * 0.8), 0, 2 * Math.PI); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Decision pulses: a ring that grows and fades when a robot picks a new destination.
+  if (this.pulses.size && n <= PULSE_MAX) {
+    const now = performance.now();
+    ctx.save();
+    ctx.strokeStyle = this.theme.accent; ctx.lineWidth = 2;
+    for (const [i, t0] of this.pulses) {
+      const age = now - t0;
+      if (age > PULSE_MS || i >= n) { this.pulses.delete(i); continue; }
+      const k = age / PULSE_MS;
+      ctx.globalAlpha = 0.75 * (1 - k);
+      ctx.beginPath(); ctx.arc(X(xy[2 * i]), Y(xy[2 * i + 1]), Math.max(r, 2) + 3 + 14 * k, 0, 2 * Math.PI); ctx.stroke();
+    }
+    ctx.restore();
+    if (this.pulses.size) this.requestDraw();
+  }
+
+  // The swarm has gathered: a soft green halo around it, fading out.
+  if (this.halo) {
+    const age = performance.now() - this.halo;
+    if (age > HALO_MS) this.halo = 0;
+    else {
+      const k = age / HALO_MS, cx = X(0), cy = Y(0);
+      ctx.save();
+      ctx.strokeStyle = "#10b981"; ctx.lineWidth = 3;
+      for (const lag of [0, 0.22]) {
+        const kk = Math.max(0, k - lag);
+        ctx.globalAlpha = 0.6 * (1 - kk);
+        ctx.beginPath(); ctx.arc(cx, cy, 12 + 70 * kk, 0, 2 * Math.PI); ctx.stroke();
+      }
+      ctx.restore();
+      this.requestDraw();
     }
   }
 
@@ -1181,6 +1268,112 @@ draw(ctx = this.ctx, dpr = this.dpr) {
       ctx.fillText(title, lx + 8, ly + 17);
       ctx.fillStyle = this.theme.text; ctx.globalAlpha = 0.75; ctx.font = "11px system-ui, sans-serif";
       ctx.fillText(detail, lx + 8, ly + 33);
+    }
+    ctx.restore();
+  }
+
+  // Unreliable compasses: each robot's own north, a short needle (the true north is straight up).
+  const compass = frame.compass;
+  if (compass && compass.length === n && n <= 12) {
+    // A few robots: a small compass around each. The shaded wedge is where its north may point (true north
+    // ± the error), the grey tick is true north, the red needle the north this robot reads now.
+    const R = Math.max(r, 3) + 22, phi = ((this.options.compassError ?? 0) * Math.PI) / 180;
+    ctx.save();
+    ctx.font = "600 9px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (let i = 0; i < n; i++) {
+      const x = X(xy[2 * i]), y = Y(xy[2 * i + 1]), a = compass[i];
+      ctx.strokeStyle = "rgba(148,163,184,.35)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, R, 0, 2 * Math.PI); ctx.stroke();
+      if (phi > 0) {
+        ctx.fillStyle = "rgba(239,68,68,.13)";
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, R, -Math.PI / 2 - Math.min(phi, Math.PI), -Math.PI / 2 + Math.min(phi, Math.PI)); ctx.closePath(); ctx.fill();
+      }
+      ctx.strokeStyle = "rgba(148,163,184,.8)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, y - R + 5); ctx.lineTo(x, y - R - 3); ctx.stroke();
+      const tx = x - R * Math.sin(a), ty = y - R * Math.cos(a);
+      ctx.strokeStyle = "rgba(239,68,68,.95)"; ctx.fillStyle = "rgba(239,68,68,.95)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - (Math.max(r, 2) + 2) * Math.sin(a), y - (Math.max(r, 2) + 2) * Math.cos(a)); ctx.lineTo(tx, ty); ctx.stroke();
+      ctx.beginPath(); ctx.arc(tx, ty, 2.5, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillText("N", x - (R + 9) * Math.sin(a), y - (R + 9) * Math.cos(a));
+    }
+    ctx.restore();
+  } else if (compass && compass.length === n && n <= 300) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(220,60,60,.85)"; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const len = Math.max(r, 2) + 9;
+    for (let i = 0; i < n; i++) {
+      const x = X(xy[2 * i]), y = Y(xy[2 * i + 1]), a = compass[i];
+      ctx.moveTo(x, y); ctx.lineTo(x - len * Math.sin(a), y - len * Math.cos(a));
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // SSYNC/FSYNC: the robots of the round under way.
+  const members = frame.members;
+  if (members && members.length < n && n <= LOD.circles && !this.options.adversary) {
+    ctx.strokeStyle = this.theme.accent; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    for (const i of members) { const x = X(xy[2 * i]), y = Y(xy[2 * i + 1]); ctx.moveTo(x + Math.max(r, 2) + 4, y); ctx.arc(x, y, Math.max(r, 2) + 4, 0, 2 * Math.PI); }
+    ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1;
+  }
+
+  // Playing the adversary: the robots chosen, where the chosen one would go, and where a click would stop it.
+  const adv = this.options.adversary;
+  if (adv) {
+    const color = "#e11d48";
+    ctx.save();
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
+    for (const i of adv.chosen) {
+      if (i >= n) continue;
+      ctx.beginPath(); ctx.arc(X(xy[2 * i]), Y(xy[2 * i + 1]), Math.max(r, 2) + 7, 0, 2 * Math.PI); ctx.stroke();
+    }
+    const p = adv.preview;
+    if (p && p.robot < n) {
+      const ax = X(xy[2 * p.robot]), ay = Y(xy[2 * p.robot + 1]), bx = WX(p.target[0]), by = WY(p.target[1]);
+      ctx.lineWidth = 2.2; ctx.setLineDash([7, 5]);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
+      ctx.lineWidth = 3.2;
+      ctx.beginPath(); ctx.moveTo(bx - 8, by - 8); ctx.lineTo(bx + 8, by + 8); ctx.moveTo(bx + 8, by - 8); ctx.lineTo(bx - 8, by + 8); ctx.stroke();
+      const len = Math.hypot(p.target[0] - frame.x(p.robot), p.target[1] - frame.y(p.robot)), delta = adv.nonRigid;
+      if (delta && len > delta) {  // the earliest point the adversary may stop it at
+        const t = delta / len, dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1;
+        const mx = ax + t * dx, my = ay + t * dy, nx = -dy / l, ny = dx / l;
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(mx - nx * 8, my - ny * 8); ctx.lineTo(mx + nx * 8, my + ny * 8); ctx.stroke();
+      }
+      if (adv.hover) {
+        ctx.beginPath(); ctx.arc(WX(adv.hover[0]), WY(adv.hover[1]), 5, 0, 2 * Math.PI); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  // The scenario editor: the robot being dragged, where it will land.
+  const editor = this.options.editor;
+  if (editor?.drag?.to && editor.drag.i < n) {
+    const i = editor.drag.i, [tx, ty] = editor.drag.to;
+    ctx.save();
+    ctx.strokeStyle = this.theme.accent; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(X(xy[2 * i]), Y(xy[2 * i + 1])); ctx.lineTo(WX(tx), WY(ty)); ctx.stroke();
+    ctx.setLineDash([]); ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(WX(tx), WY(ty), Math.max(r, 3) + 2, 0, 2 * Math.PI); ctx.stroke();
+    ctx.restore();
+  }
+  if (editor && editor.hovered >= 0 && editor.hovered < n && !editor.drag) {
+    const i = editor.hovered;
+    ctx.strokeStyle = this.theme.accent; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(X(xy[2 * i]), Y(xy[2 * i + 1]), Math.max(r, 2) + 5, 0, 2 * Math.PI); ctx.stroke(); ctx.lineWidth = 1;
+  }
+
+  // Robot numbers, when the swarm is small enough to read them and they matter (choosing turns, editing).
+  if ((adv || editor) && n <= 40) {
+    ctx.save();
+    ctx.font = "600 12px system-ui, sans-serif"; ctx.lineJoin = "round"; ctx.textBaseline = "alphabetic";
+    for (let j = 0; j < n; j++) {
+      const label = `R${j}`, lx = X(xy[2 * j]) + Math.max(r, 2) + 5, ly = Y(xy[2 * j + 1]) - Math.max(r, 2) - 5;
+      ctx.lineWidth = 4; ctx.strokeStyle = this.theme.bg; ctx.strokeText(label, lx, ly);
+      ctx.fillStyle = adv?.chosen.includes(j) ? "#e11d48" : this.theme.text; ctx.fillText(label, lx, ly);
     }
     ctx.restore();
   }
@@ -1535,14 +1728,19 @@ flowchart TD
 | Wait | A single robot waits while the multiplicities sort themselves out: its target is where it stands, so chart 2 freezes it and its turn ends. |
 | Move to the midpoint | Leave the multiplicity for the midpoint between its point q and the closest occupied point q′. Nothing occupied is within half that distance, so the robot lands on a free spot wherever it is stopped. Once only one multiplicity is left, κ = 1. |
 
-`compute` — [`crates/lcm-algorithms/src/sq_gathering.rs:356`](../crates/lcm-algorithms/src/sq_gathering.rs#L356)
+`compute` — [`crates/lcm-algorithms/src/sq_gathering.rs:284`](../crates/lcm-algorithms/src/sq_gathering.rs#L284)
 
 ```rust
 /// One robot's Compute: Q′(t) from its snapshot, then the rule. The
 /// robot terminates when it sees a single occupied point: everyone is
 /// gathered there, and every robot activated from now on would stay.
 fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision {
-    let obs = observe(&look.view.pos, look.me_index, look.model.eps);
+    let obs = observe_with(
+        &look.view.pos,
+        look.me_index,
+        look.model.eps,
+        look.model.multiplicity,
+    );
     let decision = decide(&obs);
     CoreDecision {
         target: decision.destination(&obs),
@@ -1552,7 +1750,7 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision
 }
 ```
 
-`observe` — [`crates/lcm-algorithms/src/sq_gathering.rs:91`](../crates/lcm-algorithms/src/sq_gathering.rs#L91)
+`observe` — [`crates/lcm-algorithms/src/sq_gathering.rs:54`](../crates/lcm-algorithms/src/sq_gathering.rs#L54)
 
 ```rust
 /// What robot `i` observes under weak multiplicity detection, in global
@@ -1560,22 +1758,11 @@ fn compute(&self, look: &Look<'_>, _: &mut Rng, _: &mut Scratch) -> CoreDecision
 /// same observation.
 #[must_use]
 pub fn observe(positions: &[Point], i: usize, tolerance: f64) -> Observation {
-    let (groups, counts, owner) = occupancy(positions, tolerance);
-    Observation {
-        points: groups
-            .iter()
-            .zip(&counts)
-            .map(|(&at, &c)| Observed {
-                at,
-                multiplicity: c >= 2,
-            })
-            .collect(),
-        me: owner[i],
-    }
+    observe_with(positions, i, tolerance, MultiplicityModel::Weak)
 }
 ```
 
-`decide` — [`crates/lcm-algorithms/src/sq_gathering.rs:243`](../crates/lcm-algorithms/src/sq_gathering.rs#L243)
+`decide` — [`crates/lcm-algorithms/src/sq_gathering.rs:218`](../crates/lcm-algorithms/src/sq_gathering.rs#L218)
 
 ```rust
 /// Algorithm 8 on one observation.
@@ -1613,7 +1800,7 @@ pub fn decide(obs: &Observation) -> Decision {
 }
 ```
 
-`closest` — [`crates/lcm-algorithms/src/sq_gathering.rs:215`](../crates/lcm-algorithms/src/sq_gathering.rs#L215)
+`closest` — [`crates/lcm-algorithms/src/sq_gathering.rs:190`](../crates/lcm-algorithms/src/sq_gathering.rs#L190)
 
 ```rust
 /// The occupied point closest to the robot's own. Equally close points are
@@ -1645,7 +1832,7 @@ fn closest(obs: &Observation) -> Option<usize> {
 }
 ```
 
-`destination` — [`crates/lcm-algorithms/src/sq_gathering.rs:200`](../crates/lcm-algorithms/src/sq_gathering.rs#L200)
+`destination` — [`crates/lcm-algorithms/src/sq_gathering.rs:175`](../crates/lcm-algorithms/src/sq_gathering.rs#L175)
 
 ```rust
 /// The destination in the coordinates of `obs`.

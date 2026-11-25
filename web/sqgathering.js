@@ -43,12 +43,12 @@ const ALGO = [
 
 // Lines executed by each rule, and the line that sets the destination.
 const PATHS = {
-  "k1-hold-multiplicity": { lines: [1, 2, 3, 4, 5], dest: 3, paperCase: "case 1 (κ = 1)" },
-  "k1-join-multiplicity": { lines: [1, 2, 3, 4, 5, 6, 7], dest: 7, paperCase: "case 1 (κ = 1)" },
-  "kmany-leave-multiplicity": { lines: [1, 2, 3, 4, 8, 9, 10, 11, 12, 13], dest: 13, paperCase: "case 2 (κ > 1)" },
-  "kmany-wait": { lines: [1, 2, 3, 4, 8, 9, 10], dest: 3, paperCase: "case 2 (κ > 1)" },
-  "k0-move-to-closest": { lines: [1, 2, 3, 4, 8, 9, 14, 15, 16], dest: 16, paperCase: "case 3 (κ = 0)" },
-  "alone": { lines: [1, 2, 3, 4, 8, 9, 14, 15], dest: 3, paperCase: "n = 1" },
+  "k1-hold-multiplicity": { lines: [1, 2, 3, 4, 5], dest: 3, situation: "one stack (κ = 1)" },
+  "k1-join-multiplicity": { lines: [1, 2, 3, 4, 5, 6, 7], dest: 7, situation: "one stack (κ = 1)" },
+  "kmany-leave-multiplicity": { lines: [1, 2, 3, 4, 8, 9, 10, 11, 12, 13], dest: 13, situation: "several stacks (κ > 1)" },
+  "kmany-wait": { lines: [1, 2, 3, 4, 8, 9, 10], dest: 3, situation: "several stacks (κ > 1)" },
+  "k0-move-to-closest": { lines: [1, 2, 3, 4, 8, 9, 14, 15, 16], dest: 16, situation: "no stack yet (κ = 0)" },
+  "alone": { lines: [1, 2, 3, 4, 8, 9, 14, 15], dest: 3, situation: "a single robot" },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -288,7 +288,7 @@ function panels() {
     : "—";
   const path = round ? PATHS[round.rule] : null;
   $("a_rule").innerHTML = round
-    ? `<span class="case">${path?.paperCase ?? ""} · lines ${round.lines}</span><span class="rule-key">${round.rule}</span>${round.description}`
+    ? `<span class="case">${path?.situation ?? ""} · lines ${round.lines}</span><span class="rule-key">${round.rule}</span>${round.description}`
     : at === 0 && !finished() ? "Press → or Play to activate the first robot." : "No round to show.";
 
   const obs = $("obs");

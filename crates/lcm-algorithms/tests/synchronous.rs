@@ -1,9 +1,18 @@
 //! The SSYNC and FSYNC schedulers, the live `await` schedule, private frames,
-//! obstructed visibility and the multiplicity models.
+//! obstructed visibility and the multiplicity models, and the two
+//! impossibility results of Section 6 of the sequential-schedulers paper
+//! played out on the core:
+//!
+//! - Theorem 4: without multiplicity detection, a sequential adversary keeps
+//!   robots on two points for ever.
+//! - Lemma 8: under SSYNC, activating a whole multiplicity at once keeps two
+//!   multiplicities apart for ever, even with multiplicity detection.
 
+use lcm_algorithms::SqGathering;
+use lcm_core::occupancy::occupancy;
 use lcm_core::{
-    Budget, Frames, MultiplicityModel, Point, ScheduleEnd, SchedulerKind, SimConfig, Simulation,
-    StopReason, TurnGap,
+    Activation, Budget, Frames, MultiplicityModel, Plan, Point, ScheduleEnd, SchedulerKind,
+    SimConfig, Simulation, StopReason, TurnGap,
 };
 
 fn base(algorithm: &str, positions: &[[f64; 2]], scheduler: SchedulerKind) -> SimConfig {
@@ -40,6 +49,12 @@ fn play_rounds(sim: &mut Simulation, rounds: u64) -> Option<StopReason> {
         }
     }
     None
+}
+
+/// Distinct points and how many robots share each, in first-seen order.
+fn census(sim: &Simulation) -> Vec<usize> {
+    let (_, counts, _) = occupancy(&sim.robots().pos, 1e-9);
+    counts
 }
 
 fn close(a: Point, b: Point) -> bool {
@@ -367,4 +382,97 @@ fn local_detection_sees_only_its_own_point() {
     );
     let (from_single, _) = perceive(&positions, 4, 1e-9, MultiplicityModel::Local);
     assert!(from_single.iter().all(|o| !o.multiple && o.count.is_none()));
+}
+
+/// Lemma 8: two multiplicities of two robots each. The SSYNC adversary
+/// activates a whole multiplicity at once; both robots take the κ > 1 rule
+/// to the same midpoint, so there are again two multiplicities, half as far
+/// apart. The sequential scheduler, on the same start, gathers.
+///
+/// The registry refuses SqGathering under SSYNC (that is the lemma), so the
+/// plan is built directly: this plays the paper's adversary on the core, it
+/// is not a run the page can start.
+#[test]
+fn lemma_8_ssync_keeps_two_multiplicities_apart() {
+    let positions = [[0.0, 0.0], [0.0, 0.0], [64.0, 0.0], [64.0, 0.0]];
+    let mut config = base("SqGathering", &positions, SchedulerKind::Ssync);
+    config.rounds = Some(vec![vec![0, 1], vec![2, 3]]);
+    config.schedule_end = ScheduleEnd::Repeat;
+    config.max_rounds = Some(10);
+    assert!(lcm_algorithms::simulation(&config).is_err());
+    let mut s = Simulation::new(&config, Plan::single(Box::new(SqGathering))).unwrap();
+    let mut gap = 64.0;
+    for round in 1..=10 {
+        play_rounds(&mut s, round);
+        gap /= 2.0;
+        assert_eq!(census(&s), vec![2, 2], "round {round}");
+        let p = &s.robots().pos;
+        assert!((libm::fabs(p[0].x - p[2].x) - gap).abs() < 1e-9);
+    }
+    assert_eq!(run(&mut s), StopReason::MaxRounds);
+
+    let sequential = SimConfig {
+        scheduler: SchedulerKind::Sequential,
+        rounds: None,
+        schedule_end: ScheduleEnd::RoundRobin,
+        max_rounds: None,
+        ..config
+    };
+    let mut s = sim(&sequential);
+    assert_eq!(run(&mut s), StopReason::Ended);
+    assert_eq!(census(&s), vec![4]);
+}
+
+/// Theorem 4: robots 0 and 1 share A, robot 2 is alone at B. Without
+/// multiplicity detection every robot sees two points and goes to the other
+/// one; the fair schedule 0, 2, 1 (repeated) always moves a robot off the
+/// shared point, so after every turn there are again two points. With weak
+/// detection the same schedule gathers.
+#[test]
+fn theorem_4_no_multiplicity_detection_never_gathers() {
+    let positions = [[0.0, 0.0], [0.0, 0.0], [5.0, 0.0]];
+    let mut config = base("SqGathering", &positions, SchedulerKind::Sequential);
+    config.multiplicity = MultiplicityModel::None;
+    config.schedule = Some(vec![
+        Activation::Robot(0),
+        Activation::Robot(2),
+        Activation::Robot(1),
+    ]);
+    config.schedule_end = ScheduleEnd::Repeat;
+    config.max_turns = Some(300);
+    let mut s = sim(&config);
+    while s.step_checked().is_ok() {
+        let mut c = census(&s);
+        c.sort_unstable();
+        // Mid-move a robot is between the points: count only settled turns.
+        if s.robots()
+            .state
+            .iter()
+            .all(|st| *st != lcm_core::RobotState::Move)
+        {
+            assert_eq!(c, vec![1, 2], "turn {}", s.turn_count());
+        }
+    }
+    assert!(s.turn_limit_reached());
+
+    config.multiplicity = MultiplicityModel::Weak;
+    let mut s = sim(&config);
+    assert_eq!(run(&mut s), StopReason::Ended);
+    assert_eq!(census(&s), vec![3]);
+}
+
+/// SqGathering with only local detection: robots on each of two
+/// multiplicities see kappa = 1 and hold, so the two never merge, while weak
+/// detection gathers the same start.
+#[test]
+fn sq_gathering_with_local_detection_keeps_two_multiplicities() {
+    let positions = [[0.0, 0.0], [0.0, 0.0], [64.0, 0.0], [64.0, 0.0]];
+    let mut config = base("SqGathering", &positions, SchedulerKind::Sequential);
+    config.multiplicity = MultiplicityModel::Local;
+    let mut s = sim(&config);
+    assert_eq!(run(&mut s), StopReason::Stalled);
+    assert_eq!(census(&s), vec![2, 2]);
+    config.multiplicity = MultiplicityModel::Weak;
+    let mut s = sim(&config);
+    assert_eq!(run(&mut s), StopReason::Ended);
 }
