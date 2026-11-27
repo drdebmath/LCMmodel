@@ -30,6 +30,8 @@ const WORKER = "web/worker.js";
 const CLIENT = "web/client.js";
 const RENDERER = "web/renderer.js";
 const SQ = "crates/lcm-algorithms/src/sq_gathering.rs";
+const PATTERN = "crates/lcm-algorithms/src/pattern_formation.rs";
+const SQPF = "crates/lcm-algorithms/src/sq_pattern_formation.rs";
 
 // ------------------------------------------------------------- helpers ----
 
@@ -529,6 +531,77 @@ const CHARTS = [
         ],
     },
     {
+        "id": "sqpf",
+        "title": "Sequential Pattern Formation (Algorithms 1 and 7)",
+        "short": "Any pattern from any start, one robot per turn, robots with private frames",
+        "blurb": (
+            "Algorithm SqPF (Algorithm 1 with Procedures Separate, Last, Overlap, Leader and Occupy) and " +
+            "Algorithm SqPF′ (Algorithm 7, patterns of 2 to 4 points) of \"Universal pattern formation by " +
+            "oblivious robots under sequential schedulers\" (arXiv:2412.10733, Sections 4 and 5), following " +
+            "the paper's Figure 1. It runs only under the sequential scheduler of chart 5, with non-rigid " +
+            "moves of at least δ; choosing it fixes those settings."
+        ),
+        "notes": [
+            "The robots are the paper's: each has its own private coordinate system (its own x-axis " +
+            "direction, unit of length and handedness, itself at the origin), sees only the set of occupied " +
+            "points (no identities, no multiplicity detection), remembers nothing and never terminates.",
+            "The robots agree on a frame from the configuration alone: the centre O and radius ρ of the " +
+            "smallest enclosing circle, and a unique smallest angle θ₁ (the leader angular sequence) that " +
+            "fixes a starting radius and which way is clockwise.",
+            "A run ends when a whole epoch passes with no robot moving (chart 5, Stalled); the page then " +
+            "checks that the occupied points are the pattern and says Formed.",
+            "Where the paper leaves a choice open, docs/sqpf.md says which one is made and why.",
+        ],
+        "lanes": ["rows", [["Look", 0, 1], ["Initialization", 2, 3], ["Finalization", 4, 4], ["Leader Configuration · Partial Pattern Formation", 5, 6]]],
+        "nodes": [
+            node("f_comp", "Compute", 2, 0, "entry", [SQPF, "compute"], "SqPatternFormation::compute()",
+                 "Called from the COMPUTE phase of chart 2 during the robot's turn (chart 5). The destination " +
+                 "comes back in the robot's own frame and is turned into world coordinates for the move."),
+            node("f_look", "See Q in its own frame", 2, 1, "step", [SQPF, "snapshot"], "snapshot() · Section 2.1",
+                 "The set of distinct occupied points, in the robot's private coordinate system, the robot at " +
+                 "the origin. Robots on one point are one point."),
+            node("f_few", "|Q| < |P̂|?", 2, 2, "decision", [SQPF, "destination"], "Alg. 1 l. 2 · Alg. 7 l. 3",
+                 "Fewer occupied points than pattern points: some robots share points and must separate."),
+            node("f_sep", "Separate", 0, 2, "out", [SQPF, "separate"], "Procedure 2",
+                 "One unit along the robot's own x-axis, or halfway to the first robot on that segment."),
+            node("f_big", "|P̂| ≥ 5?", 2, 3, "decision", null, "Section 3.2",
+                 "Patterns of 2 to 4 points use Algorithm 7, SqPF′, instead."),
+            node("f_prime", "SqPF′", 4, 3, "out", [SQPF, "sqpf_prime"], "Algorithm 7",
+                 "A unique farthest pair q₁q₂ is made and the pattern is laid over it; the other robots move to " +
+                 "the pattern points."),
+            node("f_last", "Special case?", 2, 4, "decision", [SQPF, "last"], "Procedure 3, Last",
+                 "Is Q already the pattern? Or is only the last pattern point p̂ₖ empty, with every other robot " +
+                 "on the segment Op̂ₖ?"),
+            node("f_fin", "Stay, or move to p̂ₖ", 0, 4, "end", null, "Finalization",
+                 "Formed: nobody moves again. Last one: the robot on Op̂ₖ moves toward p̂ₖ, the others stay."),
+            node("f_ovl", "Leader angular sequence in Q?", 2, 5, "decision", [SQPF, "overlap"], "Procedure 4, Overlap",
+                 "If so, lay the pattern over Q (the joint configuration Γ): its first point on the SEC on the " +
+                 "robot q_j that ends θ₁, in the clockwise order θ₁ defines."),
+            node("f_lead", "Leader", 0, 6, "out", [SQPF, "leader"], "Procedure 5",
+                 "Send one robot to O; from O it moves to u′ with |Ou′| = ρ/2 and ∠u′Oq_j = ξ/3, creating a " +
+                 "unique smallest angle."),
+            node("f_gam", "Γ has one too?", 2, 6, "decision", null, "Alg. 1 l. 14",
+                 "The pattern points must not create a smaller angle than θ₁."),
+            node("f_occ", "Occupy", 4, 6, "out", [SQPF, "occupy"], "Procedure 6 · the walker",
+                 "The walker (the highest priority free robot with a free path) goes, via O, to the highest " +
+                 "priority empty pattern point."),
+        ],
+        "edges": [
+            edge("f_comp", "f_look"),
+            edge("f_look", "f_few"),
+            edge("f_few", "f_sep", "yes"),
+            edge("f_few", "f_big", "no"),
+            edge("f_big", "f_prime", "no"),
+            edge("f_big", "f_last", "yes"),
+            edge("f_last", "f_fin", "yes"),
+            edge("f_last", "f_ovl", "no"),
+            edge("f_ovl", "f_lead", "Γ = null"),
+            edge("f_ovl", "f_gam", "yes"),
+            edge("f_gam", "f_occ", "yes"),
+            edge("f_gam", "f_lead", "no"),
+        ],
+    },
+    {
         "id": "go-to-center",
         "title": "Go-To-Center",
         "short": "Head for the centre without losing sight of anyone",
@@ -593,6 +666,99 @@ const CHARTS = [
             edge("g_h", "g_j", null, "elbow"),
         ],
     },
+    {
+        "id": "pattern-formation",
+        "title": "Pattern Formation",
+        "short": "Robots agree on a shape and each walks to its point",
+        "blurb": (
+            "Every robot builds the same chosen shape from the snapshot — centred on the " +
+            "swarm's average position, sized by its spread — spreads n target marks along it, " +
+            "works out which mark is its own, and walks there. Repeated by all robots, the swarm " +
+            "settles into the shape. This is Robot._pattern_formation and Robot._pattern_terminal in " +
+            "robot.py (Suzuki & Yamashita 1999), generalised from the fixed star to any predefined " +
+            "shape; that any pattern is formable this way is Universal Pattern Formation (Flocchini, " +
+            "Navarra, Pattanayak, Piselli & Santoro, arXiv:2412.10733). The default shape is a " +
+            "5-pointed star; the selector in the toolbar offers circle, square, triangle and more."
+        ),
+        "notes": [
+            "Every robot computes the same centre, size and marks from the same snapshot, so they " +
+            "agree on the shape without communicating or any leader.",
+            "The size is the root-mean-square distance from the centre, not the farthest robot, so " +
+            "the frame does not jump around the way an SEC-based one can.",
+            "Which robot takes which mark is decided by sorting both robots and marks by angle and " +
+            "then picking the rotation with the least total travel; that keeps the matching stable " +
+            "so the swarm settles instead of oscillating.",
+            "It finishes when every robot is within 3% of the size R of its mark. Exact placement " +
+            "is never required, because the shape drifts a little as robots move.",
+            "Only the template changes between shapes; the frame, matching and termination are " +
+            "identical, so every predefined shape shares this one pipeline on either scheduler.",
+            "Each activation costs about n² work: it tries all n rotations, each summing n distances.",
+        ],
+        "lanes": ["rows", [["The crowd", 0, 2], ["Agree on a frame", 3, 5],
+                           ["Draw the shape", 6, 6], ["Match and move", 7, 10]]],
+        "nodes": [
+            node("comp", "Compute my target", 1, 0, "entry", [PATTERN, "compute"],
+                 "PatternFormation::compute()",
+                 "Called from the COMPUTE phase of chart 2 with the robot's snapshot. Robots are " +
+                 "oblivious, so it starts from scratch every time."),
+            node("live", "List the robots in view", 1, 1, "step", null, "crashed ones dropped · n robots",
+                 "Take everyone that has not crashed, and call how many there are n. These are the " +
+                 "robots the shape must be shared out among."),
+            node("few", "Fewer than two robots?", 1, 2, "decision", null, null,
+                 "With no one else to form a shape with, there is nothing to do."),
+            node("stay1", "Stay put, done", 0, 2, "end", null, "nothing to form",
+                 "The robot keeps its place and marks itself finished."),
+            node("center", "Find the centre", 1, 3, "step", null, "average of all positions",
+                 "Average everyone's positions. Because every robot sees the same dots and averages " +
+                 "them the same way, they all agree on this centre without talking."),
+            node("size", "Find the size R", 1, 4, "step", null, "spread from the centre (RMS)",
+                 "Measure how spread out the robots are around that centre (a root-mean-square " +
+                 "distance). This single number, R, says how big the shape should be."),
+            node("flat", "All piled on one spot?", 1, 5, "decision", null, "R ≈ 0",
+                 "If the spread is essentially zero there is no room for a shape."),
+            node("stay2", "Stay put, done", 0, 5, "end", null, "no size to work with",
+                 "Nothing meaningful to form; the robot stays where it is and finishes."),
+            node("tmpl", "Place n marks on the chosen shape", 1, 6, "step", [PATTERN, "pattern_unit_points"],
+                 "pattern_unit_points() · scaled to centre, R",
+                 "Draw the chosen shape's outline around the centre at size R and spread n evenly " +
+                 "spaced target marks along its edges — one mark per robot. The star keeps its " +
+                 "original sampling; every other shape is sampled by arc length the same way."),
+            node("sort", "Sort robots and marks by angle", 1, 7, "step", null, "two rings round the centre",
+                 "List the robots in the order a clock hand sweeps past them around the centre, and " +
+                 "list the marks the same way. Now both are rings in angle order."),
+            node("rot", "Pick the best line-up", 1, 8, "step", null, "least total travel · tries all n",
+                 "The two rings can be lined up n ways (rotations). Try them all and keep the one " +
+                 "with the smallest total travel. This is what stops the matching from flip-flopping " +
+                 "between turns and oscillating forever."),
+            node("mine", "Read off my mark", 1, 9, "step", null, "my place in the ring",
+                 "Find my own spot in the robot ring, apply the winning line-up, and that says which " +
+                 "mark is mine."),
+            node("done", "Everyone within 3% of R of their mark?", 1, 10, "decision", null, null,
+                 "Look at the worst-placed robot. If every robot is within about 3% of R of its " +
+                 "mark, the shape is already formed."),
+            node("term", "Terminate", 0, 10, "end", null, "shape formed",
+                 "The robot stops for good; the formation is complete."),
+            node("move", "Walk to my mark", 2, 10, "out", null, "target = my mark",
+                 "The mark becomes the robot's target; chart 2 takes over (freeze check, then the " +
+                 "move). Next time it wakes, it does all of this again."),
+        ],
+        "edges": [
+            edge("comp", "live"),
+            edge("live", "few"),
+            edge("few", "stay1", "yes"),
+            edge("few", "center", "no"),
+            edge("center", "size"),
+            edge("size", "flat"),
+            edge("flat", "stay2", "yes"),
+            edge("flat", "tmpl", "no"),
+            edge("tmpl", "sort"),
+            edge("sort", "rot"),
+            edge("rot", "mine"),
+            edge("mine", "done"),
+            edge("done", "term", "yes"),
+            edge("done", "move", "no"),
+        ],
+    },
 ]
 // -------------------------------------------------------- source extraction --
 
@@ -603,7 +769,7 @@ const lstrip = (s) => s.replace(/^\s+/, "");
  *  doc comments above it. Relies on the formatter putting a function's closing
  *  brace at the indentation of its first line. */
 function extract(file, name) {
-  const lines = fs.readFileSync(path.join(ROOT, file), "utf-8").split("\n");
+  const lines = fs.readFileSync(path.join(ROOT, file), "utf-8").split(/\r?\n/); // CRLF on a Windows checkout
   const start = file.endsWith(".rs")
     ? new RegExp(`^\\s*(pub(\\([a-z]+\\))? )?(const )?fn ${reEscape(name)}\\b`)
     : new RegExp(`^\\s*(export )?(async )?(function )?${reEscape(name)}\\s*\\(.*\\)\\s*\\{\\s*$`);
@@ -1102,7 +1268,7 @@ function main() {
   const stale = [];
   for (const [file, text] of Object.entries(outputs)) {
     const full = path.join(ROOT, file);
-    const current = fs.existsSync(full) ? fs.readFileSync(full, "utf-8") : null;
+    const current = fs.existsSync(full) ? fs.readFileSync(full, "utf-8").replace(/\r\n/g, "\n") : null; // CRLF on a Windows checkout
     if (check) {
       if (current !== text) stale.push(file);
     } else {

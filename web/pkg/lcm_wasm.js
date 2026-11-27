@@ -206,6 +206,19 @@ export class WasmSimulation {
         return ret;
     }
     /**
+     * Sequential Pattern Formation, once the pattern is formed: its points
+     * where the robots stand, as `[x0, y0, x1, y1, …]` in world coordinates and
+     * in the order the pattern was given, so the page can join them into the
+     * shape. Empty while it is not formed, and for any other algorithm.
+     * @returns {Float64Array}
+     */
+    formed_pattern() {
+        const ret = wasm.wasmsimulation_formed_pattern(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
      * World coordinates the frame's positions, targets and circle centres are
      * measured from (a robot's world position is origin + offset, added in f64).
      * @returns {number}
@@ -277,6 +290,17 @@ export class WasmSimulation {
         this.__wbg_ptr = ret[0];
         WasmSimulationFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    /**
+     * Sequential Pattern Formation: 1 if the occupied points form the pattern
+     * (up to translation, rotation, reflection and scale), 0 if not; -1 for
+     * any other algorithm. Robots never terminate under SqPF, so a run ends
+     * stalled either way and the page asks this to say which it is.
+     * @returns {number}
+     */
+    pattern_formed() {
+        const ret = wasm.wasmsimulation_pattern_formed(this.__wbg_ptr);
+        return ret;
     }
     /**
      * Where robot `i` would go if it looked now, `[x, y]`, without changing
@@ -556,9 +580,10 @@ if (Symbol.dispose) WasmSqTrace.prototype[Symbol.dispose] = WasmSqTrace.prototyp
 
 /**
  * The algorithms the core knows, as JSON `[{"key": …, "name": …,
- * "sequential_only": …, "multiplicities": …}, …]`: `sequential_only` when
- * the algorithm refuses the async scheduler, `multiplicities` when it works
- * with points that hold several robots (the page rings them).
+ * "sequential_only": …, "multiplicities": …, "non_rigid_only": …}, …]`:
+ * `sequential_only` when the algorithm refuses the async scheduler,
+ * `multiplicities` when it works with points that hold several robots (the
+ * page rings them), `non_rigid_only` when it needs non-rigid moves with δ > 0.
  * @returns {string}
  */
 export function algorithms() {
@@ -566,6 +591,48 @@ export function algorithms() {
     let deferred1_1;
     try {
         const ret = wasm.algorithms();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * Pattern Formation's normalised template for `n` robots under `config_json`,
+ * as `[m, x0, y0, x1, y1, …]`: the first `m` points are the pattern (in
+ * drawing order), the rest the slots of robots it leaves out. The page embeds
+ * it in the swarm's frame (centroid, RMS radius) to draw the pattern.
+ *
+ * # Errors
+ * Malformed JSON.
+ * @param {string} config_json
+ * @param {number} n
+ * @returns {Float64Array}
+ */
+export function pattern_template(config_json, n) {
+    const ptr0 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.pattern_template(ptr0, len0, n);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v2;
+}
+
+/**
+ * The predefined Pattern Formation shapes, as JSON `[{"key": …, "name": …}, …]`.
+ * The `key` is what the UI sends back in the config's `target_pattern`.
+ * @returns {string}
+ */
+export function patterns() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.patterns();
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);

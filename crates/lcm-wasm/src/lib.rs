@@ -46,9 +46,10 @@ impl From<StopReason> for Stop {
 }
 
 /// The algorithms the core knows, as JSON `[{"key": …, "name": …,
-/// "sequential_only": …, "multiplicities": …}, …]`: `sequential_only` when
-/// the algorithm refuses the async scheduler, `multiplicities` when it works
-/// with points that hold several robots (the page rings them).
+/// "sequential_only": …, "multiplicities": …, "non_rigid_only": …}, …]`:
+/// `sequential_only` when the algorithm refuses the async scheduler,
+/// `multiplicities` when it works with points that hold several robots (the
+/// page rings them), `non_rigid_only` when it needs non-rigid moves with δ > 0.
 #[wasm_bindgen]
 #[must_use]
 pub fn algorithms() -> String {
@@ -61,10 +62,48 @@ pub fn algorithms() -> String {
                 "name": e.name,
                 "sequential_only": sequential_only,
                 "multiplicities": multiplicities,
+                "non_rigid_only": lcm_algorithms::needs_non_rigid(e.key),
             })
         })
         .collect();
     serde_json::Value::Array(list).to_string()
+}
+
+/// The predefined Pattern Formation shapes, as JSON `[{"key": …, "name": …}, …]`.
+/// The `key` is what the UI sends back in the config's `target_pattern`.
+#[wasm_bindgen]
+#[must_use]
+pub fn patterns() -> String {
+    let list: Vec<_> = lcm_algorithms::PATTERNS
+        .iter()
+        .map(|(key, name)| serde_json::json!({ "key": key, "name": name }))
+        .collect();
+    serde_json::Value::Array(list).to_string()
+}
+
+/// Pattern Formation's normalised template for `n` robots under `config_json`,
+/// as `[m, x0, y0, x1, y1, …]`: the first `m` points are the pattern (in
+/// drawing order), the rest the slots of robots it leaves out. The page embeds
+/// it in the swarm's frame (centroid, RMS radius) to draw the pattern.
+///
+/// # Errors
+/// Malformed JSON.
+#[wasm_bindgen]
+#[allow(clippy::cast_precision_loss)]
+pub fn pattern_template(config_json: &str, n: u32) -> Result<Vec<f64>, JsError> {
+    let config: SimConfig = serde_json::from_str(config_json)?;
+    let custom: Option<Vec<lcm_core::Point>> = config
+        .target_points
+        .as_ref()
+        .map(|pts| pts.iter().map(|p| lcm_core::Point::new(p[0], p[1])).collect());
+    let (pts, m) = lcm_algorithms::pattern_template(config.target_pattern, custom.as_deref(), n as usize);
+    let mut out = Vec::with_capacity(1 + 2 * pts.len());
+    out.push(m as f64);
+    for p in pts {
+        out.push(p.x);
+        out.push(p.y);
+    }
+    Ok(out)
 }
 
 #[wasm_bindgen]
@@ -78,6 +117,8 @@ pub struct WasmSimulation {
     view_time: Option<f64>,
     /// The robot `advance_to_move` last saw start a move.
     moved: i32,
+    /// Sequential Pattern Formation's pattern, to tell a formed run from a stuck one.
+    pattern: Option<lcm_algorithms::sq_pattern_formation::Pattern>,
 }
 
 #[wasm_bindgen]
@@ -90,13 +131,50 @@ impl WasmSimulation {
     pub fn new(config_json: &str) -> Result<WasmSimulation, JsError> {
         let config: SimConfig = serde_json::from_str(config_json)?;
         let sim = lcm_algorithms::simulation(&config)?;
+        let pattern = (config.algorithm == lcm_algorithms::sq_pattern_formation::KEY)
+            .then(|| lcm_algorithms::sq_pattern_formation::pattern_of(&config).ok())
+            .flatten();
         Ok(Self {
             sim,
             frame: Frame::default(),
             positions: Vec::new(),
             view_time: None,
             moved: -1,
+            pattern,
         })
+    }
+
+    /// Sequential Pattern Formation: 1 if the occupied points form the pattern
+    /// (up to translation, rotation, reflection and scale), 0 if not; -1 for
+    /// any other algorithm. Robots never terminate under SqPF, so a run ends
+    /// stalled either way and the page asks this to say which it is.
+    #[must_use]
+    pub fn pattern_formed(&self) -> i32 {
+        self.pattern.as_ref().map_or(-1, |p| {
+            i32::from(lcm_algorithms::sq_pattern_formation::is_formed(
+                p,
+                &self.sim.robots().pos,
+                self.sim.model().eps,
+            ))
+        })
+    }
+
+    /// Sequential Pattern Formation, once the pattern is formed: its points
+    /// where the robots stand, as `[x0, y0, x1, y1, …]` in world coordinates and
+    /// in the order the pattern was given, so the page can join them into the
+    /// shape. Empty while it is not formed, and for any other algorithm.
+    #[must_use]
+    pub fn formed_pattern(&self) -> Vec<f64> {
+        self.pattern
+            .as_ref()
+            .and_then(|p| {
+                lcm_algorithms::sq_pattern_formation::formed_placement(
+                    p,
+                    &self.sim.robots().pos,
+                    self.sim.model().eps,
+                )
+            })
+            .map_or_else(Vec::new, |pts| pts.iter().flat_map(|q| [q.x, q.y]).collect())
     }
 
     /// Handles up to `max_events` events, stopping early before the first

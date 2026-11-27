@@ -129,12 +129,13 @@ await shot("sim-sqgathering-stacked");
 await js("document.getElementById('play').click()");
 check("simulator: the stacked start gathers too", await until("window.lcm.state === 'ended' && window.lcm.stats.terminated === window.lcm.stats.robots", 90000));
 
-// Refusals come back as a message, not a broken page.
-await js(`window.lcm.settings.set("unlimited_visibility", false)`);
-await js("document.getElementById('reset').click()");
-await sleep(400);
-check("simulator: limited visibility is refused with the reason",
-  await js("/unlimited visibility/.test(document.getElementById('toast').textContent)"), await js("document.getElementById('toast').textContent"));
+// The paper's model is fixed while SqGathering is chosen: limited visibility and the async
+// scheduler cannot be picked (the settings are greyed out and a change is ignored).
+await js(`window.lcm.settings.set("unlimited_visibility", false); window.lcm.settings.set("scheduler", "async")`);
+check("simulator: the paper's model is fixed (unlimited visibility, sequential scheduler, greyed out)",
+  await js(`window.lcm.settings.values.unlimited_visibility === true && window.lcm.settings.values.scheduler === "sequential"
+    && document.querySelector('[data-key="scheduler"] select').disabled && document.querySelector('[data-key="unlimited_visibility"] input').disabled`),
+  await js(`JSON.stringify({ vis: window.lcm.settings.values.unlimited_visibility, scheduler: window.lcm.settings.values.scheduler })`));
 await js(`window.lcm.settings.set("unlimited_visibility", true); window.lcm.settings.set("multiplicities", 0)`);
 
 // A new algorithm picked while a run is playing starts at once.
@@ -147,6 +148,40 @@ await pick("Gathering");
 await sleep(400);
 check("simulator: switching algorithm mid-run starts the new one at once",
   (await js("window.lcm.state")) === "ready" && (await js("document.getElementById('dirty').hidden")) && !(await js("window.lcm.renderer.options.multiplicities")));
+check("simulator: leaving SqGathering frees the scheduler again", !(await js(`document.querySelector('[data-key="scheduler"] select').disabled`)));
+
+// Sequential Pattern Formation (Algorithms 1 and 7 of the same paper): the model is fixed, robots
+// never terminate, and the run stops once nothing moves, with the pattern formed.
+await js(`window.lcm.settings.set("scheduler", "async")`);
+await pick("SqPatternFormation");
+await sleep(400);
+check("simulator: picking SqPF fixes the sequential scheduler and non-rigid moves with δ > 0",
+  await js(`(() => { const v = window.lcm.settings.values, q = (k, t) => document.querySelector('[data-key="' + k + '"] ' + t);
+    return v.scheduler === "sequential" && q("scheduler", "select").disabled && v.rigid_movement === false
+      && q("rigid_movement", "input").disabled && v.delta >= 1 && v.unlimited_visibility && v.num_of_faults === 0; })()`),
+  await js("JSON.stringify(window.lcm.settings.values)"));
+check("simulator: SqPF shows the pattern list", !(await js("document.getElementById('target-pattern').hidden")));
+await js(`(() => { const t = document.getElementById("target-pattern"); t.value = "pentagon"; t.dispatchEvent(new Event("change")); })()`);
+check("simulator: the robot.py Pattern Formation is not offered next to SqPF",
+  !(await js(`[...document.getElementById("algorithm").options].some((o) => o.value === "PatternFormation")`)));
+await js(`window.lcm.settings.set("num_of_robots", 7)`);
+await js("document.getElementById('reset').click()");
+await sleep(400);
+check("simulator: SqPF fixes one robot per pattern point (5 for a pentagon) and locks the count",
+  await js(`window.lcm.state === "ready" && window.lcm.settings.values.num_of_robots === 5
+    && window.lcm.renderer.frame.flags.length === 5 && document.getElementById("set-num_of_robots-n").disabled`),
+  await js("String(window.lcm.settings.values.num_of_robots)"));
+await js("document.getElementById('playback').value = 'Infinity'; document.getElementById('playback').dispatchEvent(new Event('change'))");
+await js("document.getElementById('play').click()");
+const formed = await until("window.lcm.state === 'ended'", 90000);
+check("simulator: SqPF ends with the pattern formed and says so",
+  formed && (await js("/Formed/.test(document.getElementById('hud_status').textContent)")),
+  await js("document.getElementById('hud_status').textContent"));
+check("simulator: the formed shape is drawn, joining the pattern points, every robot on one",
+  await js(`(() => { const f = window.lcm.renderer.frame, s = window.lcm.renderer.patternStats;
+    return !!(f.pattern && f.pattern.world && f.pattern.m === 5 && s && s.reached === f.robots); })()`),
+  await js("JSON.stringify(window.lcm.renderer.patternStats)"));
+await shot("sim-sqpf-formed");
 
 // ── layout ───────────────────────────────────────────────────────────────
 for (const [name, w, h, dpr, touch] of [["phone", 375, 812, 2, true], ["tablet", 768, 1024, 2, true], ["desktop", 1440, 900, 1, false]]) {

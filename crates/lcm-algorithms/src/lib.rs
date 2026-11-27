@@ -9,24 +9,30 @@
 //! work with by returning [`ConfigError::Unsupported`].
 //!
 //! Gathering and SEC are ported; they drive the core's parity tests. Uniform
-//! Circle Formation and Go-To-Center are ported too. SqGathering (Algorithm 8 of the
-//! sequential-schedulers paper) is new: it refuses any scheduler but the
-//! sequential one.
+//! Circle Formation, Pattern Formation and Go-To-Center are ported too. SqGathering
+//! (Algorithm 8 of the sequential-schedulers paper) and Sequential Pattern
+//! Formation (its Algorithms 1 and 7, SqPF / SqPF′) are new: they refuse any
+//! scheduler but the sequential one, and SqPF runs its robots in the paper's model
+//! (private coordinate systems, no identities, no multiplicity detection).
 
 mod circle_formation;
 mod gathering;
 mod go_to_center;
+mod pattern_formation;
 mod sec;
 pub mod sq_gathering;
+pub mod sq_pattern_formation;
 pub mod sq_trace;
 
 pub use circle_formation::CircleFormation;
 pub use gathering::Gathering;
 pub use go_to_center::GoToCenter;
+pub use pattern_formation::{template as pattern_template, PatternFormation};
 pub use sec::Sec;
 pub use sq_gathering::SqGathering;
+pub use sq_pattern_formation::SqPatternFormation;
 
-use lcm_core::{Algorithm, ConfigError, Plan, SimConfig, Simulation};
+use lcm_core::{Algorithm, ConfigError, Plan, Point, SimConfig, Simulation};
 
 /// A distance or angle for an explanation: four significant digits, or
 /// scientific notation when tiny.
@@ -57,6 +63,43 @@ fn one<A: Algorithm + Default + 'static>(_: &SimConfig) -> Result<Plan, ConfigEr
     Ok(Plan::single(Box::new(A::default())))
 }
 
+/// Pattern Formation reads which predefined shape to form from the config, so
+/// one algorithm entry covers every shape in [`PATTERNS`].
+fn pattern_formation(config: &SimConfig) -> Result<Plan, ConfigError> {
+    // This port forms one robot per point (SqPF, below, allows more robots).
+    if let Some(points) = &config.target_points {
+        if points.len() != config.num_of_robots as usize {
+            return Err(ConfigError::Unsupported(format!(
+                "target_points must give one point per robot ({}), got {}",
+                config.num_of_robots,
+                points.len()
+            )));
+        }
+    }
+    Ok(Plan::single(Box::new(PatternFormation {
+        shape: config.target_pattern,
+        custom: config
+            .target_points
+            .as_ref()
+            .map(|pts| pts.iter().map(|p| Point::new(p[0], p[1])).collect()),
+    })))
+}
+
+/// The predefined Pattern Formation shapes offered to the UI, as
+/// `(key, display name)`. The key is the lowercase `PatternShape` name the
+/// frontend sends back in `target_pattern`.
+pub const PATTERNS: &[(&str, &str)] = &[
+    ("star", "Star"),
+    ("circle", "Circle"),
+    ("square", "Square"),
+    ("triangle", "Triangle"),
+    ("pentagon", "Pentagon"),
+    ("hexagon", "Hexagon"),
+    ("line", "Line"),
+    ("cross", "Cross"),
+    ("heart", "Heart"),
+];
+
 pub const REGISTRY: &[Entry] = &[
     Entry {
         key: "Gathering",
@@ -72,6 +115,16 @@ pub const REGISTRY: &[Entry] = &[
         key: "CircleFormation",
         name: "Uniform Circle Formation",
         build: one::<CircleFormation>,
+    },
+    Entry {
+        key: "PatternFormation",
+        name: "Pattern Formation (robot.py)",
+        build: pattern_formation,
+    },
+    Entry {
+        key: "SqPatternFormation",
+        name: "Sequential Pattern Formation",
+        build: sq_pattern_formation::plan,
     },
     Entry {
         key: "GoToCenter",
@@ -90,9 +143,16 @@ pub const REGISTRY: &[Entry] = &[
 #[must_use]
 pub fn requirements(key: &str) -> (bool, bool) {
     match key {
-        "SqGathering" => (true, true),
+        "SqGathering" | "SqPatternFormation" => (true, true),
         _ => (false, false),
     }
+}
+
+/// `true` when algorithm `key` runs only with non-rigid movement and a
+/// minimum move δ > 0 (the model of the paper it comes from).
+#[must_use]
+pub fn needs_non_rigid(key: &str) -> bool {
+    key == "SqPatternFormation"
 }
 
 /// The plan of algorithm `key` for a run with this `config`.

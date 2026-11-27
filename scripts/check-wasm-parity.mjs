@@ -54,6 +54,8 @@ const SEQUENTIAL = {
   seq_gotocenter_nonrigid: seq({ algorithm: "GoToCenter", num_of_robots: 12, visibility_radius: 120, width_bound: 160, height_bound: 160, rigid_movement: false, delta: 4, stop_policy: "random", random_seed: 12 }),
   seq_sqgathering_stacked: seq({ algorithm: "SqGathering", num_of_robots: 60, multiplicities: 3, multiplicity_size: 4, activation_order: "random", random_seed: 10 }),
   seq_sqgathering_nonrigid: seq({ algorithm: "SqGathering", num_of_robots: 40, rigid_movement: false, delta: 2, stop_policy: "random", random_seed: 11 }),
+  seq_sqpf_star_stacked: seq({ algorithm: "SqPatternFormation", target_pattern: "star", num_of_robots: 13, multiplicities: 1, multiplicity_size: 2, rigid_movement: false, delta: 6, stop_policy: "random", activation_order: "random", random_seed: 13 }),
+  seq_sqpf_square_custom: seq({ algorithm: "SqPatternFormation", target_points: [[0, 0], [10, 0], [10, 10], [0, 10]], num_of_robots: 7, rigid_movement: false, delta: 4, stop_policy: "delta", random_seed: 14 }),
   async_nonrigid_delta: { algorithm: "SEC", num_of_robots: 30, rigid_movement: false, delta: 5, max_events: 2_000_000, random_seed: 9 },
 };
 for (const [name, config] of Object.entries(SEQUENTIAL)) {

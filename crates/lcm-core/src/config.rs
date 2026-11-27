@@ -176,11 +176,51 @@ pub enum ScheduleEnd {
     Await,
 }
 
+/// Pattern Formation target: which predefined shape the robots form.
+///
+/// Backed by Universal Pattern Formation (Flocchini, Navarra, Pattanayak,
+/// Piselli & Santoro, arXiv:2412.10733): under a sequential scheduler oblivious
+/// robots can form *any* pattern given as a finite set of points, irrespective
+/// of its rotation, reflection, translation and scaling. Each variant below is
+/// just such a point set; the algorithm embeds it in the swarm's own frame.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+pub enum PatternShape {
+    /// A 5-pointed star (the original Pattern Formation template).
+    #[default]
+    Star,
+    /// Points evenly spaced around a circle.
+    Circle,
+    /// A square outline.
+    Square,
+    /// An equilateral triangle outline.
+    Triangle,
+    /// A regular pentagon outline.
+    Pentagon,
+    /// A regular hexagon outline.
+    Hexagon,
+    /// A straight line segment.
+    Line,
+    /// A plus / cross outline.
+    Cross,
+    /// A heart outline.
+    Heart,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
 pub struct SimConfig {
     pub algorithm: String,
+    /// Pattern Formation only: which predefined shape to form. Ignored by the
+    /// other algorithms. Defaults to the 5-pointed star.
+    pub target_pattern: PatternShape,
+    /// Pattern Formation only: a user-given pattern as world points, used
+    /// instead of `target_pattern` when set. Only its shape matters (it is formed
+    /// up to translation, rotation, reflection and scale). PatternFormation needs
+    /// exactly one point per robot; SqPatternFormation at most one per robot.
+    pub target_points: Option<Vec<[f64; 2]>>,
     pub num_of_robots: u32,
     pub initial_positions: Option<Vec<[f64; 2]>>,
     pub robot_speeds: f64,
@@ -264,6 +304,8 @@ impl Default for SimConfig {
     fn default() -> Self {
         Self {
             algorithm: "Gathering".to_owned(),
+            target_pattern: PatternShape::Star,
+            target_points: None,
             num_of_robots: 5,
             initial_positions: None,
             robot_speeds: 1.0,
@@ -383,6 +425,15 @@ impl SimConfig {
                 .position(|p| !p[0].is_finite() || !p[1].is_finite())
             {
                 return Err(ConfigError::Position { index });
+            }
+        }
+        if let Some(points) = &self.target_points {
+            // How many points a pattern needs is the algorithm's business: one per
+            // robot for PatternFormation, at most one per robot for SqPatternFormation.
+            if points.iter().any(|p| !p[0].is_finite() || !p[1].is_finite()) {
+                return Err(ConfigError::Unsupported(
+                    "target_points must be finite numbers".to_owned(),
+                ));
             }
         }
         if let Some(start) = &self.start {

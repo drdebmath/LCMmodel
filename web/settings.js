@@ -23,8 +23,8 @@ const SIZE_LABEL = { square: "Side length", rectangle: "Width", circle: "Diamete
 // does not apply; `enabledBy` greys it out; `more` puts it under "More options"
 // (a function of the values, or true).
 export const SETTINGS = [
-  { key: "num_of_robots", group: "swarm", label: "Robots", kind: "log", min: 1, max: 10000, value: 500,
-    enabledBy: (v) => v.pattern !== "custom",
+  { key: "num_of_robots", group: "swarm", label: "Robots", kind: "range", min: 1, max: 10000, step: 1, value: 500,
+    enabledBy: (v) => v.pattern !== "custom" && robotLock === null,
     hint: "Number of robots. With your own positions it is the number of positions." },
   { key: "random_seed", group: "swarm", label: "Random seed", kind: "number", min: 0, max: 4294967295, value: 12345, dice: true,
     hint: "Same seed and settings give the same run, every time, on every machine." },
@@ -280,8 +280,13 @@ export function buildSettings(root, onChange) {
       if (typeof s.label === "function") fields[s.key].querySelector("label").textContent = s.label(values);
       if (s.note) fields[s.key].querySelector(".note").textContent = s.note(values);
       if (s.showIf) fields[s.key].hidden = !s.showIf(values);
-      if (s.enabledBy) {
-        const on = s.enabledBy(values);
+      // A setting the chosen algorithm's model fixes (lockModel) cannot be changed.
+      const fixed = Boolean(modelLock && s.key in modelLock.values);
+      const wasFixed = fields[s.key].classList.contains("locked");
+      fields[s.key].classList.toggle("locked", fixed);
+      fields[s.key].title = fixed ? modelLock.reason : "";
+      if (s.enabledBy || fixed || wasFixed) {
+        const on = (s.enabledBy ? s.enabledBy(values) : true) && !fixed;
         fields[s.key].classList.toggle("disabled", !on);
         for (const el of fields[s.key].querySelectorAll("input, select, textarea")) el.disabled = !on;
       }
@@ -293,6 +298,11 @@ export function buildSettings(root, onChange) {
   function set(key, v, notify = true) {
     const s = byKey[key];
     const before = values.open_world;
+    // The model of the chosen algorithm wins: a fixed setting keeps its value, a bounded one its bound.
+    if (modelLock && key in modelLock.values) v = modelLock.values[key];
+    if (modelLock && key in modelLock.min) v = Math.max(modelLock.min[key], Number(v));
+    // A pattern-formation algorithm fixes one robot per pattern point (lockRobots).
+    if (key === "num_of_robots" && robotLock !== null) v = robotLock;
     values[key] = clamp(s, v);
     if (key === "open_world" && values.open_world !== before) {
       // Switching worlds picks that world's natural start.
@@ -346,6 +356,24 @@ export function buildSettings(root, onChange) {
     get problem() { return values.pattern === "custom" && customResult.errors.length ? customResult.errors : null; },
     get customPoints() { return customResult.points; },
     /** Sets several settings at once (in the order given) and restarts the run once. */
+    /** Fix the robot count at `n` and grey the slider out (null: free it again). */
+    lockRobots(n) {
+      robotLock = n ?? null;
+      if (robotLock !== null && values.num_of_robots !== robotLock) set("num_of_robots", robotLock, false);
+      else refresh();
+    },
+    /**
+     * Fix settings to the model an algorithm is defined in, and grey them out (null: free them again).
+     * `lock` is {values: {key: value}, min: {key: lowest value}, reason}.
+     */
+    lockModel(lock) {
+      modelLock = lock ? { values: lock.values ?? {}, min: lock.min ?? {}, reason: lock.reason ?? "" } : null;
+      if (modelLock) {
+        for (const [key, v] of Object.entries(modelLock.values)) { values[key] = clamp(byKey[key], v); show(key); }
+        for (const [key, m] of Object.entries(modelLock.min)) if (values[key] < m) { values[key] = clamp(byKey[key], m); show(key); }
+      }
+      refresh();
+    },
     apply(entries) { for (const [key, value] of Object.entries(entries)) set(key, value, false); onChange(null, values); },
     reset() { for (const s of SETTINGS) values[s.key] = s.value; refresh(); for (const s of SETTINGS) show(s.key); refresh(); onChange(null, values); },
   };
@@ -381,6 +409,11 @@ function buildCoordinateEditor(onInput) {
 }
 
 /** SimConfig for the core from the panel's values plus the chosen algorithm. */
+/** A robot count fixed from outside the panel (a custom Pattern Formation pattern: one robot per point), or null. */
+let robotLock = null;
+/** Settings fixed by the chosen algorithm's model (SqGathering, SqPF), or null. See `lockModel`. */
+let modelLock = null;
+
 export function readConfig(values, algorithm, customPoints = []) {
   const config = { algorithm };
   for (const s of SETTINGS) if (!s.local) config[s.key] = values[s.key];

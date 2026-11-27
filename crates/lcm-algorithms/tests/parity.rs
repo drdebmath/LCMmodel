@@ -195,9 +195,13 @@ fn rust_core_matches_python_fixtures() {
 #[test]
 fn every_registered_algorithm_builds() {
     for entry in lcm_algorithms::REGISTRY {
-        // An algorithm that refuses the async default gets the scheduler it needs.
+        // An algorithm that refuses the async default gets the scheduler it needs,
+        // and one that needs non-rigid moves gets them (with a δ).
         let (sequential_only, _) = lcm_algorithms::requirements(entry.key);
+        let non_rigid = lcm_algorithms::needs_non_rigid(entry.key);
         let config = SimConfig {
+            rigid_movement: !non_rigid,
+            delta: non_rigid.then_some(5.0),
             algorithm: entry.key.to_owned(),
             num_of_robots: 20,
             scheduler: if sequential_only {

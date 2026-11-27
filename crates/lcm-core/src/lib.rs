@@ -22,7 +22,7 @@ pub use algorithm::{
 };
 pub use config::{
     Activation, ActivationOrder, ConfigError, FaultSelection, Frames, MultiplicityModel,
-    ScheduleEnd, SchedulerKind, SimConfig, StopPolicy, TurnGap, MAX_ROBOTS,
+    PatternShape, ScheduleEnd, SchedulerKind, SimConfig, StopPolicy, TurnGap, MAX_ROBOTS,
 };
 pub use event::{Event, EventKind, EventQueue};
 pub use frame::{flag_state, Frame, FLAG_FROZEN, FLAG_HAS_TARGET, FLAG_TERMINATED};

@@ -68,6 +68,14 @@ This is Algorithm 8 (Section 6) of [Universal pattern formation by oblivious rob
 
 It only runs under the sequential scheduler (choosing it on the page switches the scheduler), and it refuses limited visibility and faults, which the paper's model does not have. It is not the same as Center of Gravity gathering. Under the key `SqGathering` it appears as chart 6 of the flowchart page. `web/sqgathering.html` shows it one turn at a time with hand traces, and `lcm seq <config.json> --trace -` prints a turn-by-turn trace on the command line. Details: [`docs/sqgathering.md`](docs/sqgathering.md).
 
+## Pattern formation under the sequential scheduler
+
+**Sequential Pattern Formation** (key `SqPatternFormation`) is Algorithm SqPF (Algorithm 1, Section 4) and, for patterns of 2 to 4 points, Algorithm SqPF′ (Algorithm 7, Section 5) of the same paper: robots form *any* pattern P̂, given as a set of points, from *any* start (robots sharing points included), up to translation, rotation, reflection and scale. The paper allows any number of robots n ≥ |P̂| (the extra ones end on pattern points already occupied), and so does the CLI; the page fixes n = |P̂|, one robot per pattern point.
+
+The robots are the paper's (Section 2.1): each has a **private coordinate system** (its own direction of the x-axis, unit of length and handedness, itself at the origin), sees only the set of occupied points (no identities, no multiplicity detection), remembers nothing between cycles and never terminates. The registry refuses everything outside that model: the async scheduler (UPF is unsolvable without a sequential scheduler, Theorem 1), rigid movement or no δ, limited visibility, faults, and fewer robots than pattern points. On the page, choosing it fixes the scheduler to Sequential and the movement to non-rigid, and greys those settings out; pick the pattern in the list next to the algorithm, and the Robots count follows it and is locked. The robots' own axes come from the algorithm, so *Robots' axes* stays Global. The run stops once a whole epoch passes without a move, and the page says **Formed** when the occupied points are the pattern. Chart 7 of the flowchart page follows the paper's Figure 1. [`docs/sqpf.md`](docs/sqpf.md) maps every line of the paper's pseudocode to the code and lists where the paper leaves a choice open.
+
+*Pattern Formation (robot.py)* (key `PatternFormation`) is the port of the original simulator: it gives every robot the world's axes and breaks ties by robot ID, so it is not the paper's model. The page no longer offers it; it stays for the CLI and the recorded-run parity tests.
+
 ## Watching small moves
 
 robots that gather end up very close together, so the page has tools to follow them (press `?` on the page for all the keys).
